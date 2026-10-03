@@ -1,0 +1,4 @@
+Flask>=2.0.0
+flask-cors>=4.0.0
+requests>=2.25.0
+pycryptodome>=3.18.0

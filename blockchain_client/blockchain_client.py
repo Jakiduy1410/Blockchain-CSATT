@@ -82,6 +82,17 @@ def new_wallet():
 
 	return jsonify(response), 200
 
+@app.route('/wallets/sample', methods=['GET'])
+def sample_wallets():
+	import json, os
+	root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+	wallets_file = os.path.join(root_dir, 'wallets.json')
+	if os.path.exists(wallets_file):
+		with open(wallets_file, 'r', encoding='utf-8') as f:
+			data = json.load(f)
+		return jsonify(data), 200
+	return jsonify({}), 404
+
 @app.route('/generate/transaction', methods=['POST'])
 def generate_transaction():
 	

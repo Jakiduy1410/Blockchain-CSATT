@@ -60,6 +60,39 @@
     <br>
 
 
+    <div class="container mb-3">
+      <div class="card border-info">
+        <div class="card-header bg-info text-white font-weight-bold py-2">
+          ⚡ Nạp Nhanh Ví Cố Định Để Thử Nghiệm (Predefined Wallets)
+        </div>
+        <div class="card-body py-2">
+          <div class="row">
+            <div class="col-md-6">
+              <label class="font-weight-bold">Người Gửi (Sender):</label>
+              <select id="quick_sender" class="form-control">
+                <option value="">-- Chọn Ví Người Gửi --</option>
+                <option value="Alice" selected>👤 Alice (Ví Client 1)</option>
+                <option value="Bob">👤 Bob (Ví Client 2)</option>
+                <option value="Charlie">👤 Charlie (Ví Client 3)</option>
+                <option value="Dave">👤 Dave (Ví Client 4)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="font-weight-bold">Người Nhận (Recipient):</label>
+              <select id="quick_recipient" class="form-control">
+                <option value="">-- Chọn Ví Người Nhận --</option>
+                <option value="Alice">👤 Alice (Ví Client 1)</option>
+                <option value="Bob" selected>👤 Bob (Ví Client 2)</option>
+                <option value="Charlie">👤 Charlie (Ví Client 3)</option>
+                <option value="Dave">👤 Dave (Ví Client 4)</option>
+              </select>
+            </div>
+          </div>
+          <small class="text-muted mt-1 d-block">Public Key & Private Key sẽ được tự động điền bên dưới, không cần copy-paste thủ công!</small>
+        </div>
+      </div>
+    </div>
+
     <div class="container alert alert-secondary">
     <form id="transaction_form">
 
@@ -160,9 +193,20 @@
 
 
             <div class="row">
-              <label class="col-sm-12">Blockchain Node URL:</label>
+              <label class="col-sm-12">Chọn Blockchain Node để phát sóng:</label>
+              <div class="col-sm-12 mb-2">
+                <select id="node_select" class="form-control" onchange="document.getElementById('node_url').value = this.value;">
+                  <option value="http://127.0.0.1:5000">Node 1 (127.0.0.1:5000 - Ingress)</option>
+                  <option value="http://127.0.0.1:5001">Node 2 (127.0.0.1:5001 - Miner ⛏️)</option>
+                  <option value="http://127.0.0.1:5002">Node 3 (127.0.0.1:5002 - Peer)</option>
+                  <option value="http://127.0.0.1:5003">Node 4 (127.0.0.1:5003 - Peer)</option>
+                  <option value="http://127.0.0.1:5004">Node 5 (127.0.0.1:5004 - Peer)</option>
+                  <option value="http://127.0.0.1:5005">Node 6 (127.0.0.1:5005 - Peer)</option>
+                </select>
+              </div>
+              <label class="col-sm-12">Hoặc nhập URL tùy chỉnh:</label>
               <div class="col-sm-12">
-                <input type="text" name="node_url" id="node_url" rows="2" class="form-control" value="http://127.0.0.1:5000">
+                <input type="text" name="node_url" id="node_url" class="form-control" value="http://127.0.0.1:5000">
               </div>
             </div>
 
@@ -211,8 +255,38 @@
 
 
     <script>
+      var sampleWallets = {};
+
+      function fillSender() {
+        var name = $("#quick_sender").val();
+        if (name && sampleWallets[name]) {
+          $("#sender_address").val(sampleWallets[name].public_key);
+          $("#sender_private_key").val(sampleWallets[name].private_key);
+        }
+      }
+
+      function fillRecipient() {
+        var name = $("#quick_recipient").val();
+        if (name && sampleWallets[name]) {
+          $("#recipient_address").val(sampleWallets[name].public_key);
+        }
+      }
 
       $(function () {
+          // Fetch sample wallets
+          $.ajax({
+            url: "/wallets/sample",
+            type: "GET",
+            success: function(data) {
+              sampleWallets = data;
+              fillSender();
+              fillRecipient();
+            }
+          });
+
+          $("#quick_sender").change(fillSender);
+          $("#quick_recipient").change(fillRecipient);
+
           $("#generate_transaction").click(function () {
 
             $.ajax({
