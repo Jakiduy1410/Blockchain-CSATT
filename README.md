@@ -37,8 +37,9 @@ blockchain-python-tutorial/
 │   │   ├── index.html             # Trình tạo ví ngẫu nhiên (Wallet Generator)
 │   │   └── view_transactions.html # Xem lịch sử giao dịch
 │   └── blockchain_client.py       # Client sinh cặp khóa RSA (1024-bit), ký số & nạp ví mẫu
-├── network_6nodes.json            # File cấu hình mẫu mạng lưới P2P Full-Mesh 6 Node
-├── wallets.json                   # Bộ 4 ví người dùng cố định chuẩn RSA: Alice, Bob, Charlie, Dave
+├── configs/
+│   ├── network_6nodes.json        # File cấu hình mẫu mạng lưới P2P Full-Mesh 6 Node
+│   └── wallets.json               # Bộ 4 ví người dùng cố định chuẩn RSA: Alice, Bob, Charlie, Dave
 ├── p2p_network_visualizer.html     # Giao diện trực quan hóa P2P mạng 6 Node độc lập
 ├── start_interactive_network.py   # Launcher khởi chạy 6 Node + 1 Client cho tương tác thực tế
 ├── start_network.bat              # Script 1-click khởi động toàn bộ mạng trên Windows

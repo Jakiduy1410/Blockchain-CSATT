@@ -20,7 +20,9 @@ def run_experiment():
     print("=" * 75)
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(base_dir, 'network_6nodes.json')
+    config_path = os.path.join(base_dir, 'configs', 'network_6nodes.json')
+    if not os.path.exists(config_path):
+        config_path = os.path.join(base_dir, 'network_6nodes.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         net_cfg = json.load(f)
 
