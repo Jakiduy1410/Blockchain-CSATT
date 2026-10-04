@@ -61,24 +61,18 @@ class P2PNetwork:
             pass
 
     def gossip_transaction(self, tx: Transaction) -> bool:
-        # Chống bão lặp DoS
-        if tx.tx_id in self.seen_tx_hashes:
-            self.audit.log(
-                category="P2P",
-                title="P2P Drop: Giao dich da tung xu ly truoc do (Anti-DoS)",
-                details={'tx_id': f"{tx.tx_id[:16]}..."},
-                status="INFO"
-            )
-            return True
-
-        self.seen_tx_hashes.add(tx.tx_id)
-
-        # Đưa vào Mempool sau khi thẩm định chữ ký
+        # 1. Thẩm định mật mã và số dư ví trước tiên
         success = self.ledger.submit_transaction(tx)
         if not success:
             return False
 
-        # Lan truyền sang các peer
+        # 2. Chống bão lặp DoS (nếu đã từng phát sóng giao dịch hợp lệ này rồi thì không phát lại)
+        if tx.tx_id in self.seen_tx_hashes:
+            return True
+
+        self.seen_tx_hashes.add(tx.tx_id)
+
+        # 3. Lan truyền sang các peer
         payload = tx.to_full_dict()
         peer_count = len(self.peers)
         if peer_count > 0:

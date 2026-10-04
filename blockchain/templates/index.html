@@ -100,6 +100,36 @@
       </div>
     </div>
 
+    <!-- Account Balances & Ledger Solvency Table -->
+    <div class="container mt-3">
+      <div class="card border-info">
+        <div class="card-header bg-info text-white py-2 d-flex justify-content-between align-items-center">
+          <span class="font-weight-bold">
+            <i class="fa fa-money"></i> BẢNG CÂN ĐỐI TÀI KHOẢN TOÀN MẠNG (Account Balances on Ledger)
+          </span>
+          <span class="badge badge-light font-weight-bold p-2" id="badge_queue_status">Mempool Queue: 0 / 3 txs (Chờ gom khối)</span>
+        </div>
+        <div class="card-body p-2">
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm mb-0 text-center">
+              <thead class="thead-light">
+                <tr>
+                  <th>Tài Khoản</th>
+                  <th>Số Dư Đã Xác Nhận (On-Chain)</th>
+                  <th>Đang Chờ Gửi (Treo ở Mempool)</th>
+                  <th>Số Dư Khả Dụng (Available)</th>
+                  <th>Trạng Thái Ví</th>
+                </tr>
+              </thead>
+              <tbody id="balances_table_body">
+                <tr><td colspan="5" class="text-muted">Đang tải số dư...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Security & Verification Live Audit Trail (Hộp đen kiểm toán) -->
     <div class="container mt-3">
       <div class="card border-dark">
@@ -183,6 +213,30 @@
             $("#badge_peers").text("Peers: " + res.peers.length);
             $("#badge_chain").text("Chain: " + res.chain_length + " Blocks");
             $("#badge_mempool").text("Mempool: " + res.mempool_count + " tx");
+
+            // Cập nhật trạng thái Mempool Queue gom khối
+            var threshold = res.stack_threshold || 3;
+            var userTxCount = res.mempool_count;
+            $("#badge_queue_status").text("Mempool Queue: " + userTxCount + " / " + threshold + " txs " + (userTxCount >= threshold ? "🔥 (Đạt ngưỡng gom khối!)" : "(Chờ gom khối)"));
+
+            // Cập nhật bảng số dư tài khoản
+            if (res.balances && res.balances.length > 0) {
+              var balHtml = "";
+              for (var b = 0; b < res.balances.length; b++) {
+                var item = res.balances[b];
+                var statusBadge = item.available_balance > 0 ? "<span class='badge badge-success'>Khả dụng</span>" : "<span class='badge badge-danger'>Cạn kiệt</span>";
+                var pendingStr = item.pending_outgoing > 0 ? "<span class='text-danger font-weight-bold'>-" + item.pending_outgoing + " COIN</span>" : "<span class='text-muted'>0.0 COIN</span>";
+
+                balHtml += "<tr>";
+                balHtml += "<td class='font-weight-bold text-left pl-3'>👤 " + item.name + "</td>";
+                balHtml += "<td class='font-weight-bold text-primary'>" + item.confirmed_balance + " COIN</td>";
+                balHtml += "<td>" + pendingStr + "</td>";
+                balHtml += "<td class='font-weight-bold text-success' style='font-size: 1.05rem;'>" + item.available_balance + " COIN</td>";
+                balHtml += "<td>" + statusBadge + "</td>";
+                balHtml += "</tr>";
+              }
+              $("#balances_table_body").html(balHtml);
+            }
 
             if (res.is_miner) {
               $("#badge_role").removeClass("badge-secondary").addClass("badge-warning").text("Role: Miner ⛏️");

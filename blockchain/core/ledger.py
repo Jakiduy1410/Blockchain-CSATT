@@ -28,9 +28,89 @@ class BlockchainLedger:
         self.mining_sender = mining_sender
         self.audit = audit_logger or AuditLogger()
 
+        self.initial_balances: Dict[str, float] = {}
+        self.wallet_names: Dict[str, str] = {}
+        self._load_initial_balances()
+
         self.node_id = str(uuid4()).replace('-', '')
         self.lock = threading.Lock()
         self.create_genesis_block()
+
+    def _load_initial_balances(self):
+        import json
+        import os
+        curr_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(os.path.dirname(curr_dir))
+        wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
+        if not os.path.exists(wallets_file):
+            wallets_file = os.path.join(root_dir, 'wallets.json')
+
+        if os.path.exists(wallets_file):
+            try:
+                with open(wallets_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for key, val in data.items():
+                    pub = val.get('public_key', '')
+                    init_bal = float(val.get('initial_balance', 0.0))
+                    if pub:
+                        self.initial_balances[pub] = init_bal
+                        self.wallet_names[pub] = val.get('name', key)
+            except Exception as e:
+                print(f"[!] Warning: Could not load initial balances: {e}")
+
+    def get_balance(self, address: str, include_mempool: bool = True) -> float:
+        """
+        Tính toán số dư thời gian thực của một ví:
+        = Số dư khởi tạo + Tổng nhận - Tổng gửi [- Tiền đang treo gửi trong Mempool]
+        """
+        if address == self.mining_sender:
+            return float('inf')
+
+        balance = self.initial_balances.get(address, 0.0)
+
+        # 1. Duyệt chuỗi các block đã xác nhận
+        for block in self.chain:
+            for tx in block.get('transactions', []):
+                try:
+                    val = float(tx.get('value', 0.0))
+                except (ValueError, TypeError):
+                    val = 0.0
+
+                if tx.get('recipient_address') == address:
+                    balance += val
+                if tx.get('sender_address') == address:
+                    balance -= val
+
+        # 2. Trừ các khoản đang nằm trong Mempool nếu include_mempool=True (chống double-spending)
+        if include_mempool:
+            for tx in self.transactions:
+                try:
+                    val = float(tx.get('value', 0.0))
+                except (ValueError, TypeError):
+                    val = 0.0
+
+                if tx.get('sender_address') == address:
+                    balance -= val
+
+        return round(balance, 4)
+
+    def get_all_balances(self) -> List[dict]:
+        """
+        Trả về danh sách số dư chi tiết của toàn bộ các ví đã đăng ký
+        """
+        with self.lock:
+            results = []
+            for pub, name in self.wallet_names.items():
+                confirmed_bal = self.get_balance(pub, include_mempool=False)
+                available_bal = self.get_balance(pub, include_mempool=True)
+                results.append({
+                    'name': name,
+                    'address': pub,
+                    'confirmed_balance': confirmed_bal,
+                    'available_balance': available_bal,
+                    'pending_outgoing': round(confirmed_bal - available_bal, 4)
+                })
+            return results
 
     def create_genesis_block(self):
         genesis = {
@@ -50,7 +130,27 @@ class BlockchainLedger:
 
     def submit_transaction(self, tx: Transaction) -> bool:
         with self.lock:
-            # 1. Thẩm định chữ ký số RSA PKCS#1 v1.5
+            # 1. Kiểm tra tính hợp lệ của số tiền
+            try:
+                amount = float(tx.value)
+                if amount <= 0:
+                    self.audit.log(
+                        category="BALANCE",
+                        title="Tu choi giao dich: So tien gui phai lon hon 0",
+                        details={'amount': tx.value, 'sender': f"{tx.sender_address[:20]}..."},
+                        status="FAILED"
+                    )
+                    return False
+            except (ValueError, TypeError):
+                self.audit.log(
+                    category="BALANCE",
+                    title="Tu choi giao dich: So tien khong hop le",
+                    details={'amount': tx.value},
+                    status="FAILED"
+                )
+                return False
+
+            # 2. Thẩm định chữ ký số RSA PKCS#1 v1.5
             is_valid = tx.is_valid(self.mining_sender)
             if not is_valid:
                 self.audit.log(
@@ -65,6 +165,32 @@ class BlockchainLedger:
                 )
                 return False
 
+            # 3. Kiểm tra trùng lặp trong Mempool
+            for existing_tx in self.transactions:
+                if existing_tx.get('sender_address') == tx.sender_address and \
+                   existing_tx.get('recipient_address') == tx.recipient_address and \
+                   existing_tx.get('value') == tx.value and \
+                   existing_tx.get('signature') == tx.signature:
+                    return True
+
+            # 4. Kiểm tra số dư người gửi (Solvency & Anti Double-Spending)
+            if tx.sender_address != self.mining_sender:
+                curr_balance = self.get_balance(tx.sender_address, include_mempool=True)
+                sender_name = self.wallet_names.get(tx.sender_address, f"{tx.sender_address[:16]}...")
+                if curr_balance < amount:
+                    self.audit.log(
+                        category="BALANCE",
+                        title=f"Tu choi giao dich: So du vi [{sender_name}] khong du (Insufficient Balance)",
+                        details={
+                            'sender': sender_name,
+                            'available_balance': f"{curr_balance} COIN",
+                            'attempted_amount': f"{amount} COIN",
+                            'deficit': f"{round(amount - curr_balance, 4)} COIN"
+                        },
+                        status="FAILED"
+                    )
+                    return False
+
             # Ghi log kiểm toán mật mã thành công
             self.audit.log(
                 category="CRYPTO",
@@ -78,35 +204,40 @@ class BlockchainLedger:
                 status="SUCCESS"
             )
 
-            # 2. Kiểm tra trùng lặp trong Mempool
-            for existing_tx in self.transactions:
-                if existing_tx.get('sender_address') == tx.sender_address and \
-                   existing_tx.get('recipient_address') == tx.recipient_address and \
-                   existing_tx.get('value') == tx.value and \
-                   existing_tx.get('signature') == tx.signature:
-                    return True
-
-            # 3. Đưa vào Mempool
+            # 5. Đưa vào Mempool
             self.transactions.append(tx.to_full_dict())
+            sender_name = self.wallet_names.get(tx.sender_address, f"{tx.sender_address[:16]}...")
+            recipient_name = self.wallet_names.get(tx.recipient_address, f"{tx.recipient_address[:16]}...")
+            new_avail_balance = self.get_balance(tx.sender_address, include_mempool=True)
+
             self.audit.log(
                 category="MEMPOOL",
-                title=f"Them giao dich vao Mempool (Tong: {len(self.transactions)} txs)",
-                details={'tx_id': f"{tx.tx_id[:16]}...", 'amount': tx.value},
+                title=f"Them giao dich vao Mempool (Queue: {len(self.transactions)} txs)",
+                details={
+                    'from': sender_name,
+                    'to': recipient_name,
+                    'amount': f"{amount} COIN",
+                    'sender_remaining_balance': f"{new_avail_balance} COIN"
+                },
                 status="INFO"
             )
             return True
 
-    def create_block(self, nonce: int, previous_hash: str) -> dict:
+    def create_block(self, nonce: int, previous_hash: str, max_txs: int = 5) -> dict:
         with self.lock:
+            # Lấy tối đa max_txs giao dịch vào block
+            txs_to_mine = self.transactions[:max_txs]
+            # Giữ lại các giao dịch còn lại trong Mempool cho các block sau
+            self.transactions = self.transactions[max_txs:]
+
             block = {
                 'block_number': len(self.chain) + 1,
                 'timestamp': time(),
-                'transactions': list(self.transactions),
+                'transactions': txs_to_mine,
                 'nonce': nonce,
                 'previous_hash': previous_hash
             }
 
-            self.transactions = []
             self.chain.append(block)
 
             self.audit.log(
@@ -115,7 +246,8 @@ class BlockchainLedger:
                 details={
                     'block_hash': f"{calculate_block_hash(block)[:20]}...",
                     'nonce': nonce,
-                    'tx_count': len(block['transactions'])
+                    'tx_count': len(block['transactions']),
+                    'remaining_mempool': len(self.transactions)
                 },
                 status="SUCCESS"
             )

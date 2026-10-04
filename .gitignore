@@ -15,3 +15,7 @@ env/
 
 # Large External Submodules
 liboqs/
+
+# Local logs
+logs/
+*.log

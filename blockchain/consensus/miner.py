@@ -32,20 +32,19 @@ class Miner:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-    def proof_of_work(self) -> int:
+    def proof_of_work(self, candidate_txs: list) -> int:
         last_block = self.ledger.get_last_block()
         last_hash = calculate_block_hash(last_block)
-        current_txs = self.ledger.get_mempool()
 
         self.audit.log(
             category="MINER",
             title=f"Bat dau giai Proof-of-Work (Do kho: {self.ledger.difficulty} zeros)",
-            details={'transactions_in_pool': len(current_txs), 'previous_hash': f"{last_hash[:16]}..."},
+            details={'transactions_in_block': len(candidate_txs), 'previous_hash': f"{last_hash[:16]}..."},
             status="INFO"
         )
 
         nonce = 0
-        while not Block.valid_proof(current_txs, last_hash, nonce, self.ledger.difficulty):
+        while not Block.valid_proof(candidate_txs, last_hash, nonce, self.ledger.difficulty):
             nonce += 1
 
         self.audit.log(
@@ -56,9 +55,7 @@ class Miner:
         )
         return nonce
 
-    def mine_block(self) -> Optional[dict]:
-        nonce = self.proof_of_work()
-
+    def mine_block(self, max_txs: int = 5) -> Optional[dict]:
         reward_tx = Transaction(
             sender_address=self.ledger.mining_sender,
             recipient_address=self.ledger.node_id,
@@ -67,9 +64,15 @@ class Miner:
         )
         self.ledger.submit_transaction(reward_tx)
 
+        with self.ledger.lock:
+            txs_to_mine = list(self.ledger.transactions[:max_txs])
+
+        txs_for_pow = [tx for tx in txs_to_mine if tx.get('sender_address') != self.ledger.mining_sender]
+        nonce = self.proof_of_work(txs_for_pow)
+
         last_block = self.ledger.get_last_block()
         previous_hash = calculate_block_hash(last_block)
-        block = self.ledger.create_block(nonce, previous_hash)
+        block = self.ledger.create_block(nonce, previous_hash, max_txs=max_txs)
 
         self.network.broadcast_block(block)
         return block
@@ -86,12 +89,19 @@ class Miner:
         self._running = False
 
     def _miner_worker_loop(self):
+        BATCH_THRESHOLD = 3  # Ngưỡng gom khối: Tích lũy đủ 3 giao dịch người dùng thì mới tự động đào
         while self._running:
             try:
                 mempool = self.ledger.get_mempool()
-                has_user_tx = any(tx.get('sender_address') != self.ledger.mining_sender for tx in mempool)
-                if has_user_tx:
-                    self.mine_block()
+                user_txs = [tx for tx in mempool if tx.get('sender_address') != self.ledger.mining_sender]
+                if len(user_txs) >= BATCH_THRESHOLD:
+                    self.audit.log(
+                        category="MINER",
+                        title=f"Mempool dat nguong gom khoi ({len(user_txs)}/{BATCH_THRESHOLD} txs) -> Tu dong kich hoat dao Block",
+                        details={'user_tx_count': len(user_txs), 'batch_threshold': BATCH_THRESHOLD},
+                        status="INFO"
+                    )
+                    self.mine_block(max_txs=5)
             except Exception:
                 pass
 

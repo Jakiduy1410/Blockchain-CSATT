@@ -61,34 +61,75 @@
 
 
     <div class="container mb-3">
+      <!-- Bảng thống kê số dư thời gian thực -->
+      <div class="card border-primary mb-3">
+        <div class="card-header bg-primary text-white font-weight-bold py-2 d-flex justify-content-between align-items-center">
+          <span>💰 BẢNG CÂN ĐỐI SỐ DƯ VÍ CLIENT TRÊN TOÀN MẠNG</span>
+          <button type="button" class="btn btn-sm btn-light py-0" onclick="fetchLiveBalances()">🔄 Làm mới</button>
+        </div>
+        <div class="card-body py-2">
+          <div class="row text-center">
+            <div class="col-6 col-md-3 mb-1">
+              <div class="border rounded p-2 bg-light">
+                <span class="font-weight-bold text-dark">👤 Alice</span><br>
+                <span class="badge badge-success px-2 py-1 font-weight-bold" id="badge_bal_Alice">100.0 COIN</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3 mb-1">
+              <div class="border rounded p-2 bg-light">
+                <span class="font-weight-bold text-dark">👤 Bob</span><br>
+                <span class="badge badge-info px-2 py-1 font-weight-bold" id="badge_bal_Bob">50.0 COIN</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3 mb-1">
+              <div class="border rounded p-2 bg-light">
+                <span class="font-weight-bold text-dark">👤 Charlie</span><br>
+                <span class="badge badge-warning px-2 py-1 font-weight-bold" id="badge_bal_Charlie">30.0 COIN</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3 mb-1">
+              <div class="border rounded p-2 bg-light">
+                <span class="font-weight-bold text-dark">👤 Dave</span><br>
+                <span class="badge badge-secondary px-2 py-1 font-weight-bold" id="badge_bal_Dave">10.0 COIN</span>
+              </div>
+            </div>
+          </div>
+          <small class="text-muted d-block text-center mt-1">Số dư tự động trừ các giao dịch đang chờ trong Mempool để chống chi tiêu vượt mức (Double-Spending).</small>
+        </div>
+      </div>
+
+      <!-- Khung chọn ví nhanh -->
       <div class="card border-info">
         <div class="card-header bg-info text-white font-weight-bold py-2">
-          ⚡ Nạp Nhanh Ví Cố Định Để Thử Nghiệm (Predefined Wallets)
+          ⚡ Nạp Nhanh Cặp Ví Khách Hàng (Client Wallets)
         </div>
         <div class="card-body py-2">
           <div class="row">
             <div class="col-md-6">
-              <label class="font-weight-bold">Người Gửi (Sender):</label>
-              <select id="quick_sender" class="form-control">
-                <option value="">-- Chọn Ví Người Gửi --</option>
-                <option value="Alice" selected>👤 Alice (Ví Client 1)</option>
-                <option value="Bob">👤 Bob (Ví Client 2)</option>
-                <option value="Charlie">👤 Charlie (Ví Client 3)</option>
-                <option value="Dave">👤 Dave (Ví Client 4)</option>
+              <label class="font-weight-bold">👤 Chọn Ví Client của bạn (Người gửi - Sender):</label>
+              <select id="quick_sender" class="form-control font-weight-bold text-primary">
+                <option value="">-- Chọn Ví Khách Hàng Của Bạn --</option>
+                <option value="Alice" selected>👤 Alice (Khởi tạo: 100 COIN)</option>
+                <option value="Bob">👤 Bob (Khởi tạo: 50 COIN)</option>
+                <option value="Charlie">👤 Charlie (Khởi tạo: 30 COIN)</option>
+                <option value="Dave">👤 Dave (Khởi tạo: 10 COIN)</option>
               </select>
+              <div class="mt-1" id="sender_avail_hint">
+                <small class="font-weight-bold text-success">Số dư khả dụng: <span id="sender_avail_val">100.0</span> COIN</small>
+              </div>
             </div>
             <div class="col-md-6">
-              <label class="font-weight-bold">Người Nhận (Recipient):</label>
-              <select id="quick_recipient" class="form-control">
-                <option value="">-- Chọn Ví Người Nhận --</option>
-                <option value="Alice">👤 Alice (Ví Client 1)</option>
-                <option value="Bob" selected>👤 Bob (Ví Client 2)</option>
-                <option value="Charlie">👤 Charlie (Ví Client 3)</option>
-                <option value="Dave">👤 Dave (Ví Client 4)</option>
+              <label class="font-weight-bold">🎯 Chọn Ví Đối Tác (Người nhận - Recipient):</label>
+              <select id="quick_recipient" class="form-control font-weight-bold text-success">
+                <option value="">-- Chọn Ví Đối Tác Nhận Tiền --</option>
+                <option value="Alice">👤 Alice (Khởi tạo: 100 COIN)</option>
+                <option value="Bob" selected>👤 Bob (Khởi tạo: 50 COIN)</option>
+                <option value="Charlie">👤 Charlie (Khởi tạo: 30 COIN)</option>
+                <option value="Dave">👤 Dave (Khởi tạo: 10 COIN)</option>
               </select>
+              <small class="text-muted mt-1 d-block">Public Key & Private Key sẽ được tự động nạp bên dưới.</small>
             </div>
           </div>
-          <small class="text-muted mt-1 d-block">Public Key & Private Key sẽ được tự động điền bên dưới, không cần copy-paste thủ công!</small>
         </div>
       </div>
     </div>
@@ -256,6 +297,47 @@
 
     <script>
       var sampleWallets = {};
+      var liveBalances = {
+        'Alice': 100.0,
+        'Bob': 50.0,
+        'Charlie': 30.0,
+        'Dave': 10.0
+      };
+
+      function fetchLiveBalances() {
+        var targetNode = (document.getElementById("node_url") && document.getElementById("node_url").value) ? document.getElementById("node_url").value.trim() : "http://127.0.0.1:5000";
+        $.ajax({
+          url: targetNode + "/accounts/balance",
+          type: "GET",
+          timeout: 2500,
+          success: function(res) {
+            if (res && res.balances) {
+              res.balances.forEach(function(item) {
+                liveBalances[item.name] = item.available_balance;
+                var badgeEl = document.getElementById("badge_bal_" + item.name);
+                if (badgeEl) {
+                  badgeEl.innerText = item.available_balance + " COIN";
+                }
+              });
+              updateSenderHint();
+            }
+          },
+          error: function() {
+            // Nếu node tạm thời chưa phản hồi, giữ nguyên số dư ước tính
+            updateSenderHint();
+          }
+        });
+      }
+
+      function updateSenderHint() {
+        var name = $("#quick_sender").val();
+        if (name && liveBalances[name] !== undefined) {
+          $("#sender_avail_val").text(liveBalances[name]);
+          $("#sender_avail_hint").show();
+        } else {
+          $("#sender_avail_hint").hide();
+        }
+      }
 
       function fillSender() {
         var name = $("#quick_sender").val();
@@ -263,6 +345,7 @@
           $("#sender_address").val(sampleWallets[name].public_key);
           $("#sender_private_key").val(sampleWallets[name].private_key);
         }
+        updateSenderHint();
       }
 
       function fillRecipient() {
@@ -281,11 +364,15 @@
               sampleWallets = data;
               fillSender();
               fillRecipient();
+              fetchLiveBalances();
             },
             error: function(err) {
               console.error("Không thể tải danh sách ví mẫu:", err);
             }
           });
+
+          // Định kỳ cập nhật số dư mỗi 5 giây
+          setInterval(fetchLiveBalances, 5000);
 
           $("#quick_sender").change(fillSender);
           $("#quick_recipient").change(fillRecipient);
@@ -295,6 +382,7 @@
             var privKey = $("#sender_private_key").val().trim();
             var recipient = $("#recipient_address").val().trim();
             var amount = $("#amount").val().trim();
+            var senderName = $("#quick_sender").val();
 
             if (!sender || !privKey) {
               alert("⚠️ Vui lòng chọn hoặc nhập đầy đủ Địa chỉ Người gửi (Sender Address) và Khóa bí mật (Private Key)!");
@@ -307,6 +395,19 @@
             if (!amount || isNaN(amount) || Number(amount) <= 0) {
               alert("⚠️ Vui lòng nhập Số tiền cần gửi (Amount to Send) hợp lệ (> 0)!");
               return;
+            }
+
+            // Kiểm tra trước số dư khả dụng (Solvency Check)
+            if (senderName && liveBalances[senderName] !== undefined) {
+              var availBal = liveBalances[senderName];
+              if (Number(amount) > availBal) {
+                alert("⛔ TỪ CHỐI GIAO DỊCH: SỐ DƯ KHÔNG ĐỦ!\n\n" +
+                      "• Người gửi: " + senderName + "\n" +
+                      "• Số dư khả dụng hiện tại: " + availBal + " COIN\n" +
+                      "• Số tiền bạn muốn gửi: " + amount + " COIN\n\n" +
+                      "Giao dịch chi tiêu vượt mức (Double-Spending / Overdraft) sẽ bị toàn bộ các Node Peer từ chối!");
+                return;
+              }
             }
 
             $.ajax({
@@ -368,6 +469,7 @@
 
                 $("#basicModal").modal('hide');
                 $("#success_transaction_modal").modal('show');
+                fetchLiveBalances();
                 
               },
               error: function(error){

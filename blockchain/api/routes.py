@@ -57,6 +57,7 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
     def get_status():
         mempool = ledger.get_mempool()
         chain = ledger.get_chain()
+        balances = ledger.get_all_balances()
         response = {
             'node_id': ledger.node_id,
             'port': port,
@@ -64,20 +65,32 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             'mempool_count': len(mempool),
             'mempool': mempool,
             'chain_length': len(chain),
-            'peers': list(network.peers)
+            'peers': list(network.peers),
+            'balances': balances,
+            'stack_threshold': 3
         }
         return jsonify(response), 200
+
+    # --- Account Balances Route ---
+    @api.route('/accounts/balance', methods=['GET'])
+    def get_accounts_balance():
+        balances = ledger.get_all_balances()
+        return jsonify({
+            'balances': balances,
+            'mempool_queue': len(ledger.get_mempool()),
+            'stack_threshold': 3
+        }), 200
 
     # --- Transaction Routes ---
     @api.route('/transactions/new', methods=['POST'])
     def new_transaction():
         values = request.form if request.form else request.get_json(silent=True)
         if not values:
-            return jsonify({'message': 'Missing data'}), 400
+            return jsonify({'message': 'Thiếu dữ liệu giao dịch'}), 400
 
         required = ['sender_address', 'recipient_address', 'amount', 'signature']
         if not all(k in values for k in required):
-            return jsonify({'message': 'Missing required fields'}), 400
+            return jsonify({'message': 'Thiếu các trường bắt buộc (sender_address, recipient_address, amount, signature)'}), 400
 
         tx = Transaction.from_dict(values)
 
@@ -90,7 +103,7 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
 
         success = network.gossip_transaction(tx)
         if not success:
-            return jsonify({'message': 'Invalid Transaction! Signature verification failed.'}), 406
+            return jsonify({'message': 'Giao dịch bị từ chối! Chữ ký không hợp lệ hoặc Số dư khả dụng của người gửi không đủ.'}), 406
 
         return jsonify({
             'message': f'Transaction accepted and gossiped to network! TX_ID: {tx.tx_id[:10]}...'
