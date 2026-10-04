@@ -14,6 +14,17 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
+def get_python_cmd():
+    if sys.executable and os.path.exists(sys.executable):
+        return [sys.executable]
+    import shutil
+    for candidate in ['python3', 'python', 'py']:
+        path = shutil.which(candidate)
+        if path:
+            return [path]
+    return ['python']
+
+
 def run_experiment():
     print("=" * 75)
     print("  KIEM THU AN NINH & VAN HANH: MANG BLOCKCHAIN P2P 6 NODE (ZERO-HARDCODE)")
@@ -26,13 +37,14 @@ def run_experiment():
     with open(config_path, 'r', encoding='utf-8') as f:
         net_cfg = json.load(f)
 
+    py_cmd = get_python_cmd()
     processes = []
 
     try:
         # 1. Khoi dong 6 Node P2P theo vai tro
         print("\n[*] Giai doan 1: Khoi dong 6 Node P2P Mesh (Topology 6 Node)...")
         for node in net_cfg['nodes']:
-            cmd = ['py', '-3.12', 'blockchain/blockchain.py', '-p', str(node['port'])]
+            cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
             if node['is_miner']:
                 cmd.append('--miner')
             if node['peers']:
@@ -44,7 +56,7 @@ def run_experiment():
 
         # Khoi dong Client
         print("[*] Khoi dong Blockchain Client (Port 8080)...")
-        p_client = subprocess.Popen(['py', '-3.12', 'blockchain_client/blockchain_client.py', '-p', '8080'],
+        p_client = subprocess.Popen(py_cmd + ['blockchain_client/blockchain_client.py', '-p', '8080'],
                                     cwd=base_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         processes.append(p_client)
 

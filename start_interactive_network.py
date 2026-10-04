@@ -16,6 +16,17 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
+def get_python_cmd():
+    if sys.executable and os.path.exists(sys.executable):
+        return [sys.executable]
+    import shutil
+    for candidate in ['python3', 'python', 'py']:
+        path = shutil.which(candidate)
+        if path:
+            return [path]
+    return ['python']
+
+
 def main():
     print("=" * 75)
     print("  KHOI CHAY MANG BLOCKCHAIN P2P 6 NODE - CHE DO TUONG TAC THUC TE")
@@ -28,12 +39,15 @@ def main():
     with open(config_path, 'r', encoding='utf-8') as f:
         net_cfg = json.load(f)
 
+    py_cmd = get_python_cmd()
+    print(f"[*] He dieu hanh: {sys.platform} | Python: {' '.join(py_cmd)}")
+
     processes = []
 
     try:
         print("\n[*] 1. Dang khoi dong 6 Node P2P Mesh...")
         for node in net_cfg['nodes']:
-            cmd = ['py', '-3.12', 'blockchain/blockchain.py', '-p', str(node['port'])]
+            cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
             # De nguoi dung tu tay bam nut 'Mine' tren Web Node 2 quan sat chu trinh
             if node['peers']:
                 cmd.extend(['--peers', ','.join(node['peers'])])
@@ -43,7 +57,7 @@ def main():
             print(f"    [OK] Node {node['id']} dang chay tai: http://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
 
         print("\n[*] 2. Dang khoi dong Blockchain Client...")
-        p_client = subprocess.Popen(['py', '-3.12', 'blockchain_client/blockchain_client.py', '-p', '8080'],
+        p_client = subprocess.Popen(py_cmd + ['blockchain_client/blockchain_client.py', '-p', '8080'],
                                     cwd=base_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         processes.append(p_client)
         print("    [OK] Client (Vi nguoi dung) tai: http://127.0.0.1:8080")
