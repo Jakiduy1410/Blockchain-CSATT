@@ -281,6 +281,9 @@
               sampleWallets = data;
               fillSender();
               fillRecipient();
+            },
+            error: function(err) {
+              console.error("Không thể tải danh sách ví mẫu:", err);
             }
           });
 
@@ -288,6 +291,23 @@
           $("#quick_recipient").change(fillRecipient);
 
           $("#generate_transaction").click(function () {
+            var sender = $("#sender_address").val().trim();
+            var privKey = $("#sender_private_key").val().trim();
+            var recipient = $("#recipient_address").val().trim();
+            var amount = $("#amount").val().trim();
+
+            if (!sender || !privKey) {
+              alert("⚠️ Vui lòng chọn hoặc nhập đầy đủ Địa chỉ Người gửi (Sender Address) và Khóa bí mật (Private Key)!");
+              return;
+            }
+            if (!recipient) {
+              alert("⚠️ Vui lòng chọn hoặc nhập Địa chỉ Người nhận (Recipient Address)!");
+              return;
+            }
+            if (!amount || isNaN(amount) || Number(amount) <= 0) {
+              alert("⚠️ Vui lòng nhập Số tiền cần gửi (Amount to Send) hợp lệ (> 0)!");
+              return;
+            }
 
             $.ajax({
               url: "/generate/transaction",
@@ -305,7 +325,14 @@
                 
               },
               error: function(error){
-                console.log(error);
+                console.error("Generate transaction error:", error);
+                var msg = "Lỗi khi tạo và ký giao dịch!";
+                if (error.responseJSON && error.responseJSON.message) {
+                  msg += "\n" + error.responseJSON.message;
+                } else if (error.statusText) {
+                  msg += "\nHTTP Status: " + error.status + " (" + error.statusText + ")";
+                }
+                alert(msg);
               }
             });
 
@@ -315,11 +342,14 @@
 
       $(function () {
           $("#button_confirm_transaction").click(function () {
-            //console.log($('#confirmation_transaction_form').serialize());
-
+            var targetNode = document.getElementById("node_url").value.trim();
+            if (!targetNode) {
+              alert("⚠️ Vui lòng chọn hoặc nhập URL của Blockchain Node!");
+              return;
+            }
 
             $.ajax({
-              url: document.getElementById("node_url").value + "/transactions/new",
+              url: targetNode + "/transactions/new",
               type: "POST",
               headers: {'Access-Control-Allow-Origin':'*'},
               dataType : 'json',
@@ -341,7 +371,14 @@
                 
               },
               error: function(error){
-                console.log(error);
+                console.error("Broadcast transaction error:", error);
+                var msg = "Lỗi khi gửi giao dịch tới Node (" + targetNode + ")!";
+                if (error.responseJSON && error.responseJSON.message) {
+                  msg += "\n" + error.responseJSON.message;
+                } else if (error.statusText) {
+                  msg += "\nHTTP Status: " + error.status + " (" + error.statusText + ")";
+                }
+                alert(msg);
               }
             });
 

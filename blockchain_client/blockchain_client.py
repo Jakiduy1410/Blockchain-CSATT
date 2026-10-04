@@ -15,6 +15,8 @@ Comments        : Wallet generation and transaction signature is based on [1]
 References      : [1] https://github.com/julienr/ipynb_playground/blob/master/bitcoin/dumbcoin/dumbcoin.ipynb
 '''
 
+import os
+import json
 from collections import OrderedDict
 
 import binascii
@@ -27,6 +29,8 @@ from Crypto.Signature import PKCS1_v1_5
 
 import requests
 from flask import Flask, jsonify, request, render_template
+
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Transaction:
@@ -84,7 +88,6 @@ def new_wallet():
 
 @app.route('/wallets/sample', methods=['GET'])
 def sample_wallets():
-	import json, os
 	wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
 	if not os.path.exists(wallets_file):
 		wallets_file = os.path.join(root_dir, 'wallets.json')
@@ -92,21 +95,24 @@ def sample_wallets():
 		with open(wallets_file, 'r', encoding='utf-8') as f:
 			data = json.load(f)
 		return jsonify(data), 200
-	return jsonify({}), 404
+	return jsonify({'message': 'Không tìm thấy file ví mẫu configs/wallets.json'}), 404
 
 @app.route('/generate/transaction', methods=['POST'])
 def generate_transaction():
-	
-	sender_address = request.form['sender_address']
-	sender_private_key = request.form['sender_private_key']
-	recipient_address = request.form['recipient_address']
-	value = request.form['amount']
+	sender_address = request.form.get('sender_address', '').strip()
+	sender_private_key = request.form.get('sender_private_key', '').strip()
+	recipient_address = request.form.get('recipient_address', '').strip()
+	value = request.form.get('amount', '').strip()
 
-	transaction = Transaction(sender_address, sender_private_key, recipient_address, value)
+	if not sender_address or not sender_private_key or not recipient_address or not value:
+		return jsonify({'message': 'Vui lòng điền đầy đủ các trường: Người gửi, Khóa bí mật, Người nhận và Số tiền.'}), 400
 
-	response = {'transaction': transaction.to_dict(), 'signature': transaction.sign_transaction()}
-
-	return jsonify(response), 200
+	try:
+		transaction = Transaction(sender_address, sender_private_key, recipient_address, value)
+		response = {'transaction': transaction.to_dict(), 'signature': transaction.sign_transaction()}
+		return jsonify(response), 200
+	except Exception as e:
+		return jsonify({'message': f'Lỗi ký số (Khóa bí mật không hợp lệ): {str(e)}'}), 400
 
 
 if __name__ == '__main__':
