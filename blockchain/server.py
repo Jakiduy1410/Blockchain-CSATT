@@ -1,80 +1,263 @@
-"""
-Node Server Bootstrapper
-Trách nhiệm:
-- Ghép nối các module: Core Ledger, P2P Network, Consensus Miner, API Controller
-- Khởi chạy Flask Server với chế độ đa luồng (threaded=True) để chống nghẽn
-"""
-
-import os
-import sys
-from flask import Flask
+import hashlib
+import json
+from time import time
+from urllib.parse import urlparse
+from uuid import uuid4
+import requests
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
+from collections import OrderedDict
+import threading
+import time as t_time
 
-if hasattr(sys.stdout, 'reconfigure'):
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
+# Thay thế ecdsa bằng liboqs (PQC)
+import oqs
 
-try:
-    from .config import NodeConfig
-    from .core.ledger import BlockchainLedger
-    from .network.p2p import P2PNetwork
-    from .consensus.miner import Miner
-    from .api.routes import create_api_blueprint
-except ImportError:
-    from config import NodeConfig
-    from core.ledger import BlockchainLedger
-    from network.p2p import P2PNetwork
-    from consensus.miner import Miner
-    from api.routes import create_api_blueprint
+MINING_SENDER = "THE BLOCKCHAIN"
+MINING_REWARD = 1
+MINING_DIFFICULTY = 2
+SIG_ALG = "ML-DSA-44"  # Sử dụng thuật toán Hậu lượng tử ML-DSA-44
+
+class Blockchain:
+    def __init__(self):
+        self.transactions = []
+        self.chain = []
+        self.nodes = set()
+        self.node_id = str(uuid4()).replace('-', '')
+        self.create_block(0, '00')
+
+    def register_node(self, node_url):
+        parsed_url = urlparse(node_url)
+        if parsed_url.netloc:
+            self.nodes.add(parsed_url.netloc)
+        elif parsed_url.path:
+            self.nodes.add(parsed_url.path)
+        else:
+            raise ValueError('URL không hợp lệ')
+
+    def verify_transaction_signature(self, sender_address, signature, transaction):
+        transaction_ordered = OrderedDict([
+            ('sender_address', transaction['sender_address']),
+            ('recipient_address', transaction['recipient_address']),
+            ('value', transaction['value'])
+        ])
+        transaction_string = str(transaction_ordered).encode('utf8')
+        try:
+            signature_bytes = bytes.fromhex(signature)
+            public_key_bytes = bytes.fromhex(sender_address)
+            
+            # Sử dụng liboqs để xác minh chữ ký ML-DSA-44
+            with oqs.Signature(SIG_ALG) as verifier:
+                is_valid = verifier.verify(transaction_string, signature_bytes, public_key_bytes)
+            return is_valid
+        except Exception as e:
+            print(f"Lỗi xác minh PQC: {str(e)}")
+            return False
+
+    def submit_transaction(self, sender_address, recipient_address, value, signature):
+        transaction = OrderedDict([
+            ('sender_address', sender_address),
+            ('recipient_address', recipient_address),
+            ('value', value)
+        ])
+        if sender_address == MINING_SENDER:
+            self.transactions.append(transaction)
+            return len(self.chain) + 1
+        else:
+            if self.verify_transaction_signature(sender_address, signature, transaction):
+                self.transactions.append(transaction)
+                return len(self.chain) + 1
+            else:
+                return False
+
+    def create_block(self, nonce, previous_hash):
+        block = {
+            'block_number': len(self.chain) + 1,
+            'timestamp': time(),
+            'transactions': self.transactions,
+            'nonce': nonce,
+            'previous_hash': previous_hash
+        }
+        self.transactions = []
+        self.chain.append(block)
+        return block
+
+    def hash(self, block):
+        block_string = json.dumps(block, sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
+
+    def proof_of_work(self):
+        last_block = self.chain[-1]
+        last_hash = self.hash(last_block)
+        nonce = 0
+        while self.valid_proof(self.transactions, last_hash, nonce) is False:
+            nonce += 1
+        return nonce
+
+    def valid_proof(self, transactions, last_hash, nonce, difficulty=MINING_DIFFICULTY):
+        guess = (str(transactions) + str(last_hash) + str(nonce)).encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        return guess_hash[:difficulty] == '0' * difficulty
+
+    def valid_chain(self, chain):
+        last_block = chain[0]
+        current_index = 1
+        while current_index < len(chain):
+            block = chain[current_index]
+            if block['previous_hash'] != self.hash(last_block):
+                return False
+            last_block = block
+            current_index += 1
+        return True
+
+    def resolve_conflicts(self):
+        neighbors = self.nodes
+        new_chain = None
+        max_length = len(self.chain)
+        for node in neighbors:
+            try:
+                response = requests.get(f'http://{node}/chain', timeout=2)
+                if response.status_code == 200:
+                    length = response.json()['length']
+                    chain = response.json()['chain']
+                    if length > max_length and self.valid_chain(chain):
+                        max_length = length
+                        new_chain = chain
+            except Exception:
+                continue
+        if new_chain:
+            self.chain = new_chain
+            return True
+        return False
 
 
-def create_app(config: NodeConfig = None) -> tuple[Flask, BlockchainLedger, P2PNetwork, Miner]:
-    if config is None:
-        config = NodeConfig.load()
+app = Flask(__name__)
+CORS(app)
+blockchain = Blockchain()
 
-    # 1. Khởi tạo Ledger
-    ledger = BlockchainLedger(difficulty=config.difficulty)
+# ==========================================
+# CÁC API RENDER GIAO DIỆN WEB
+# ==========================================
+@app.route('/')
+def index():
+    return render_template('./index.html')
 
-    # 2. Khởi tạo P2P Network
-    my_address = f"{config.host}:{config.port}"
-    network = P2PNetwork(ledger=ledger, my_address=my_address)
-    if config.peers:
-        network.register_peers_bulk(config.peers)
+@app.route('/configure')
+def configure():
+    return render_template('./configure.html')
 
-    # 3. Khởi tạo Consensus Miner
-    miner = Miner(ledger=ledger, network=network, auto_mine=config.is_miner, check_interval=config.auto_mine_interval)
-    if config.is_miner:
-        print(f"[*] Node {my_address} khoi chay voi vai tro: ACTIVE AUTO-MINER [MINER]")
-        miner.start_auto_miner()
+# ==========================================
+# CÁC API BLOCKCHAIN CORE
+# ==========================================
+@app.route('/status', methods=['GET'])
+def get_status():
+    return jsonify({
+        'chain_length': len(blockchain.chain),
+        'mempool_count': len(blockchain.transactions),
+        'peers': list(blockchain.nodes)
+    }), 200
+
+@app.route('/transactions/new', methods=['POST'])
+def new_transaction():
+    values = request.get_json() or request.form
+    required = ['sender_address', 'recipient_address', 'amount', 'signature']
+    if not all(k in values for k in required):
+        return jsonify({'message': 'Thiếu dữ liệu giao dịch'}), 400
+
+    transaction_result = blockchain.submit_transaction(
+        values['sender_address'], 
+        values['recipient_address'], 
+        values['amount'], 
+        values['signature']
+    )
+    if transaction_result == False:
+        return jsonify({'message': 'Giao dịch không hợp lệ / Sai chữ ký số ML-DSA-44!'}), 406
     else:
-        print(f"[*] Node {my_address} khoi chay voi vai tro: RELAY & VALIDATOR NODE")
+        return jsonify({'message': f'Giao dịch sẽ được đưa vào Block số {transaction_result}'}), 201
 
-    # 4. Khởi tạo Web API App
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    templates_dir = os.path.join(current_dir, 'templates')
-    static_dir = os.path.join(current_dir, 'static')
+@app.route('/transactions/get', methods=['GET'])
+def get_transactions():
+    return jsonify({'transactions': blockchain.transactions}), 200
 
-    app = Flask(__name__, template_folder=templates_dir, static_folder=static_dir)
-    CORS(app)
+@app.route('/chain', methods=['GET'])
+def full_chain():
+    return jsonify({
+        'chain': blockchain.chain,
+        'length': len(blockchain.chain),
+    }), 200
 
-    # Gắn API Blueprint
-    api_blueprint = create_api_blueprint(ledger, network, miner, config.port)
-    app.register_blueprint(api_blueprint)
+@app.route('/mine', methods=['GET'])
+def mine():
+    last_block = blockchain.chain[-1]
+    nonce = blockchain.proof_of_work()
+    blockchain.submit_transaction(sender_address=MINING_SENDER, recipient_address=blockchain.node_id, value=MINING_REWARD, signature="")
+    previous_hash = blockchain.hash(last_block)
+    block = blockchain.create_block(nonce, previous_hash)
+    return jsonify({
+        'message': "Đã đào thành công Block mới!",
+        'block_number': block['block_number'],
+        'transactions': block['transactions'],
+        'nonce': block['nonce'],
+        'previous_hash': block['previous_hash'],
+    }), 200
 
-    return app, ledger, network, miner
+@app.route('/nodes/register', methods=['POST'])
+def register_nodes():
+    values = request.form or request.get_json()
+    nodes_raw = values.get('nodes')
+    if not nodes_raw:
+        return "Lỗi: Vui lòng cung cấp danh sách node hợp lệ", 400
+    nodes = nodes_raw.replace(" ", "").split(',')
+    for node in nodes:
+        blockchain.register_node(node)
+    return jsonify({
+        'message': 'Đã thêm thành công các Node mới vào mạng lưới',
+        'total_nodes': list(blockchain.nodes),
+    }), 201
 
+@app.route('/nodes/resolve', methods=['GET'])
+def consensus():
+    replaced = blockchain.resolve_conflicts()
+    if replaced:
+        return jsonify({
+            'message': 'Chuỗi của node đã được thay thế (Đồng thuận thành công)',
+            'new_chain': blockchain.chain
+        }), 200
+    else:
+        return jsonify({
+            'message': 'Chuỗi của node hiện tại đã là chuẩn và dài nhất',
+            'chain': blockchain.chain
+        }), 200
 
 def main():
-    config = NodeConfig.load()
-    app, ledger, network, miner = create_app(config)
-    print(f"[+] Blockchain Node dang lang nghe tai: http://{config.host}:{config.port}")
-    if config.peers:
-        print(f"[+] Da ket noi voi cac Peers: {config.peers}")
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--port', default=5000, type=int, help='port to listen on')
+    parser.add_argument('--miner', action='store_true', help='auto mine flag')
+    parser.add_argument('--peers', default='', type=str, help='comma separated peer list')
+    args = parser.parse_args()
+    
+    if args.peers:
+        for p_peer in args.peers.split(','):
+            if p_peer.strip():
+                blockchain.register_node(p_peer.strip())
 
-    app.run(host=config.host, port=config.port, threaded=True)
+    if args.miner:
+        def auto_miner_loop():
+            while True:
+                t_time.sleep(3)
+                if len(blockchain.transactions) > 0:
+                    try:
+                        last_block = blockchain.chain[-1]
+                        nonce = blockchain.proof_of_work()
+                        blockchain.submit_transaction(sender_address=MINING_SENDER, recipient_address=blockchain.node_id, value=MINING_REWARD, signature="")
+                        previous_hash = blockchain.hash(last_block)
+                        blockchain.create_block(nonce, previous_hash)
+                    except Exception:
+                        pass
+        threading.Thread(target=auto_miner_loop, daemon=True).start()
 
+    app.run(host='127.0.0.1', port=args.port)
 
 if __name__ == '__main__':
     main()

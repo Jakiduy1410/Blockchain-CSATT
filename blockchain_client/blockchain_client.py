@@ -1,48 +1,22 @@
-'''
-title           : blockchain_client.py
-description     : A blockchain client implemenation, with the following features
-                  - Wallets generation using Public/Private key encryption (based on RSA algorithm)
-                  - Generation of transactions with RSA encryption      
-author          : Adil Moujahid
-date_created    : 20180212
-date_modified   : 20180309
-version         : 0.3
-usage           : python blockchain_client.py
-                  python blockchain_client.py -p 8080
-                  python blockchain_client.py --port 8080
-python_version  : 3.6.1
-Comments        : Wallet generation and transaction signature is based on [1]
-References      : [1] https://github.com/julienr/ipynb_playground/blob/master/bitcoin/dumbcoin/dumbcoin.ipynb
-'''
-
 import os
 import json
 from collections import OrderedDict
-
 import binascii
-
-import Crypto
-import Crypto.Random
-from Crypto.Hash import SHA
-from Crypto.PublicKey import RSA
-from Crypto.Signature import PKCS1_v1_5
-
 import requests
 from flask import Flask, jsonify, request, render_template
 
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Thay thế ecdsa bằng liboqs (PQC)
+import oqs
 
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIG_ALG = "ML-DSA-44" # Thuật toán Hậu lượng tử
 
 class Transaction:
-
     def __init__(self, sender_address, sender_private_key, recipient_address, value):
         self.sender_address = sender_address
         self.sender_private_key = sender_private_key
         self.recipient_address = recipient_address
         self.value = value
-
-    def __getattr__(self, attr):
-        return self.data[attr]
 
     def to_dict(self):
         return OrderedDict({'sender_address': self.sender_address,
@@ -50,21 +24,27 @@ class Transaction:
                             'value': self.value})
 
     def sign_transaction(self):
-        """
-        Sign transaction with private key
-        """
-        private_key = RSA.importKey(binascii.unhexlify(self.sender_private_key))
-        signer = PKCS1_v1_5.new(private_key)
-        h = SHA.new(str(self.to_dict()).encode('utf8'))
-        return binascii.hexlify(signer.sign(h)).decode('ascii')
-
+        """Ký số giao dịch bằng khóa bí mật ML-DSA-44"""
+        try:
+            private_key_bytes = bytes.fromhex(self.sender_private_key)
+            transaction_string = str(self.to_dict()).encode('utf8')
+            
+            with oqs.Signature(SIG_ALG) as signer:
+                # Gán khóa bí mật vào đối tượng signer
+                signer.secret_key = private_key_bytes
+                # Thực hiện ký số
+                signature_bytes = signer.sign(transaction_string)
+                
+            return signature_bytes.hex()
+        except Exception as e:
+            raise ValueError(f"Lỗi trong quá trình ký số ML-DSA: {str(e)}")
 
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-	return render_template('./index.html')
+    return render_template('./index.html')
 
 @app.route('/make/transaction')
 def make_transaction():
@@ -76,43 +56,49 @@ def view_transaction():
 
 @app.route('/wallet/new', methods=['GET'])
 def new_wallet():
-	random_gen = Crypto.Random.new().read
-	private_key = RSA.generate(1024, random_gen)
-	public_key = private_key.publickey()
-	response = {
-		'private_key': binascii.hexlify(private_key.exportKey(format='DER')).decode('ascii'),
-		'public_key': binascii.hexlify(public_key.exportKey(format='DER')).decode('ascii')
-	}
-
-	return jsonify(response), 200
+    # Tạo cặp khóa PQC bằng thuật toán ML-DSA-44
+    try:
+        with oqs.Signature(SIG_ALG) as signer:
+            public_key = signer.generate_keypair()
+            private_key = signer.export_secret_key()
+            
+        response = {
+            'private_key': private_key.hex(),
+            'public_key': public_key.hex()
+        }
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify({'message': f'Lỗi tạo ví: {str(e)}'}), 500
 
 @app.route('/wallets/sample', methods=['GET'])
 def sample_wallets():
-	wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
-	if not os.path.exists(wallets_file):
-		wallets_file = os.path.join(root_dir, 'wallets.json')
-	if os.path.exists(wallets_file):
-		with open(wallets_file, 'r', encoding='utf-8') as f:
-			data = json.load(f)
-		return jsonify(data), 200
-	return jsonify({'message': 'Không tìm thấy file ví mẫu configs/wallets.json'}), 404
+    wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
+    if not os.path.exists(wallets_file):
+        wallets_file = os.path.join(root_dir, 'wallets.json')
+    if os.path.exists(wallets_file):
+        with open(wallets_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    return jsonify({'message': 'Không tìm thấy file ví mẫu configs/wallets.json'}), 404
 
 @app.route('/generate/transaction', methods=['POST'])
 def generate_transaction():
-	sender_address = request.form.get('sender_address', '').strip()
-	sender_private_key = request.form.get('sender_private_key', '').strip()
-	recipient_address = request.form.get('recipient_address', '').strip()
-	value = request.form.get('amount', '').strip()
+    sender_address = request.form.get('sender_address', '').strip()
+    sender_private_key = request.form.get('sender_private_key', '').strip()
+    recipient_address = request.form.get('recipient_address', '').strip()
+    value = request.form.get('amount', '').strip()
 
-	if not sender_address or not sender_private_key or not recipient_address or not value:
-		return jsonify({'message': 'Vui lòng điền đầy đủ các trường: Người gửi, Khóa bí mật, Người nhận và Số tiền.'}), 400
+    if not sender_address or not sender_private_key or not recipient_address or not value:
+        return jsonify({'message': 'Vui lòng điền đầy đủ các trường: Người gửi, Khóa bí mật, Người nhận và Số tiền.'}), 400
 
-	try:
-		transaction = Transaction(sender_address, sender_private_key, recipient_address, value)
-		response = {'transaction': transaction.to_dict(), 'signature': transaction.sign_transaction()}
-		return jsonify(response), 200
-	except Exception as e:
-		return jsonify({'message': f'Lỗi ký số (Khóa bí mật không hợp lệ): {str(e)}'}), 400
+    try:
+        transaction = Transaction(sender_address, sender_private_key, recipient_address, value)
+        response = {'transaction': transaction.to_dict(), 'signature': transaction.sign_transaction()}
+        return jsonify(response), 200
+    except ValueError as ve:
+        return jsonify({'message': f'Lỗi ký số: Khóa bí mật không hợp lệ hoặc sai định dạng Hex. Chi tiết: {str(ve)}'}), 400
+    except Exception as e:
+        return jsonify({'message': f'Lỗi hệ thống: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
