@@ -89,7 +89,7 @@ class Miner:
         self._running = False
 
     def _miner_worker_loop(self):
-        BATCH_THRESHOLD = 3  # Ngưỡng gom khối: Tích lũy đủ 3 giao dịch người dùng thì mới tự động đào
+        BATCH_THRESHOLD = 1  # Tự động đào ngay khi có ít nhất 1 giao dịch trong Mempool
         while self._running:
             try:
                 mempool = self.ledger.get_mempool()

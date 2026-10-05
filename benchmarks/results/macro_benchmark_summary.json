@@ -1,0 +1,29 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (HTTP)",
+  "timestamp": "2026-10-05 22:55:47",
+  "workload": {
+    "total_tx_sent": 20,
+    "accepted_tx": 20,
+    "success_rate_pct": 100.0
+  },
+  "ingestion_performance": {
+    "total_duration_seconds": 2.698,
+    "e2e_ingestion_tps": 7.41,
+    "latency_mean_ms": 134.84,
+    "latency_median_ms": 119.04,
+    "latency_p95_ms": 285.12,
+    "latency_min_ms": 32.19,
+    "latency_max_ms": 335.15
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": true,
+    "block_propagation_delay_seconds": 0.551
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 2546,
+    "block_wire_kb": 2.49,
+    "tx_count_in_block": 5,
+    "average_bytes_per_tx": 509.2
+  }
+}

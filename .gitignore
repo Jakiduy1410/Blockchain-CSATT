@@ -1,2 +1,21 @@
-venv/
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+venv/
+.env/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Large External Submodules
+liboqs/
+
+# Local logs
+logs/
+*.log

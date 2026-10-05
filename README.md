@@ -36,7 +36,12 @@ blockchain-python-tutorial/
 │   │   ├── make_transaction.html  # Form chuyển tiền có nạp nhanh Ví Alice/Bob & chọn Node phát sóng
 │   │   ├── index.html             # Trình tạo ví ngẫu nhiên (Wallet Generator chuẩn ECDSA)
 │   │   └── view_transactions.html # Xem lịch sử giao dịch
-│   └── blockchain_client.py       # Client sinh cặp khóa ECDSA (secp256k1), ký số & nạp ví mẫu
+├── benchmarks/
+│   ├── configs/
+│   │   └── benchmark_config.json  # File cấu hình đo lường (Zero-Hardcode)
+│   ├── micro_benchmark.py         # Đo lường tầng mật mã (Keygen, Sign, Verify, PK, Sig)
+│   ├── macro_benchmark.py         # Đo lường E2E trên mạng 6-Node P2P (TPS, Latency, Block Wire)
+│   └── results/                   # Báo cáo kết quả tự động xuất ra CSV & JSON
 ├── configs/
 │   ├── network_6nodes.json        # File cấu hình mẫu mạng lưới P2P Full-Mesh 6 Node
 │   └── wallets.json               # Bộ 4 ví người dùng cố định chuẩn ECDSA: Alice, Bob, Charlie, Dave
@@ -175,3 +180,76 @@ py -3.12 test_6nodes_simulation.py
 | `/p2p/blocks/receive` | `POST` | Peer phát sóng Block mới vừa đào. |
 | `/wallets/sample` | `GET` | Lấy danh sách 4 ví mẫu cố định chuẩn ECDSA (Alice, Bob, Charlie, Dave). |
 | `/visualizer` | `GET` | Mở giao diện P2P Mesh Visualizer trực quan hóa trực tiếp từ Node. |
+
+---
+
+## 6. Bộ Đôi Benchmark Hiệu Năng & An Ninh (Micro & Macro Benchmark Suite)
+
+Dự án cung cấp bộ công cụ đo lường thực nghiệm khoa học toàn diện, tương thích đa nền tảng (**Linux, macOS, Windows**) và tuân thủ nguyên tắc **Zero-Hardcode** qua file cấu hình `benchmarks/configs/benchmark_config.json`.
+
+```text
+[ Bộ Đôi Benchmark ]
+  ├── 1. Micro-Benchmark (Cô lập thuật toán trên CPU): RSA-2048 vs ECDSA (secp256k1) vs ML-DSA-44 (PQC)
+  └── 2. Macro-Benchmark (Đo tải mạng 6 Node sống): HTTP Ingestion TPS, Propagation Delay, Block Wire Payload
+```
+
+---
+
+### 6.1. Micro-Benchmark: Đo lường chi phí toán học tầng mật mã
+Chạy thực nghiệm $1.000$ lần lặp đo thời gian sinh khóa, ký số, xác thực và kích thước byte thô:
+
+```powershell
+# Chạy mặc định (1.000 trials):
+py -3.12 benchmarks/micro_benchmark.py
+
+# Hoặc tùy biến số lần lặp:
+py -3.12 benchmarks/micro_benchmark.py -n 500
+```
+*(Trên Linux: thay `py -3.12` bằng `python3`)*.
+
+#### Bảng tổng hợp kết quả thực nghiệm Micro-Benchmark ($1.000$ trials):
+
+| Thuật toán | Keygen (ms) | Sign (ms) | Verify (ms) | Public Key | Chữ ký | Kích thước Block (1.000 txs) | Crypto TPS Lý thuyết |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **RSA-2048** | $128.017 \pm 152.20$ | $2.878 \pm 2.65$ | **$0.162 \pm 0.16$** | $270\text{ bytes}$ | $256\text{ bytes}$ | $757.81\text{ KB}$ | **$6.176\text{ tx/s}$** |
+| **ECDSA (secp256k1)** | **$1.506 \pm 1.92$** | **$1.548 \pm 1.44$** | $1.391 \pm 1.96$ | **$33\text{ bytes}$** | **$64\text{ bytes}$** | **$338.87\text{ KB}$** | $719\text{ tx/s}$ |
+
+> **Phân tích chuyên gia:**
+> - **Thời gian tạo khóa:** ECDSA nhanh gấp **$85$ lần** so với RSA ($1.5\text{ ms}$ vs $128\text{ ms}$). Rất tối ưu cho ví người dùng và thiết bị di động.
+> - **Tiết kiệm dung lượng:** Public Key của ECDSA ($33\text{ bytes}$) và Chữ ký ($64\text{ bytes}$) nhỏ hơn rất nhiều so với RSA ($270\text{ bytes}$ và $256\text{ bytes}$). Kích thước khối Blockchain giảm hơn **$55\%$**.
+> - **Tại sao TPS lý thuyết của RSA lại cao hơn?** Do RSA sử dụng số mũ công khai nhỏ $e = 65537$, phép xác thực chỉ tốn rất ít phép nhân modulo ($0.16\text{ ms}$). Tuy nhiên, kích thước chữ ký lớn của RSA sẽ gây nghẽn băng thông nghiêm trọng khi truyền tải trên mạng P2P.
+
+---
+
+### 6.2. Macro-Benchmark: Đo tải thực tế trên mạng phân tán 6 Node sống
+Tự động kích hoạt mạng 6 Node P2P Mesh (nếu chưa chạy), tạo và ký $N$ giao dịch ECDSA hợp lệ, bắn tải HTTP và đo đạc độ trễ lan truyền:
+
+```powershell
+# Chạy bài kiểm thử tải mạng (Mặc định cấu hình):
+py -3.12 benchmarks/macro_benchmark.py
+
+# Hoặc tùy biến số lượng giao dịch bắn tải:
+py -3.12 benchmarks/macro_benchmark.py -n 50
+```
+
+#### Bảng tổng hợp kết quả thực nghiệm Macro-Benchmark (Mạng 6-Node HTTP):
+
+| Chỉ số đo lường (Metric) | Kết quả thực tế | Ý nghĩa an ninh & hiệu năng |
+| :--- | :--- | :--- |
+| **Workload tiếp nhận** | **$100\%$ ($20/20$ txs)** | Toàn bộ giao dịch đều được thẩm định chữ ký và ghi nhận hợp lệ |
+| **E2E Ingestion TPS** | **$7.41\text{ tx/s}$** | Thông lượng xử lý tiếp nhận thực tế qua giao thức HTTP REST |
+| **Độ trễ tiếp nhận (Mean)** | **$134.84\text{ ms}$** | Bao gồm: Network RTT + JSON Parsing + Hex Decoding + Verify ECDSA |
+| **Độ trễ tiếp nhận (P95)** | **$285.12\text{ ms}$** | 95% số giao dịch được xử lý dưới 285ms |
+| **Block Propagation Delay** | **$0.551\text{ s}$** | Thời gian khối mới lan truyền và được đồng thuận trên toàn bộ 6 Node |
+| **Block Wire Payload** | **$2.49\text{ KB}$ (5 txs)** | Dung lượng gói tin HTTP thực tế truyền qua mạng ($509\text{ bytes/tx}$) |
+
+---
+
+### 6.3. Báo Cáo Dữ Liệu Thô (Raw Export)
+Tất cả kết quả đo đạc đều được tự động lưu trữ dưới định dạng `.csv` và `.json` tại thư mục `benchmarks/results/` phục vụ trích xuất đồ thị khoa học:
+- `benchmarks/results/RSA_2048_micro_raw.csv`
+- `benchmarks/results/ECDSA_secp256k1_micro_raw.csv`
+- `benchmarks/results/micro_benchmark_summary.json`
+- `benchmarks/results/macro_transactions_raw.csv`
+- `benchmarks/results/macro_benchmark_summary.json`
+
