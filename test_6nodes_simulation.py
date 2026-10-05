@@ -70,7 +70,7 @@ def run_experiment():
             print(f"    - Node {node['id']} (:{node['port']}): Peers={len(res['peers'])} | Chain={res['chain_length']} | Mempool={res['mempool_count']}")
 
         # 3. Client sinh vi RSA va ky giao dich 1 (Buoc 1: Khoi tao)
-        print("\n[*] Giai doan 3: Client sinh vi va ky giao dich bang chu ky so RSA PKCS#1 v1.5...")
+        print("\n[*] Giai doan 3: Client sinh vi va ky giao dich bang chu ky so ECDSA-SECP256k1...")
         wallet_a = requests.get('http://127.0.0.1:8080/wallet/new', timeout=3).json()
         wallet_b = requests.get('http://127.0.0.1:8080/wallet/new', timeout=3).json()
 
@@ -82,7 +82,7 @@ def run_experiment():
         }
         signed_tx1 = requests.post('http://127.0.0.1:8080/generate/transaction', data=tx1_data, timeout=3).json()
         sig1 = signed_tx1['signature']
-        print(f"    -> Da ky giao dich 1 (150 COIN). Chữ ký RSA hop le: {sig1[:30]}...")
+        print(f"    -> Da ky giao dich 1 (150 COIN). Chữ ký ECDSA-SECP256k1 hop le: {sig1[:30]}...")
 
         # 4. Phat song giao dich 1 vao DUY NHAT Node 1
         print("\n[*] Giai doan 4: Gui giao dich vao DUY NHAT Node 1 (:5000) qua API /transactions/new...")
@@ -147,7 +147,7 @@ def run_experiment():
         print("  TONG KET THUC NGHIEM:")
         if all_block2_ok and all_block3_ok:
             print("  >>> [XAC NHAN CHUYEN GIA AN NINH MANG: THANH CONG 100%] <<<")
-            print("  1. Chữ ký số RSA PKCS#1 v1.5 duoc kiem tra nghiem ngat tai tung node.")
+            print("  1. Chữ ký số ECDSA-SECP256k1  duoc kiem tra nghiem ngat tai tung node.")
             print("  2. Co che P2P Gossip lan truyen giao dich khap mang (Node 1 -> All, Node 5 -> All).")
             print("  3. Bo loc 'seen_tx_hashes' triet tieu hoan toan Bao Broadcast / DoS Loop.")
             print("  4. Auto-Miner (Node 2) tu dong bat Mempool, giai PoW va broadcast Block moi.")

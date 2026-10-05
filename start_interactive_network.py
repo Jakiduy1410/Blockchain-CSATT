@@ -76,7 +76,7 @@ def main():
         print("-" * 75)
         print("  Luu y:")
         print("  - Cac tab Node co che do 'Live Sync (2s)' tu dong cap nhat khong can F5.")
-        print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh verify RSA & Merge Block.")
+        print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh verify ECDSA-SECP256k1 & Merge Block.")
         print("=" * 75)
         print("\n>>> MANG DANG HOAT DONG. Nhan 'Ctrl+C' de dung toan bo mang <<<\n")
 
