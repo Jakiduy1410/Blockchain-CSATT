@@ -1,6 +1,6 @@
-# Blockchain Python P2P Network (Modular Architecture & 6-Node Mesh)
+# Blockchain Python P2P Network (Modular Architecture & ECDSA 6-Node Mesh)
 
-> **Dự án nâng cấp hệ thống Blockchain P2P đa Node:** Tái cấu trúc mã nguồn theo kiến trúc module hóa chuyên nghiệp (Zero-Hardcode), chuẩn hóa chu trình **Vòng đời giao dịch (Transaction Lifecycle)** 6 bước tự động, tích hợp mạng ngang hàng P2P Gossip chống bão lặp DoS, cơ chế Auto-Miner & Manual-Miner, xác thực chữ ký số RSA PKCS#1 v1.5 nghiêm ngặt, hộp đen kiểm toán an ninh thời gian thực (Security Audit Trail) và giao diện trực quan hóa P2P Mesh Visualizer.
+> **Dự án nâng cấp hệ thống Blockchain P2P đa Node:** Tái cấu trúc mã nguồn theo kiến trúc module hóa chuyên nghiệp (Zero-Hardcode), chuẩn hóa chu trình **Vòng đời giao dịch (Transaction Lifecycle)** 6 bước tự động, tích hợp mạng ngang hàng P2P Gossip chống bão lặp DoS, cơ chế Auto-Miner & Manual-Miner, xác thực chữ ký số **Elliptic Curve (ECDSA secp256k1)** nghiêm ngặt, hộp đen kiểm toán an ninh thời gian thực (Security Audit Trail) và giao diện trực quan hóa P2P Mesh Visualizer.
 
 ---
 
@@ -12,7 +12,7 @@ Mã nguồn được phân tách chức năng độc lập theo nguyên tắc **
 blockchain-python-tutorial/
 ├── blockchain/
 │   ├── core/
-│   │   ├── crypto.py              # Thẩm định chữ ký số RSA PKCS#1 v1.5, băm SHA-256
+│   │   ├── crypto.py              # Thẩm định chữ ký số ECDSA (secp256k1), băm SHA-256
 │   │   ├── transaction.py         # Data model giao dịch, tính toán tx_id định danh duy nhất
 │   │   ├── block.py               # Data model khối, xác minh tính hợp lệ của Proof-of-Work
 │   │   ├── ledger.py              # Quản lý Sổ cái (Ledger), Mempool, Thread-safe lock, dọn dẹp Mempool
@@ -34,12 +34,12 @@ blockchain-python-tutorial/
 ├── blockchain_client/
 │   ├── templates/
 │   │   ├── make_transaction.html  # Form chuyển tiền có nạp nhanh Ví Alice/Bob & chọn Node phát sóng
-│   │   ├── index.html             # Trình tạo ví ngẫu nhiên (Wallet Generator)
+│   │   ├── index.html             # Trình tạo ví ngẫu nhiên (Wallet Generator chuẩn ECDSA)
 │   │   └── view_transactions.html # Xem lịch sử giao dịch
-│   └── blockchain_client.py       # Client sinh cặp khóa RSA (1024-bit), ký số & nạp ví mẫu
+│   └── blockchain_client.py       # Client sinh cặp khóa ECDSA (secp256k1), ký số & nạp ví mẫu
 ├── configs/
 │   ├── network_6nodes.json        # File cấu hình mẫu mạng lưới P2P Full-Mesh 6 Node
-│   └── wallets.json               # Bộ 4 ví người dùng cố định chuẩn RSA: Alice, Bob, Charlie, Dave
+│   └── wallets.json               # Bộ 4 ví người dùng cố định chuẩn ECDSA: Alice, Bob, Charlie, Dave
 ├── p2p_network_visualizer.html     # Giao diện trực quan hóa P2P mạng 6 Node độc lập
 ├── start_interactive_network.py   # Launcher khởi chạy 6 Node + 1 Client cho tương tác thực tế
 ├── start_network.bat              # Script 1-click khởi động toàn bộ mạng trên Windows
@@ -61,11 +61,11 @@ sequenceDiagram
     participant N2 as Miner Node (:5001)
 
     Note over Client, N1: BƯỚC 1: KHỞI TẠO & KÝ SỐ
-    Client->>Client: Tạo Tx & Ký số bằng Private Key (RSA PKCS#1 v1.5)
+    Client->>Client: Tạo Tx & Ký số bằng Private Key (ECDSA secp256k1)
     Client->>N1: Gửi Tx tới Ingress Node (/transactions/new)
 
     Note over N1, Peers: BƯỚC 2 & 3: XÁC MINH & PHÁT SÓNG P2P GOSSIP
-    N1->>N1: Verify chữ ký RSA bằng Public Key người gửi
+    N1->>N1: Verify chữ ký ECDSA bằng Public Key người gửi
     N1->>N1: Lưu vào Mempool của Node 1
     N1->>Peers: Gossip Broadcast (/p2p/transactions/receive)
     N1->>N2: Gossip Broadcast tới Miner Node 2
@@ -97,7 +97,7 @@ sequenceDiagram
 ### 3.2. Public Key, Private Key & Sender/Recipient Address
 - **Public Key:** Là số tài khoản công khai của ví (gắn liền vĩnh viễn với ví cả cuộc đời). Tác giả dùng trực tiếp Public Key làm `Sender Address` và `Recipient Address`.
 - **Recipient Address:** Là **Địa chỉ ví của Người Nhận Tiền** (ví dụ ví của Bob), không phải địa chỉ URL của máy chủ Node.
-- **Blockchain Node URL:** Mới là địa chỉ máy chủ trung gian (`http://127.0.0.1:5000`) mà Client kết nối tới để nhờ phát sóng gói tin.
+- **Blockchain Node URL:** Mới là địa chỉ máy chủ trung gian (`[http://127.0.0.1:5000](http://127.0.0.1:5000)`) mà Client kết nối tới để nhờ phát sóng gói tin.
 
 ### 3.3. Giao Dịch `THE BLOCKCHAIN` (Value 1.0) Là Gì?
 - Đây là **Coinbase Transaction (Phần thưởng đào khối - Mining Reward)**.
@@ -128,11 +128,11 @@ Toàn bộ 6 Node P2P Mesh và 1 Client sẽ được khởi chạy ngầm.
 ### 4.2. Trải Nghiệm Tương Tác Qua Các Tab Trình Duyệt
 
 Mở các tab trình duyệt sau:
-* **Tab Client (Ví người dùng):** [`http://localhost:8080/make/transaction`](http://localhost:8080/make/transaction)
-* **Tab Node 1 (Ingress Node):** [`http://localhost:5000`](http://localhost:5000)
-* **Tab Node 2 (Miner Node ⛏️):** [`http://localhost:5001`](http://localhost:5001)
-* **Tab Node 4 (Relay Node):** [`http://localhost:5003`](http://localhost:5003)
-* **Tab Visualizer Trực Quan:** [`http://localhost:5000/visualizer`](http://localhost:5000/visualizer)
+- **Tab Client (Ví người dùng):** [`http://localhost:8080/make/transaction`](http://localhost:8080/make/transaction)
+- **Tab Node 1 (Ingress Node):** [`http://localhost:5000`](http://localhost:5000)
+- **Tab Node 2 (Miner Node ⛏️):** [`http://localhost:5001`](http://localhost:5001)
+- **Tab Node 4 (Relay Node):** [`http://localhost:5003`](http://localhost:5003)
+- **Tab Visualizer Trực Quan:** [`http://localhost:5000/visualizer`](http://localhost:5000/visualizer)
 
 #### Kịch bản tương tác bạn tự tay thực hiện:
 1. **Tại Tab Client (`localhost:8080`):**
@@ -141,7 +141,7 @@ Mở các tab trình duyệt sau:
    - Bấm **"Generate Transaction"** ➔ Modal mở ra đã chọn sẵn gửi tới **Node 1 (`127.0.0.1:5000`)** ➔ Bấm **"Confirm Transaction"**.
 2. **Chuyển sang Tab Node 1 (`localhost:5000`):**
    - Nhờ tính năng **Live Sync (2s)**, bảng Mempool tự động hiện giao dịch `Alice ➔ Bob (65 COIN)`.
-   - **Hộp Đen Kiểm Toán (Security Trail)** in dòng: `[CRYPTO] Xac thuc chu ky RSA PKCS#1 v1.5: THANH CONG (VERIFIED)` và `[P2P] Gossip P2P: Phat song giao dich toi 5 peers`.
+   - **Hộp Đen Kiểm Toán (Security Trail)** in dòng: `[CRYPTO] Xac thuc chu ky ECDSA (secp256k1): THANH CONG (VERIFIED)` và `[P2P] Gossip P2P: Phat song giao dich toi 5 peers`.
 3. **Chuyển sang Tab Node 4 (`localhost:5003`):**
    - Dù bạn không gửi vào Node 4, Mempool của Node 4 vẫn tự động xuất hiện giao dịch nhờ cơ chế Gossip P2P!
 4. **Chuyển sang Tab Node 2 (`localhost:5001` - Miner):**
@@ -167,11 +167,11 @@ py -3.12 test_6nodes_simulation.py
 | :--- | :--- | :--- |
 | `/status` | `GET` | Lấy thông tin Node: port, role, mempool_count, chain_length, danh sách peers. |
 | `/audit/logs` | `GET` | Lấy danh sách lịch sử Hộp Đen Kiểm Toán An Ninh thời gian thực. |
-| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký RSA và phát sóng Gossip. |
+| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký ECDSA và phát sóng Gossip. |
 | `/transactions/get` | `GET` | Lấy danh sách giao dịch đang chờ trong Mempool. |
 | `/chain` | `GET` | Lấy toàn bộ lịch sử Sổ Cái Chuỗi Khối. |
 | `/mine` | `GET` | Kích hoạt thuật toán PoW đào khối và phát sóng Block mới. |
 | `/p2p/transactions/receive` | `POST` | Peer gửi giao dịch qua giao thức Gossip (có lọc chống bão lặp DoS). |
 | `/p2p/blocks/receive` | `POST` | Peer phát sóng Block mới vừa đào. |
-| `/wallets/sample` | `GET` | Lấy danh sách 4 ví mẫu cố định (Alice, Bob, Charlie, Dave). |
+| `/wallets/sample` | `GET` | Lấy danh sách 4 ví mẫu cố định chuẩn ECDSA (Alice, Bob, Charlie, Dave). |
 | `/visualizer` | `GET` | Mở giao diện P2P Mesh Visualizer trực quan hóa trực tiếp từ Node. |
