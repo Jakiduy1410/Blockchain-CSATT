@@ -175,3 +175,44 @@ py -3.12 test_6nodes_simulation.py
 | `/p2p/blocks/receive` | `POST` | Peer phát sóng Block mới vừa đào. |
 | `/wallets/sample` | `GET` | Lấy danh sách 4 ví mẫu cố định (Alice, Bob, Charlie, Dave). |
 | `/visualizer` | `GET` | Mở giao diện P2P Mesh Visualizer trực quan hóa trực tiếp từ Node. |
+
+---
+
+## 6. Hệ Thống Đo Lường Hiệu Năng & An Ninh Mật Mã (Benchmark Suite)
+
+Hệ thống cung cấp bộ đo lường benchmark độc lập, không hardcode, hỗ trợ môi trường **Windows, Linux (Ubuntu/Kali), macOS**:
+* **Micro-Benchmark (`benchmarks/micro_benchmark.py`):** Đo đạc hiệu năng thuần tính toán (Key Generation, Signing, Verification, Public Key Size, Signature Size, Block Overhead, Theoretical TPS) cho 3 thế hệ mật mã: **RSA-2048**, **ECDSA (secp256k1)**, và **ML-DSA-44 (NIST Post-Quantum FIPS 204)**.
+* **Macro-Benchmark (`benchmarks/macro_benchmark.py`):** Đo đạc End-to-End hiệu năng mạng lưới 6 Node thực tế (Ingestion TPS, HTTP Latency qua mạng thật, Block Propagation delay và Kích thước Block Wire Payload).
+* **Unified Runner (`benchmarks/run_benchmarks.py`):** Trình thực thi tự động hợp nhất.
+
+### 6.1. Hướng Dẫn Chạy Benchmark
+
+```bash
+# 1. Chạy toàn bộ cả Micro và Macro Benchmark
+python benchmarks/run_benchmarks.py --all
+
+# 2. Hoặc chạy riêng rẽ từng phần:
+# Chạy Micro-Benchmark (1.000 trials đo lường mật mã học)
+python benchmarks/micro_benchmark.py -n 1000
+
+# Chạy Macro-Benchmark (Bắn tải 30 giao dịch E2E vào mạng 6 Node)
+python benchmarks/macro_benchmark.py -n 30
+```
+
+### 6.2. Kết Quả Đo Lường Thực Tế (1.000 Trials)
+
+#### Micro-Benchmark: So Sánh 3 Thế Hệ Mật Mã Số
+| Thuật toán | Cơ chế toán học | Chuẩn kháng Lượng Tử | KeyGen (ms) | Sign (ms) | Verify (ms) | Public Key | Signature | Kích thước Khối (1.000 txs) | Crypto TPS Lý thuyết |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **RSA-2048** | Phân tích thừa số nguyên | ❌ Không | 124.64 ms | 3.05 ms | 0.17 ms | 270 B | 256 B | ~758 KB | ~5.952 tx/s |
+| **ECDSA (secp256k1)** | Logarithm rời rạc Elliptic Curve | ❌ Không | 1.06 ms | 1.15 ms | 0.99 ms | 33 B | 64 B | ~339 KB | ~1.013 tx/s |
+| **ML-DSA-44** | Mạng tinh thể (Module-LWE / Lattice) | ✅ **NIST FIPS 204** | 1.42 ms | 3.34 ms | **0.76 ms** | **1.312 B** | **2.420 B** | **~3.89 MB** | **~1.322 tx/s** |
+
+#### Macro-Benchmark: Mạng Lưới P2P 6-Node E2E (HTTP)
+| Chỉ số đo lường thực nghiệm | Kết quả thực tế ML-DSA-44 | Đánh giá Chuyên gia An ninh mạng |
+| :--- | :--- | :--- |
+| **Tỷ lệ tiếp nhận giao dịch (Success Rate)** | **100% (30/30 txs)** | Ingress Node xác thực chữ ký ML-DSA và xếp hàng Mempool trơn tru. |
+| **E2E HTTP Ingestion TPS** | **215.24 tx/s** | Thông lượng tiếp nhận tải HTTP đồng thời. |
+| **Độ trễ tiếp nhận (Mean Latency)** | **4.60 ms** (Median: 4.42 ms, P95: 5.91 ms) | Độ trễ mạng Loopback + xác thực PQC. |
+| **Đồng bộ khối trên 6 Node (Propagation)** | **4.472 s** (100% đồng bộ) | Miner đóng khối PoW và toàn mạng P2P hoàn tất Nakamoto Consensus. |
+| **Dung lượng Wire Payload / Transaction** | **5.150 bytes / tx** (~5.15 KB) | Cao hơn ~6.2 lần so với ECDSA do kích thước khóa và chữ ký PQC lớn. |

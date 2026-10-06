@@ -29,9 +29,7 @@ class Transaction:
             private_key_bytes = bytes.fromhex(self.sender_private_key)
             transaction_string = str(self.to_dict()).encode('utf8')
             
-            with oqs.Signature(SIG_ALG) as signer:
-                # Gán khóa bí mật vào đối tượng signer
-                signer.secret_key = private_key_bytes
+            with oqs.Signature(SIG_ALG, secret_key=private_key_bytes) as signer:
                 # Thực hiện ký số
                 signature_bytes = signer.sign(transaction_string)
                 
