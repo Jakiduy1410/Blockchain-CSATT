@@ -211,13 +211,15 @@ py -3.12 benchmarks/micro_benchmark.py -n 500
 
 | Thuật toán | Keygen (ms) | Sign (ms) | Verify (ms) | Public Key | Chữ ký | Kích thước Block (1.000 txs) | Crypto TPS Lý thuyết |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **RSA-2048** | $128.017 \pm 152.20$ | $2.878 \pm 2.65$ | **$0.162 \pm 0.16$** | $270\text{ bytes}$ | $256\text{ bytes}$ | $757.81\text{ KB}$ | **$6.176\text{ tx/s}$** |
-| **ECDSA (secp256k1)** | **$1.506 \pm 1.92$** | **$1.548 \pm 1.44$** | $1.391 \pm 1.96$ | **$33\text{ bytes}$** | **$64\text{ bytes}$** | **$338.87\text{ KB}$** | $719\text{ tx/s}$ |
+| **RSA-2048** | $76.362 \pm 75.06$ | $1.833 \pm 1.46$ | **$0.104 \pm 0.09$** | $270\text{ bytes}$ | $256\text{ bytes}$ | $757.81\text{ KB}$ | **$9.615\text{ tx/s}$** |
+| **ECDSA (secp256k1)** | $0.803 \pm 0.30$ | $0.866 \pm 0.64$ | $0.734 \pm 0.23$ | **$33\text{ bytes}$** | **$64\text{ bytes}$** | **$338.87\text{ KB}$** | $1.362\text{ tx/s}$ |
+| **PQC: ML-DSA-44** | **$0.246 \pm 0.06$** | **$0.569 \pm 0.28$** | $0.129 \pm 0.03$ | $1.312\text{ bytes}$ | $2.420\text{ bytes}$ | $3.888.67\text{ KB}$ | $7.740\text{ tx/s}$ |
 
-> **Phân tích chuyên gia:**
-> - **Thời gian tạo khóa:** ECDSA nhanh gấp **$85$ lần** so với RSA ($1.5\text{ ms}$ vs $128\text{ ms}$). Rất tối ưu cho ví người dùng và thiết bị di động.
-> - **Tiết kiệm dung lượng:** Public Key của ECDSA ($33\text{ bytes}$) và Chữ ký ($64\text{ bytes}$) nhỏ hơn rất nhiều so với RSA ($270\text{ bytes}$ và $256\text{ bytes}$). Kích thước khối Blockchain giảm hơn **$55\%$**.
-> - **Tại sao TPS lý thuyết của RSA lại cao hơn?** Do RSA sử dụng số mũ công khai nhỏ $e = 65537$, phép xác thực chỉ tốn rất ít phép nhân modulo ($0.16\text{ ms}$). Tuy nhiên, kích thước chữ ký lớn của RSA sẽ gây nghẽn băng thông nghiêm trọng khi truyền tải trên mạng P2P.
+> **Phân tích chuyên gia so sánh 3 thế hệ Mật mã:**
+> - **Tốc độ tính toán của ML-DSA-44 (Hậu lượng tử):** Sinh khóa cực nhanh ($0.24\text{ ms}$, nhanh nhất trong cả 3 thuật toán), Ký số ($0.56\text{ ms}$) và Xác thực ($0.12\text{ ms}$) đều vượt trội so với ECDSA nhờ cấu trúc đại số ma trận mạng tinh thể (Lattice-based cryptography).
+> - **Cái giá phải trả của Hậu lượng tử (Storage Trade-off):** Mặc dù tính toán siêu nhanh và kháng máy tính lượng tử, chữ ký ML-DSA-44 nặng tới **$2.420\text{ bytes}$** (gấp 38 lần ECDSA) và Public Key nặng **$1.312\text{ bytes}$** (gấp 40 lần ECDSA). Điều này khiến kích thước Block phình to lên tới **$3.88\text{ MB}$** cho 1.000 giao dịch (gấp 11.5 lần so với ECDSA $338\text{ KB}$).
+> - **Tại sao ECDSA vẫn là tiêu chuẩn vàng của Blockchain truyền thống?** Cân bằng hoàn hảo: Kích thước cực kỳ nhỏ gọn ($33\text{ B}$ PK, $64\text{ B}$ Sig), giảm thiểu nghẽn băng thông và tối ưu hóa chi phí lưu trữ cho hàng triệu node.
+> - **Tại sao TPS lý thuyết của RSA và ML-DSA lại cao?** Do RSA sử dụng số mũ công khai nhỏ $e = 65537$, còn ML-DSA sử dụng phép nhân đa thức Number Theoretic Transform (NTT) cực nhanh, giúp thời gian xác thực của Node chỉ mất khoảng $0.1\text{ ms}$. Tuy nhiên, trong mạng P2P thực tế, kích thước gói tin lớn sẽ làm chậm tốc độ truyền tải mạng.
 
 ---
 

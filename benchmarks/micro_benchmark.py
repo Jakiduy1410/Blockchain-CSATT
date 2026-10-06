@@ -24,13 +24,12 @@ from cryptography.hazmat.primitives import hashes, serialization
 # PQC check (Graceful cross-platform detection)
 OQS_AVAILABLE = False
 oqs = None
-if sys.platform != 'win32' or os.environ.get('ENABLE_LIBOQS_WIN', '0') == '1':
-    try:
-        import oqs
-        OQS_AVAILABLE = True
-    except BaseException:
-        OQS_AVAILABLE = False
-        oqs = None
+try:
+    import oqs
+    OQS_AVAILABLE = True
+except BaseException:
+    OQS_AVAILABLE = False
+    oqs = None
 
 
 if hasattr(sys.stdout, 'reconfigure'):
