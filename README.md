@@ -167,7 +167,7 @@ py -3.12 test_6nodes_simulation.py
 | :--- | :--- | :--- |
 | `/status` | `GET` | Lấy thông tin Node: port, role, mempool_count, chain_length, danh sách peers. |
 | `/audit/logs` | `GET` | Lấy danh sách lịch sử Hộp Đen Kiểm Toán An Ninh thời gian thực. |
-| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký RSA và phát sóng Gossip. |
+| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký ML-DSA-44 (PQC) / ECDSA / RSA và phát sóng Gossip. |
 | `/transactions/get` | `GET` | Lấy danh sách giao dịch đang chờ trong Mempool. |
 | `/chain` | `GET` | Lấy toàn bộ lịch sử Sổ Cái Chuỗi Khối. |
 | `/mine` | `GET` | Kích hoạt thuật toán PoW đào khối và phát sóng Block mới. |
@@ -204,15 +204,15 @@ python benchmarks/macro_benchmark.py -n 30
 #### Micro-Benchmark: So Sánh 3 Thế Hệ Mật Mã Số
 | Thuật toán | Cơ chế toán học | Chuẩn kháng Lượng Tử | KeyGen (ms) | Sign (ms) | Verify (ms) | Public Key | Signature | Kích thước Khối (1.000 txs) | Crypto TPS Lý thuyết |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **RSA-2048** | Phân tích thừa số nguyên | ❌ Không | 124.64 ms | 3.05 ms | 0.17 ms | 270 B | 256 B | ~758 KB | ~5.952 tx/s |
-| **ECDSA (secp256k1)** | Logarithm rời rạc Elliptic Curve | ❌ Không | 1.06 ms | 1.15 ms | 0.99 ms | 33 B | 64 B | ~339 KB | ~1.013 tx/s |
-| **ML-DSA-44** | Mạng tinh thể (Module-LWE / Lattice) | ✅ **NIST FIPS 204** | 1.42 ms | 3.34 ms | **0.76 ms** | **1.312 B** | **2.420 B** | **~3.89 MB** | **~1.322 tx/s** |
+| **RSA-2048** | Phân tích thừa số nguyên | ❌ Không | 66.48 ms | 1.56 ms | **0.09 ms** | 270 B | 256 B | ~758 KB | ~11.751 tx/s |
+| **ECDSA (secp256k1)** | Logarithm rời rạc Elliptic Curve | ❌ Không | 0.72 ms | 0.78 ms | 0.66 ms | **33 B** | **64 B** | **~339 KB** | ~1.517 tx/s |
+| **ML-DSA-44** | Mạng tinh thể (Module-LWE / Lattice) | ✅ **NIST FIPS 204** | **0.29 ms** | **0.69 ms** | 0.15 ms | 1.312 B | 2.420 B | ~3.89 MB | **~6.464 tx/s** |
 
 #### Macro-Benchmark: Mạng Lưới P2P 6-Node E2E (HTTP)
 | Chỉ số đo lường thực nghiệm | Kết quả thực tế ML-DSA-44 | Đánh giá Chuyên gia An ninh mạng |
 | :--- | :--- | :--- |
 | **Tỷ lệ tiếp nhận giao dịch (Success Rate)** | **100% (30/30 txs)** | Ingress Node xác thực chữ ký ML-DSA và xếp hàng Mempool trơn tru. |
-| **E2E HTTP Ingestion TPS** | **215.24 tx/s** | Thông lượng tiếp nhận tải HTTP đồng thời. |
-| **Độ trễ tiếp nhận (Mean Latency)** | **4.60 ms** (Median: 4.42 ms, P95: 5.91 ms) | Độ trễ mạng Loopback + xác thực PQC. |
-| **Đồng bộ khối trên 6 Node (Propagation)** | **4.472 s** (100% đồng bộ) | Miner đóng khối PoW và toàn mạng P2P hoàn tất Nakamoto Consensus. |
-| **Dung lượng Wire Payload / Transaction** | **5.150 bytes / tx** (~5.15 KB) | Cao hơn ~6.2 lần so với ECDSA do kích thước khóa và chữ ký PQC lớn. |
+| **E2E HTTP Ingestion TPS** | **15.41 tx/s** | Thông lượng tiếp nhận tải HTTP và kiểm tra chữ ký PQC tuần tự/đồng thời. |
+| **Độ trễ tiếp nhận (Mean Latency)** | **64.86 ms** (Median: 67.55 ms, P95: 81.21 ms) | Độ trễ mạng Loopback + xác thực PQC. |
+| **Đồng bộ khối trên 6 Node (Propagation)** | **1.429 s** (100% đồng bộ) | Miner đóng khối PoW và toàn mạng P2P hoàn tất Nakamoto Consensus. |
+| **Dung lượng Wire Payload / Transaction** | **10.280 bytes / tx** (~10.28 KB) | Block 5 txs đạt 50.20 KB do kích thước khóa và chữ ký PQC lớn theo chuẩn FIPS 204. |

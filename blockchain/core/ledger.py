@@ -150,12 +150,19 @@ class BlockchainLedger:
                 )
                 return False
 
-            # 2. Thẩm định chữ ký số RSA PKCS#1 v1.5
+            # 2. Thẩm định chữ ký số (ML-DSA-44 / ECDSA / RSA)
             is_valid = tx.is_valid(self.mining_sender)
+            if len(tx.signature) > 1000 or len(tx.sender_address) > 1000:
+                algo = "ML-DSA-44 (PQC)"
+            elif len(tx.signature) <= 140:
+                algo = "ECDSA-secp256k1"
+            else:
+                algo = "RSA-PKCS1v15"
+
             if not is_valid:
                 self.audit.log(
                     category="CRYPTO",
-                    title="Tu choi giao dich: Chu ky RSA PKCS#1 v1.5 KHONG HOP LE",
+                    title=f"Tu choi giao dich: Chu ky so {algo} KHONG HOP LE",
                     details={
                         'sender': f"{tx.sender_address[:20]}...",
                         'amount': tx.value,
@@ -194,12 +201,12 @@ class BlockchainLedger:
             # Ghi log kiểm toán mật mã thành công
             self.audit.log(
                 category="CRYPTO",
-                title="Xac thuc chu ky RSA PKCS#1 v1.5: THANH CONG (VERIFIED)",
+                title=f"Xac thuc chu ky so {algo}: THANH CONG (VERIFIED)",
                 details={
                     'sender_pubkey': f"{tx.sender_address[:24]}...",
                     'recipient': f"{tx.recipient_address[:24]}...",
                     'amount': f"{tx.value} COIN",
-                    'signature_algorithm': 'SHA1withRSA-PKCS1v15'
+                    'signature_algorithm': algo
                 },
                 status="SUCCESS"
             )

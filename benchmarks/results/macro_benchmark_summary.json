@@ -1,29 +1,29 @@
 {
   "benchmark_name": "Macro-Benchmark 6-Node P2P (HTTP)",
-  "timestamp": "2026-10-06 23:24:16",
+  "timestamp": "2026-10-07 13:28:10",
   "workload": {
     "total_tx_sent": 30,
     "accepted_tx": 30,
     "success_rate_pct": 100.0
   },
   "ingestion_performance": {
-    "total_duration_seconds": 0.139,
-    "e2e_ingestion_tps": 215.24,
-    "latency_mean_ms": 4.6,
-    "latency_median_ms": 4.42,
-    "latency_p95_ms": 5.91,
-    "latency_min_ms": 3.84,
-    "latency_max_ms": 6.14
+    "total_duration_seconds": 1.947,
+    "e2e_ingestion_tps": 15.41,
+    "latency_mean_ms": 64.86,
+    "latency_median_ms": 67.55,
+    "latency_p95_ms": 81.21,
+    "latency_min_ms": 7.12,
+    "latency_max_ms": 106.94
   },
   "consensus_propagation": {
     "nodes_participating": 6,
     "all_nodes_synced": true,
-    "block_propagation_delay_seconds": 4.472
+    "block_propagation_delay_seconds": 1.429
   },
   "network_wire_payload": {
-    "block_wire_bytes": 159666,
-    "block_wire_kb": 155.92,
-    "tx_count_in_block": 31,
-    "average_bytes_per_tx": 5150.5
+    "block_wire_bytes": 51403,
+    "block_wire_kb": 50.2,
+    "tx_count_in_block": 5,
+    "average_bytes_per_tx": 10280.6
   }
 }

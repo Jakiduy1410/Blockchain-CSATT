@@ -69,27 +69,28 @@ def run_experiment():
             res = requests.get(f"http://127.0.0.1:{node['port']}/status", timeout=3).json()
             print(f"    - Node {node['id']} (:{node['port']}): Peers={len(res['peers'])} | Chain={res['chain_length']} | Mempool={res['mempool_count']}")
 
-        # 3. Client sinh vi RSA va ky giao dich 1 (Buoc 1: Khoi tao)
-        print("\n[*] Giai doan 3: Client sinh vi va ky giao dich bang chu ky so MLDSA-44...")
-        wallet_a = requests.get('http://127.0.0.1:8080/wallet/new', timeout=3).json()
-        wallet_b = requests.get('http://127.0.0.1:8080/wallet/new', timeout=3).json()
+        # 3. Client lay vi mau da co so du khoi tao (Alice, Bob) va ky giao dich 1
+        print("\n[*] Giai doan 3: Client lay vi mau va ky giao dich bang chu ky so MLDSA-44...")
+        wallets_res = requests.get('http://127.0.0.1:8080/wallets/sample', timeout=3).json()
+        alice = wallets_res.get('Alice', {})
+        bob = wallets_res.get('Bob', {})
 
         tx1_data = {
-            'sender_address': wallet_a['public_key'],
-            'sender_private_key': wallet_a['private_key'],
-            'recipient_address': wallet_b['public_key'],
-            'amount': '150.0'
+            'sender_address': alice['public_key'],
+            'sender_private_key': alice['private_key'],
+            'recipient_address': bob['public_key'],
+            'amount': '40.0'
         }
         signed_tx1 = requests.post('http://127.0.0.1:8080/generate/transaction', data=tx1_data, timeout=3).json()
         sig1 = signed_tx1['signature']
-        print(f"    -> Da ky giao dich 1 (150 COIN). Chữ ký MLDSA-44 hop le: {sig1[:30]}...")
+        print(f"    -> Da ky giao dich 1 (Alice -> Bob: 40.0 COIN). Chữ ký MLDSA-44 hop le: {sig1[:30]}...")
 
         # 4. Phat song giao dich 1 vao DUY NHAT Node 1
         print("\n[*] Giai doan 4: Gui giao dich vao DUY NHAT Node 1 (:5000) qua API /transactions/new...")
         post_tx1 = {
-            'sender_address': wallet_a['public_key'],
-            'recipient_address': wallet_b['public_key'],
-            'amount': '150.0',
+            'sender_address': alice['public_key'],
+            'recipient_address': bob['public_key'],
+            'amount': '40.0',
             'signature': sig1
         }
         res1 = requests.post('http://127.0.0.1:5000/transactions/new', json=post_tx1, timeout=3).json()
@@ -116,16 +117,16 @@ def run_experiment():
         # 7. Thu nghiem tinh Phi tap trung (Decentralization): Gui tiep Giao dich 2 vao Node 5!
         print("\n[*] Giai doan 7: Thu nghiem Phi tap trung - Gui Giao dich 2 vao Node 5 (:5004)...")
         tx2_data = {
-            'sender_address': wallet_b['public_key'],
-            'sender_private_key': wallet_b['private_key'],
-            'recipient_address': wallet_a['public_key'],
-            'amount': '50.0'
+            'sender_address': bob['public_key'],
+            'sender_private_key': bob['private_key'],
+            'recipient_address': alice['public_key'],
+            'amount': '20.0'
         }
         signed_tx2 = requests.post('http://127.0.0.1:8080/generate/transaction', data=tx2_data, timeout=3).json()
         post_tx2 = {
-            'sender_address': wallet_b['public_key'],
-            'recipient_address': wallet_a['public_key'],
-            'amount': '50.0',
+            'sender_address': bob['public_key'],
+            'recipient_address': alice['public_key'],
+            'amount': '20.0',
             'signature': signed_tx2['signature']
         }
         res2 = requests.post('http://127.0.0.1:5004/transactions/new', json=post_tx2, timeout=3).json()

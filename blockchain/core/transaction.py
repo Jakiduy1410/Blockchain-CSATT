@@ -5,9 +5,9 @@ Transaction Model
 from collections import OrderedDict
 
 try:
-    from .crypto import calculate_sha256, verify_rsa_signature
+    from .crypto import calculate_sha256, verify_signature
 except ImportError:
-    from crypto import calculate_sha256, verify_rsa_signature
+    from crypto import calculate_sha256, verify_signature
 
 
 class Transaction:
@@ -45,7 +45,7 @@ class Transaction:
         if not self.signature:
             return False
 
-        return verify_rsa_signature(self.sender_address, self.signature, self.to_dict())
+        return verify_signature(self.sender_address, self.signature, self.to_dict())
 
     @staticmethod
     def from_dict(data: dict) -> 'Transaction':
