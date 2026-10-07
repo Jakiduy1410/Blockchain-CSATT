@@ -19,6 +19,9 @@ class NodeConfig:
         self.is_miner: bool = False
         self.difficulty: int = 2
         self.auto_mine_interval: float = 2.0
+        self.use_tls: bool = False
+        self.ssl_cert: str = ""
+        self.ssl_key: str = ""
 
     @classmethod
     def load(cls) -> 'NodeConfig':
@@ -30,6 +33,9 @@ class NodeConfig:
         parser.add_argument('--peers', default="", type=str, help='Danh sách Peers ban đầu, cách nhau bằng dấu phẩy (vd: 127.0.0.1:5001,127.0.0.1:5002)')
         parser.add_argument('--miner', action='store_true', help='Kích hoạt chế độ Auto-Miner cho Node này')
         parser.add_argument('--difficulty', default=2, type=int, help='Độ khó Proof of Work (mặc định: 2)')
+        parser.add_argument('--tls', action='store_true', help='Kích hoạt bảo mật mã hóa đường truyền TLS/HTTPS')
+        parser.add_argument('--ssl-cert', default="", type=str, help='Đường dẫn file chứng chỉ SSL (.crt/.pem)')
+        parser.add_argument('--ssl-key', default="", type=str, help='Đường dẫn file khóa bí mật SSL (.key/.pem)')
         parser.add_argument('-c', '--config', default="", type=str, help='Đường dẫn tới file cấu hình JSON')
 
         args, _ = parser.parse_known_args()
@@ -44,6 +50,9 @@ class NodeConfig:
                     config.peers = file_data.get('peers', config.peers)
                     config.is_miner = file_data.get('is_miner', config.is_miner)
                     config.difficulty = file_data.get('difficulty', config.difficulty)
+                    config.use_tls = file_data.get('use_tls', config.use_tls)
+                    config.ssl_cert = file_data.get('ssl_cert', config.ssl_cert)
+                    config.ssl_key = file_data.get('ssl_key', config.ssl_key)
             except Exception as e:
                 print(f"[CẢNH BÁO] Không thể đọc file config: {e}")
 
@@ -55,5 +64,22 @@ class NodeConfig:
         if args.miner:
             config.is_miner = True
         config.difficulty = args.difficulty
+
+        if args.tls:
+            config.use_tls = True
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        default_cert = os.path.join(project_root, 'certs', 'server.crt')
+        default_key = os.path.join(project_root, 'certs', 'server.key')
+
+        if args.ssl_cert:
+            config.ssl_cert = args.ssl_cert
+        elif not config.ssl_cert and config.use_tls:
+            config.ssl_cert = default_cert
+
+        if args.ssl_key:
+            config.ssl_key = args.ssl_key
+        elif not config.ssl_key and config.use_tls:
+            config.ssl_key = default_key
 
         return config

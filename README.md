@@ -223,27 +223,33 @@ py -3.12 benchmarks/micro_benchmark.py -n 500
 
 ---
 
-### 6.2. Macro-Benchmark: Đo tải thực tế trên mạng phân tán 6 Node sống
-Tự động kích hoạt mạng 6 Node P2P Mesh (nếu chưa chạy), tạo và ký $N$ giao dịch ECDSA hợp lệ, bắn tải HTTP và đo đạc độ trễ lan truyền:
+### 6.2. Macro-Benchmark: Đo tải thực tế trên mạng phân tán 6 Node sống (HTTP vs HTTPS/TLS)
+Tự động kích hoạt mạng 6 Node P2P Mesh (nếu chưa chạy), tạo và ký $N$ giao dịch ECDSA hợp lệ, bắn tải và đo đạc độ trễ lan truyền, so sánh đối đầu chi phí an ninh TLS:
 
 ```powershell
-# Chạy bài kiểm thử tải mạng (Mặc định cấu hình):
+# 1. Chạy bài kiểm thử tải mạng mặc định (HTTP Cleartext):
 py -3.12 benchmarks/macro_benchmark.py
 
-# Hoặc tùy biến số lượng giao dịch bắn tải:
-py -3.12 benchmarks/macro_benchmark.py -n 50
+# 2. Chạy bài kiểm thử bảo mật qua HTTPS (TLS 1.3 / X.509):
+py -3.12 benchmarks/macro_benchmark.py --tls
+
+# 3. Chạy chế độ SO SÁNH ĐỐI ĐẦU HTTP vs HTTPS (TLS) tự động:
+py -3.12 benchmarks/macro_benchmark.py --compare
+
+# 4. Tùy biến số lượng giao dịch bắn tải:
+py -3.12 benchmarks/macro_benchmark.py --compare -n 50
 ```
 
-#### Bảng tổng hợp kết quả thực nghiệm Macro-Benchmark (Mạng 6-Node HTTP):
+#### Bảng tổng hợp kết quả thực nghiệm Macro-Benchmark (HTTP vs HTTPS / TLS 1.3):
 
-| Chỉ số đo lường (Metric) | Kết quả thực tế | Ý nghĩa an ninh & hiệu năng |
-| :--- | :--- | :--- |
-| **Workload tiếp nhận** | **$100\%$ ($20/20$ txs)** | Toàn bộ giao dịch đều được thẩm định chữ ký và ghi nhận hợp lệ |
-| **E2E Ingestion TPS** | **$7.41\text{ tx/s}$** | Thông lượng xử lý tiếp nhận thực tế qua giao thức HTTP REST |
-| **Độ trễ tiếp nhận (Mean)** | **$134.84\text{ ms}$** | Bao gồm: Network RTT + JSON Parsing + Hex Decoding + Verify ECDSA |
-| **Độ trễ tiếp nhận (P95)** | **$285.12\text{ ms}$** | 95% số giao dịch được xử lý dưới 285ms |
-| **Block Propagation Delay** | **$0.551\text{ s}$** | Thời gian khối mới lan truyền và được đồng thuận trên toàn bộ 6 Node |
-| **Block Wire Payload** | **$2.49\text{ KB}$ (5 txs)** | Dung lượng gói tin HTTP thực tế truyền qua mạng ($509\text{ bytes/tx}$) |
+| Chỉ số đo lường (Metric) | HTTP (Cleartext) | HTTPS (TLS 1.3) | Chênh lệch / Đánh đổi an ninh |
+| :--- | :--- | :--- | :--- |
+| **Ingestion TPS** | **$58.30\text{ tx/s}$** | **$9.52\text{ tx/s}$** | Giảm $83.67\%$ do chi phí đàm phán khóa TLS Handshake |
+| **Độ trễ tiếp nhận (Mean)** | **$17.06\text{ ms}$** | **$105.05\text{ ms}$** | Tăng thêm $+87.99\text{ ms}$ (RTT Handshake + Encrypt/Decrypt) |
+| **Độ trễ tiếp nhận (P95)** | **$29.80\text{ ms}$** | **$149.66\text{ ms}$** | Tăng thêm $+119.86\text{ ms}$ cho các gói đàm phán phiên |
+| **Block Propagation Delay** | **$1.722\text{ s}$** | **$1.357\text{ s}$** | Đồng bộ P2P thành công trên toàn bộ 6 Node |
+| **Block Wire Payload** | **$2.82\text{ KB}$ (5 txs)** | **$2.82\text{ KB}$ (5 txs)** | Payload ứng dụng đồng nhất ($576.8\text{ bytes/tx}$) |
+| **Khả năng kháng tấn công** | Nghe lén, MitM | **Chống MitM, bảo mật đường truyền** | Đảm bảo tính toàn vẹn và bí mật của gói tin |
 
 ---
 
@@ -252,6 +258,9 @@ Tất cả kết quả đo đạc đều được tự động lưu trữ dướ
 - `benchmarks/results/RSA_2048_micro_raw.csv`
 - `benchmarks/results/ECDSA_secp256k1_micro_raw.csv`
 - `benchmarks/results/micro_benchmark_summary.json`
-- `benchmarks/results/macro_transactions_raw.csv`
-- `benchmarks/results/macro_benchmark_summary.json`
+- `benchmarks/results/macro_transactions_http_raw.csv`
+- `benchmarks/results/macro_transactions_tls_raw.csv`
+- `benchmarks/results/macro_benchmark_http_summary.json`
+- `benchmarks/results/macro_benchmark_tls_summary.json`
+- `benchmarks/results/macro_benchmark_comparison.json`
 

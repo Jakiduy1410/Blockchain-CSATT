@@ -17,6 +17,9 @@
       "http://127.0.0.1:5005"
     ],
     "client_url": "http://127.0.0.1:8080",
-    "timeout_seconds": 30
+    "timeout_seconds": 30,
+    "use_tls": false,
+    "ssl_cert": "certs/server.crt",
+    "ssl_key": "certs/server.key"
   }
 }
