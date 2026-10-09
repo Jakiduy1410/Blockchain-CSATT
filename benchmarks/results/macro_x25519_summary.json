@@ -1,0 +1,43 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with ECDHE (X25519))",
+  "kem_key": "x25519",
+  "kem_metadata": {
+    "name": "ECDHE (X25519)",
+    "category": "Classical ECC",
+    "subfamily": "Montgomery Curve (Curve25519)",
+    "nist_level": "Classical 128-bit",
+    "quantum_resistant": false,
+    "pk_size": 32,
+    "ct_size": 32,
+    "shared_secret_size": 32
+  },
+  "tx_signature_scheme": "ECDSA (secp256k1)",
+  "timestamp": "2026-10-09 12:57:32",
+  "workload": {
+    "total_tx_sent": 3,
+    "accepted_tx": 3,
+    "success_rate_pct": 100.0
+  },
+  "performance": {
+    "total_duration_seconds": 0.176,
+    "e2e_ingestion_tps": 17.05,
+    "handshake_latency_mean_ms": 3.085,
+    "e2e_latency_mean_ms": 58.56,
+    "e2e_latency_median_ms": 59.52,
+    "e2e_latency_p95_ms": 71.73,
+    "e2e_latency_min_ms": 43.06,
+    "e2e_latency_max_ms": 73.09
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": true,
+    "block_propagation_delay_seconds": 0.674
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 916,
+    "block_wire_kb": 0.89,
+    "tx_count_in_block": 2,
+    "average_bytes_per_tx": 458.0,
+    "kem_handshake_wire_bytes": 64
+  }
+}

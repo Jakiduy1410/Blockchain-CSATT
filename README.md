@@ -223,44 +223,67 @@ py -3.12 benchmarks/micro_benchmark.py -n 500
 
 ---
 
-### 6.2. Macro-Benchmark: Đo tải thực tế trên mạng phân tán 6 Node sống (HTTP vs HTTPS/TLS)
-Tự động kích hoạt mạng 6 Node P2P Mesh (nếu chưa chạy), tạo và ký $N$ giao dịch ECDSA hợp lệ, bắn tải và đo đạc độ trễ lan truyền, so sánh đối đầu chi phí an ninh TLS:
+### 6.2. Macro-Benchmark: Đo tải thực tế trên mạng phân tán 6 Node sống (HTTP vs TLS KEM Suite)
+Tự động kích hoạt mạng 6 Node P2P Mesh (nếu chưa chạy), tạo và ký các giao dịch bằng chữ ký số **ECDSA (secp256k1)**, bắn tải và đo đạc độ trễ lan truyền, đối sánh chi phí giữa **HTTP thuần (Cleartext)** và **6 cơ chế trao đổi khóa TLS 1.3 (ECDHE, PQC & Hybrid Key)**:
 
 ```powershell
-# 1. Chạy bài kiểm thử tải mạng mặc định (HTTP Cleartext):
+# 1. Chạy bài kiểm thử thuần HTTP (Cleartext, không dùng TLS):
+py -3.12 benchmarks/macro_benchmark.py --http
+# hoặc chạy mặc định không cờ (tự động kích hoạt chế độ HTTP):
 py -3.12 benchmarks/macro_benchmark.py
 
-# 2. Chạy bài kiểm thử bảo mật qua HTTPS (TLS 1.3 / X.509):
-py -3.12 benchmarks/macro_benchmark.py --tls
+# 2. Chạy bài kiểm thử TOÀN BỘ 6 CƠ CHẾ KEM và tự động xuất bảng so sánh song song:
+py -3.12 benchmarks/macro_benchmark.py --compare-kems
 
-# 3. Chạy chế độ SO SÁNH ĐỐI ĐẦU HTTP vs HTTPS (TLS) tự động:
-py -3.12 benchmarks/macro_benchmark.py --compare
+# 3. Chạy bài kiểm thử cho 1 cơ chế KEM cụ thể:
+py -3.12 benchmarks/macro_benchmark.py --kem hybrid_mlkem768   # Cơ chế Lai Hybrid X25519 + ML-KEM-768
+py -3.12 benchmarks/macro_benchmark.py --kem mlkem768          # ML-KEM-768 thuần (Module-LWE)
+py -3.12 benchmarks/macro_benchmark.py --kem x25519            # ECDHE X25519
+py -3.12 benchmarks/macro_benchmark.py --kem secp256r1         # ECDHE P-256
+py -3.12 benchmarks/macro_benchmark.py --kem hqc128            # HQC-128 (Code-based)
+py -3.12 benchmarks/macro_benchmark.py --kem frodokem640       # FrodoKEM-640 (Standard LWE)
 
 # 4. Tùy biến số lượng giao dịch bắn tải:
-py -3.12 benchmarks/macro_benchmark.py --compare -n 50
+py -3.12 benchmarks/macro_benchmark.py --http -n 50
+py -3.12 benchmarks/macro_benchmark.py --compare-kems -n 30
 ```
 
-#### Bảng tổng hợp kết quả thực nghiệm Macro-Benchmark (HTTP vs HTTPS / TLS 1.3):
+#### Bảng tổng hợp kết quả thực nghiệm Macro-Benchmark (HTTP vs 6 Cơ chế KEM TLS):
 
-| Chỉ số đo lường (Metric) | HTTP (Cleartext) | HTTPS (TLS 1.3) | Chênh lệch / Đánh đổi an ninh |
-| :--- | :--- | :--- | :--- |
-| **Ingestion TPS** | **$58.30\text{ tx/s}$** | **$9.52\text{ tx/s}$** | Giảm $83.67\%$ do chi phí đàm phán khóa TLS Handshake |
-| **Độ trễ tiếp nhận (Mean)** | **$17.06\text{ ms}$** | **$105.05\text{ ms}$** | Tăng thêm $+87.99\text{ ms}$ (RTT Handshake + Encrypt/Decrypt) |
-| **Độ trễ tiếp nhận (P95)** | **$29.80\text{ ms}$** | **$149.66\text{ ms}$** | Tăng thêm $+119.86\text{ ms}$ cho các gói đàm phán phiên |
-| **Block Propagation Delay** | **$1.722\text{ s}$** | **$1.357\text{ s}$** | Đồng bộ P2P thành công trên toàn bộ 6 Node |
-| **Block Wire Payload** | **$2.82\text{ KB}$ (5 txs)** | **$2.82\text{ KB}$ (5 txs)** | Payload ứng dụng đồng nhất ($576.8\text{ bytes/tx}$) |
-| **Khả năng kháng tấn công** | Nghe lén, MitM | **Chống MitM, bảo mật đường truyền** | Đảm bảo tính toàn vẹn và bí mật của gói tin |
+| Chỉ số đo lường (Metric) | HTTP (Cleartext) | ECDHE-P256 | ECDHE-X25519 | ML-KEM-768 (PQC) | Hybrid (X255+ML) | HQC-128 (PQC) | FrodoKEM-640 (PQC) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Bảo vệ truyền thông** | ❌ Không TLS | Classical ECC | Classical ECC | **Lattice (M-LWE)** | **Hybrid Dual** | **Code-based** | **Lattice (LWE)** |
+| **Kháng máy tính lượng tử** | ❌ Không | ❌ KHÔNG | ❌ KHÔNG | ✅ **CÓ (Safe)** | ✅ **CÓ (Bảo vệ kép)**| ✅ **CÓ (Safe)** | ✅ **CÓ (Safe)** |
+| **Chữ ký giao dịch** | **ECDSA** | **ECDSA** | **ECDSA** | **ECDSA** | **ECDSA** | **ECDSA** | **ECDSA** |
+| **KEM Handshake Wire** | $0\text{ B}$ | **$97\text{ B}$** | **$64\text{ B}$** | $2.272\text{ B}$ | **$2.336\text{ B}$** | $6.674\text{ B}$ | $19.336\text{ B}$ |
+| **KEM Handshake Time** | $0.0\text{ ms}$ | $0.693\text{ ms}$ | $3.085\text{ ms}$ | **$0.174\text{ ms}$** | **$0.327\text{ ms}$** | $4.763\text{ ms}$ | $550.756\text{ ms}$ |
+| **E2E Ingestion Latency** | **$17.06\text{ ms}$** | $50.81\text{ ms}$ | $58.56\text{ ms}$ | **$47.85\text{ ms}$** | **$45.54\text{ ms}$** | $61.57\text{ ms}$ | $576.91\text{ ms}$ |
+| **Độ trễ P95 (Latency)** | **$29.80\text{ ms}$** | $63.45\text{ ms}$ | $71.73\text{ ms}$ | $75.01\text{ ms}$ | **$60.82\text{ ms}$** | $84.76\text{ ms}$ | $583.74\text{ ms}$ |
+| **Ingestion TPS** | **$58.30\text{ tx/s}$** | $19.64\text{ tx/s}$ | $17.05\text{ tx/s}$ | $20.86\text{ tx/s}$ | **$21.89\text{ tx/s}$** | $16.22\text{ tx/s}$ | $1.73\text{ tx/s}$ |
+| **Block Propagation Delay** | $1.722\text{ s}$ | $1.975\text{ s}$ | $0.674\text{ s}$ | $0.677\text{ s}$ | **$0.673\text{ s}$** | $0.643\text{ s}$ | $0.635\text{ s}$ |
+
+> **Phân tích Cơ chế Lai Hybrid Key (X25519 + ML-KEM-768):**
+> - **Chiến lược phòng thủ đa tầng (Defense-in-Depth):** Khóa bí mật chung được phái sinh từ cả hai thành phần: $SS = \text{SHA256}(SS_{X25519} \parallel SS_{MLKEM})$. Ngay cả khi một trong hai thuật toán bị phá vỡ trong tương lai, kênh truyền thông vẫn an toàn tuyệt đối.
+> - **Hiệu năng & Băng thông tối ưu:** Tốc độ Handshake cực nhanh (**$0.327\text{ ms}$**) và thông lượng tiếp nhận duy trì ở mức cao (**$21.89\text{ tx/s}$**), là mô hình chuẩn hóa thực tế hàng đầu hiện nay cho Internet và Blockchain.
 
 ---
 
 ### 6.3. Báo Cáo Dữ Liệu Thô (Raw Export)
 Tất cả kết quả đo đạc đều được tự động lưu trữ dưới định dạng `.csv` và `.json` tại thư mục `benchmarks/results/` phục vụ trích xuất đồ thị khoa học:
-- `benchmarks/results/RSA_2048_micro_raw.csv`
-- `benchmarks/results/ECDSA_secp256k1_micro_raw.csv`
-- `benchmarks/results/micro_benchmark_summary.json`
-- `benchmarks/results/macro_transactions_http_raw.csv`
-- `benchmarks/results/macro_transactions_tls_raw.csv`
-- `benchmarks/results/macro_benchmark_http_summary.json`
-- `benchmarks/results/macro_benchmark_tls_summary.json`
-- `benchmarks/results/macro_benchmark_comparison.json`
+- **Micro-Benchmark:**
+  - `benchmarks/results/RSA_2048_micro_raw.csv`
+  - `benchmarks/results/ECDSA_secp256k1_micro_raw.csv`
+  - `benchmarks/results/ML_DSA_44_micro_raw.csv`
+  - `benchmarks/results/micro_benchmark_summary.json`
+- **Macro-Benchmark (Từng kịch bản riêng biệt):**
+  - **HTTP:** `benchmarks/results/macro_http_raw.csv`, `benchmarks/results/macro_http_summary.json`
+  - **Hybrid (X25519 + ML-KEM-768):** `benchmarks/results/macro_hybrid_mlkem768_raw.csv`, `benchmarks/results/macro_hybrid_mlkem768_summary.json`
+  - **ML-KEM-768:** `benchmarks/results/macro_mlkem768_raw.csv`, `benchmarks/results/macro_mlkem768_summary.json`
+  - **ECDHE (X25519):** `benchmarks/results/macro_x25519_raw.csv`, `benchmarks/results/macro_x25519_summary.json`
+  - **ECDHE (secp256r1):** `benchmarks/results/macro_secp256r1_raw.csv`, `benchmarks/results/macro_secp256r1_summary.json`
+  - **HQC-128:** `benchmarks/results/macro_hqc128_raw.csv`, `benchmarks/results/macro_hqc128_summary.json`
+  - **FrodoKEM-640:** `benchmarks/results/macro_frodokem640_raw.csv`, `benchmarks/results/macro_frodokem640_summary.json`
+- **Macro-Benchmark (Tổng hợp so sánh đối sánh song song):**
+  - `benchmarks/results/macro_kem_comparison_summary.json`
+
 

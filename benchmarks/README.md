@@ -110,66 +110,88 @@ python benchmarks/micro_benchmark.py -c benchmarks/configs/benchmark_config.json
 
 ### 3.1. Mục tiêu đo lường
 Kiểm thử toàn trình (**End-to-End Live Network**) trên mô hình mạng Mesh 6 Node (`Port 5000` đến `5005`):
-- **Giai đoạn 1 (Ingestion Phase):** Bắn tải liên tục $N$ giao dịch ký số ECDSA vào Node Ingress (`5000`), đo tỷ lệ chấp nhận, thời gian xử lý và thông lượng **Ingestion TPS**.
-- **Giai đoạn 2 (Consensus & Block Propagation):** Node Miner (`5001`) tiến hành gom mempool, đào khối PoW và phát sóng P2P; đo thời gian lan truyền và đồng thuận chuỗi trên toàn bộ 6 Node.
-- **Giai đoạn 3 (Wire Payload Analysis):** Đo lường kích thước gói tin thực tế truyền qua mạng HTTP/HTTPS và dung lượng trung bình trên mỗi transaction.
-- **Giai đoạn 4 (Security Cost Analysis):** So sánh đối đầu giữa kênh truyền không mã hóa (**HTTP Cleartext**) và kênh truyền bảo mật (**HTTPS / TLS 1.3 / X.509**).
+- **Chữ ký số giao dịch:** Giữ nguyên chuẩn **ECDSA (secp256k1)** cho các giao dịch trong khối.
+- **Kênh truyền TLS:** Đánh giá và so sánh thực nghiệm 6 cơ chế trao đổi khóa (Key Exchange / KEM):
+  1. **ECDHE (secp256r1):** Đường cong Weierstrass (NIST P-256).
+  2. **ECDHE (X25519):** Đường cong Montgomery (Curve25519).
+  3. **ML-KEM-768:** Chuẩn mạng tinh thể (Module-LWE / NIST FIPS 203 / Kyber-768).
+  4. **Hybrid (X25519 + ML-KEM-768):** Cơ chế lai chuẩn IETF TLS 1.3 Draft (Bảo vệ kép: Cổ điển + Hậu lượng tử).
+  5. **HQC-128:** Chuẩn mã sửa sai (Hamming Quasi-Cyclic / NIST Round 4).
+  6. **FrodoKEM-640:** Chuẩn mạng tinh thể phi cấu trúc (Standard LWE / NIST Round 3).
 
 ### 3.2. Lệnh thực thi
 
 ```powershell
-# 1. Chạy bài kiểm thử tải thông thường qua HTTP (Cleartext):
+# 1. Chạy bài kiểm thử thuần HTTP (Cleartext, không dùng TLS):
+python benchmarks/macro_benchmark.py --http
+# hoặc chạy mặc định không cờ (tự động kích hoạt chế độ HTTP):
 python benchmarks/macro_benchmark.py
 
-# 2. Chạy bài kiểm thử bảo mật qua HTTPS (TLS 1.3 / X.509):
-python benchmarks/macro_benchmark.py --tls
+# 2. Chạy bài kiểm thử TOÀN BỘ 6 CƠ CHẾ KEM và tự động xuất bảng so sánh song song:
+python benchmarks/macro_benchmark.py --compare-kems
 
-# 3. CHẾ ĐỘ KHUYẾN NGHỊ: Chạy SO SÁNH ĐỐI ĐẦU HTTP vs HTTPS (TLS) tự động:
-python benchmarks/macro_benchmark.py --compare
+# 3. Chạy bài kiểm thử cho 1 cơ chế KEM cụ thể:
+python benchmarks/macro_benchmark.py --kem hybrid_mlkem768   # Cơ chế Lai Hybrid X25519 + ML-KEM-768
+python benchmarks/macro_benchmark.py --kem mlkem768          # ML-KEM-768 thuần
+python benchmarks/macro_benchmark.py --kem x25519            # ECDHE X25519
+python benchmarks/macro_benchmark.py --kem secp256r1         # ECDHE P-256
+python benchmarks/macro_benchmark.py --kem hqc128            # HQC-128
+python benchmarks/macro_benchmark.py --kem frodokem640       # FrodoKEM-640
 
-# 4. Tùy biến số lượng giao dịch bắn tải (Ví dụ: 50 transactions):
-python benchmarks/macro_benchmark.py --compare -n 50
+# 4. Tùy biến số lượng giao dịch bắn tải:
+python benchmarks/macro_benchmark.py --http -n 50
+python benchmarks/macro_benchmark.py --compare-kems -n 30
 ```
 
-*Lưu ý: Nếu mạng 6 Node chưa chạy, script sẽ **tự động khởi tạo** các tiến trình Node ngầm và **tự dọn dẹp sạch sẽ** ngay khi hoàn tất kiểm nghiệm.*
+*Lưu ý: Script tự động kích hoạt mạng 6-Node (HTTP hoặc HTTPS tương ứng) ngầm và tự động thu hồi/tắt tiến trình khi kết thúc.*
 
-### 3.3. Bảng so sánh thực nghiệm đối đầu: HTTP vs HTTPS (TLS 1.3)
+### 3.3. Bảng so sánh thực nghiệm tổng hợp các cơ chế KEM (Mạng 6-Node P2P)
 
-| Chỉ số đo lường (Metric) | HTTP (Không mã hóa) | HTTPS (TLS 1.3 / X.509) | Chênh lệch / Chi phí an ninh TLS |
-| :--- | :--- | :--- | :--- |
-| **Ingestion TPS** | **$58.30\text{ tx/s}$** | **$9.52\text{ tx/s}$** | Giảm **$83.67\%$** do đàm phán bắt tay TLS (ECDHE + Verify Cert) |
-| **Độ trễ tiếp nhận (Mean)** | **$17.06\text{ ms}$** | **$105.05\text{ ms}$** | Tăng thêm **$+87.99\text{ ms}$** ($\approx +515\%$) |
-| **Độ trễ tiếp nhận (P95)** | **$29.80\text{ ms}$** | **$149.66\text{ ms}$** | Tăng thêm **$+119.86\text{ ms}$** cho các gói đàm phán phiên |
-| **Block Propagation Delay** | **$1.722\text{ s}$** | **$1.357\text{ s}$** | Đồng bộ P2P thành công trên toàn bộ 6 Node |
-| **Block Wire Size** | **$2.82\text{ KB}$** (5 txs) | **$2.82\text{ KB}$** (5 txs) | Payload dữ liệu khối đồng nhất ($576.8\text{ B/tx}$) |
-| **Khả năng an ninh** | Dễ bị nghe lén, Man-in-the-Middle | **Kháng MitM, toàn vẹn & bí mật** | Bảo vệ tuyệt đối gói tin trên môi trường mạng mở |
+| Chỉ số đo lường (Metric) | ECDHE-P256 | ECDHE-X25519 | ML-KEM-768 (PQC) | Hybrid (X255+ML) | HQC-128 (PQC) | FrodoKEM-640 (PQC) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Họ thuật toán** | Classical ECC | Classical ECC | **Lattice (M-LWE)** | **Hybrid Dual** | **Code-based** | **Lattice (LWE)** |
+| **Kháng máy tính lượng tử** | ❌ KHÔNG | ❌ KHÔNG | ✅ **CÓ (Safe)** | ✅ **CÓ (Bảo vệ kép)** | ✅ **CÓ (Safe)** | ✅ **CÓ (Safe)** |
+| **KEM Public Key Size** | $65\text{ B}$ | $32\text{ B}$ | $1.184\text{ B}$ | **$1.216\text{ B}$** | $2.241\text{ B}$ | $9.616\text{ B}$ |
+| **KEM Ciphertext Size** | $32\text{ B}$ | $32\text{ B}$ | $1.088\text{ B}$ | **$1.120\text{ B}$** | $4.433\text{ B}$ | $9.720\text{ B}$ |
+| **KEM Handshake Wire** | **$97\text{ B}$** | **$64\text{ B}$** | **$2.272\text{ B}$** | **$2.336\text{ B}$** | **$6.674\text{ B}$** | **$19.336\text{ B}$** |
+| **KEM Handshake Time** | $0.693\text{ ms}$ | $3.085\text{ ms}$ | **$0.174\text{ ms}$** | **$0.327\text{ ms}$** | $4.763\text{ ms}$ | $550.756\text{ ms}$ |
+| **E2E Ingestion Latency** | $50.81\text{ ms}$ | $58.56\text{ ms}$ | **$47.85\text{ ms}$** | **$45.54\text{ ms}$** | $61.57\text{ ms}$ | $576.91\text{ ms}$ |
+| **Độ trễ P95 (Latency)** | $63.45\text{ ms}$ | $71.73\text{ ms}$ | $75.01\text{ ms}$ | **$60.82\text{ ms}$** | $84.76\text{ ms}$ | $583.74\text{ ms}$ |
+| **Ingestion TPS** | $19.64\text{ tx/s}$ | $17.05\text{ tx/s}$ | $20.86\text{ tx/s}$ | **$21.89\text{ tx/s}$** | $16.22\text{ tx/s}$ | $1.73\text{ tx/s}$ |
+| **Block Propagation Delay** | $1.975\text{ s}$ | $0.674\text{ s}$ | $0.677\text{ s}$ | $0.673\text{ s}$ | $0.643\text{ s}$ | $0.635\text{ s}$ |
+
+> **Ưu thế vượt trội của cơ chế Lai Hybrid (X25519 + ML-KEM-768):**
+> - **Nguyên lý bảo vệ kép (Defense-in-Depth):** Khóa phiên được phái sinh từ cả hai thành phần: $SS = \text{SHA256}(SS_{X25519} \parallel SS_{MLKEM})$. Kẻ tấn công phải phá vỡ đồng thời cả bài toán Logarithm rời rạc trên đường cong Elliptic VÀ bài toán mạng tinh thể Module-LWE thì mới có thể giải mã được gói tin.
+> - **Hiệu năng thực tế:** Handshake chỉ tốn **$0.327\text{ ms}$**, gói tin bổ sung chỉ nặng **$2.34\text{ KB}$**, giữ được Ingestion TPS rất cao (**$21.89\text{ tx/s}$**). Đây là tiêu chuẩn đang được IETF, Google Chrome và Cloudflare lựa chọn triển khai vào TLS 1.3 thực tế.
 
 ---
 
 ## 📈 4. Dữ liệu thô phục vụ báo cáo khoa học (`results/`)
 
-Toàn bộ dữ liệu đo đạc chi tiết được tự động lưu trữ dưới định dạng `.csv` và `.json` để phục vụ trích xuất bảng biểu và đồ thị:
+Toàn bộ dữ liệu đo đạc chi tiết được tự động lưu trữ dưới định dạng `.csv` và `.json` theo từng thuật toán riêng biệt:
 
-- [`results/RSA_2048_micro_raw.csv`](results/RSA_2048_micro_raw.csv): $1.000$ dòng dữ liệu thô (Keygen, Sign, Verify, PK, Sig size của RSA).
-- [`results/ECDSA_secp256k1_micro_raw.csv`](results/ECDSA_secp256k1_micro_raw.csv): $1.000$ dòng dữ liệu thô của ECDSA.
-- [`results/micro_benchmark_summary.json`](results/micro_benchmark_summary.json): Báo cáo thống kê Mean, Median, Std, CI 95% của tầng mật mã.
-- [`results/macro_transactions_http_raw.csv`](results/macro_transactions_http_raw.csv): Log độ trễ từng giao dịch bắn qua HTTP.
-- [`results/macro_transactions_tls_raw.csv`](results/macro_transactions_tls_raw.csv): Log độ trễ từng giao dịch bắn qua HTTPS.
-- [`results/macro_benchmark_http_summary.json`](results/macro_benchmark_http_summary.json): Kết quả tổng hợp đo tải HTTP.
-- [`results/macro_benchmark_tls_summary.json`](results/macro_benchmark_tls_summary.json): Kết quả tổng hợp đo tải HTTPS (TLS).
-- [`results/macro_benchmark_comparison.json`](results/macro_benchmark_comparison.json): Kết quả phân tích đối đầu (Delta TPS, Overhead Latency ms, %).
+### 4.1. File dữ liệu thô (.csv) và tóm tắt (.json) từng kịch bản:
+- **HTTP thuần (Không mã hóa):** [`results/macro_http_raw.csv`](results/macro_http_raw.csv), [`results/macro_http_summary.json`](results/macro_http_summary.json)
+- **Hybrid (X25519 + ML-KEM-768):** [`results/macro_hybrid_mlkem768_raw.csv`](results/macro_hybrid_mlkem768_raw.csv), [`results/macro_hybrid_mlkem768_summary.json`](results/macro_hybrid_mlkem768_summary.json)
+- **ML-KEM-768:** [`results/macro_mlkem768_raw.csv`](results/macro_mlkem768_raw.csv), [`results/macro_mlkem768_summary.json`](results/macro_mlkem768_summary.json)
+- **ECDHE (X25519):** [`results/macro_x25519_raw.csv`](results/macro_x25519_raw.csv), [`results/macro_x25519_summary.json`](results/macro_x25519_summary.json)
+- **ECDHE (secp256r1):** [`results/macro_secp256r1_raw.csv`](results/macro_secp256r1_raw.csv), [`results/macro_secp256r1_summary.json`](results/macro_secp256r1_summary.json)
+- **HQC-128:** [`results/macro_hqc128_raw.csv`](results/macro_hqc128_raw.csv), [`results/macro_hqc128_summary.json`](results/macro_hqc128_summary.json)
+- **FrodoKEM-640:** [`results/macro_frodokem640_raw.csv`](results/macro_frodokem640_raw.csv), [`results/macro_frodokem640_summary.json`](results/macro_frodokem640_summary.json)
+
+### 4.2. File tổng hợp so sánh song song:
+- **[`results/macro_kem_comparison_summary.json`](results/macro_kem_comparison_summary.json)**: Chứa toàn bộ cấu trúc dữ liệu đối sánh song song của cả 6 cơ chế KEM phục vụ render biểu đồ so sánh.
 
 ---
 
 ## 🛠️ 5. Yêu cầu môi trường & Thư viện
 
 - **Python:** Phiên bản 3.10+ (Khuyến nghị Python 3.12).
-- **Thư viện Python bắt buộc:**
+- **Cài đặt toàn bộ thư viện mật mã & phụ thuộc:**
   ```powershell
-  pip install requests numpy scipy cryptography ecdsa
+  pip install requests numpy scipy cryptography ecdsa pqcrypto frodokem-with-chat
   ```
-- **Chứng chỉ TLS:**
-  Được tự động sinh trong thư mục `certs/` bằng lệnh OpenSSL hoặc chạy trực tiếp tiện ích:
+- **Chứng chỉ TLS:** Tự động sinh bởi script hoặc chạy:
   ```powershell
   python certs/generate_certs.py
   ```

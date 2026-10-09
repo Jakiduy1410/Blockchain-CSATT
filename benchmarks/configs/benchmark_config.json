@@ -20,6 +20,15 @@
     "timeout_seconds": 30,
     "use_tls": false,
     "ssl_cert": "certs/server.crt",
-    "ssl_key": "certs/server.key"
+    "ssl_key": "certs/server.key",
+    "available_kems": [
+      "secp256r1",
+      "x25519",
+      "mlkem768",
+      "hybrid_mlkem768",
+      "hqc128",
+      "frodokem640"
+    ],
+    "default_kem": "x25519"
   }
 }

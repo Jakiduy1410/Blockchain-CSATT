@@ -1,0 +1,43 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with Hybrid (X25519 + ML-KEM-768))",
+  "kem_key": "hybrid_mlkem768",
+  "kem_metadata": {
+    "name": "Hybrid (X25519 + ML-KEM-768)",
+    "category": "Hybrid Post-Quantum",
+    "subfamily": "IETF TLS 1.3 Draft (Dual Defense)",
+    "nist_level": "Classical 128-bit + PQC Category 3",
+    "quantum_resistant": true,
+    "pk_size": 1216,
+    "ct_size": 1120,
+    "shared_secret_size": 32
+  },
+  "tx_signature_scheme": "ECDSA (secp256k1)",
+  "timestamp": "2026-10-09 12:57:36",
+  "workload": {
+    "total_tx_sent": 3,
+    "accepted_tx": 3,
+    "success_rate_pct": 100.0
+  },
+  "performance": {
+    "total_duration_seconds": 0.137,
+    "e2e_ingestion_tps": 21.89,
+    "handshake_latency_mean_ms": 0.327,
+    "e2e_latency_mean_ms": 45.54,
+    "e2e_latency_median_ms": 38.0,
+    "e2e_latency_p95_ms": 60.82,
+    "e2e_latency_min_ms": 35.27,
+    "e2e_latency_max_ms": 63.35
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": true,
+    "block_propagation_delay_seconds": 0.673
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 2002,
+    "block_wire_kb": 1.96,
+    "tx_count_in_block": 4,
+    "average_bytes_per_tx": 500.5,
+    "kem_handshake_wire_bytes": 2336
+  }
+}

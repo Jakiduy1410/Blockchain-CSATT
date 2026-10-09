@@ -1,0 +1,4 @@
+Tx_Index,KEM_Algorithm,KEM_Handshake_ms,HTTP_Ingest_ms,E2E_Latency_ms,KEM_PK_Bytes,KEM_CT_Bytes,Total_KEM_Wire_Bytes,HTTP_Status,Result
+1,ECDHE (secp256r1),1.815,36.132,37.947,65,32,97,201,ACCEPTED
+2,ECDHE (secp256r1),0.137,64.867,65.005,65,32,97,201,ACCEPTED
+3,ECDHE (secp256r1),0.127,49.365,49.492,65,32,97,201,ACCEPTED

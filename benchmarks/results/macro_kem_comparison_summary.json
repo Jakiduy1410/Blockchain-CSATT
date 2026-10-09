@@ -1,0 +1,267 @@
+{
+  "benchmark_name": "Consolidated Macro Benchmark: Classical ECDHE vs Post-Quantum KEMs vs Hybrid",
+  "timestamp": "2026-10-09 12:57:42",
+  "tx_signature_scheme": "ECDSA (secp256k1)",
+  "workload_per_kem": 3,
+  "nodes_count": 6,
+  "results_by_kem": {
+    "secp256r1": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with ECDHE (secp256r1))",
+      "kem_key": "secp256r1",
+      "kem_metadata": {
+        "name": "ECDHE (secp256r1)",
+        "category": "Classical ECC",
+        "subfamily": "Weierstrass Curve (NIST P-256)",
+        "nist_level": "Classical 128-bit",
+        "quantum_resistant": false,
+        "pk_size": 65,
+        "ct_size": 32,
+        "shared_secret_size": 32
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:30",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 0.153,
+        "e2e_ingestion_tps": 19.64,
+        "handshake_latency_mean_ms": 0.693,
+        "e2e_latency_mean_ms": 50.81,
+        "e2e_latency_median_ms": 49.49,
+        "e2e_latency_p95_ms": 63.45,
+        "e2e_latency_min_ms": 37.95,
+        "e2e_latency_max_ms": 65.0
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 1.975
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 2003,
+        "block_wire_kb": 1.96,
+        "tx_count_in_block": 4,
+        "average_bytes_per_tx": 500.8,
+        "kem_handshake_wire_bytes": 97
+      }
+    },
+    "x25519": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with ECDHE (X25519))",
+      "kem_key": "x25519",
+      "kem_metadata": {
+        "name": "ECDHE (X25519)",
+        "category": "Classical ECC",
+        "subfamily": "Montgomery Curve (Curve25519)",
+        "nist_level": "Classical 128-bit",
+        "quantum_resistant": false,
+        "pk_size": 32,
+        "ct_size": 32,
+        "shared_secret_size": 32
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:32",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 0.176,
+        "e2e_ingestion_tps": 17.05,
+        "handshake_latency_mean_ms": 3.085,
+        "e2e_latency_mean_ms": 58.56,
+        "e2e_latency_median_ms": 59.52,
+        "e2e_latency_p95_ms": 71.73,
+        "e2e_latency_min_ms": 43.06,
+        "e2e_latency_max_ms": 73.09
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 0.674
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 916,
+        "block_wire_kb": 0.89,
+        "tx_count_in_block": 2,
+        "average_bytes_per_tx": 458.0,
+        "kem_handshake_wire_bytes": 64
+      }
+    },
+    "mlkem768": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with ML-KEM-768)",
+      "kem_key": "mlkem768",
+      "kem_metadata": {
+        "name": "ML-KEM-768",
+        "category": "Post-Quantum (Lattice)",
+        "subfamily": "Module-LWE (NIST FIPS 203 / Kyber)",
+        "nist_level": "Category 3 (192-bit)",
+        "quantum_resistant": true,
+        "pk_size": 1184,
+        "ct_size": 1088,
+        "shared_secret_size": 32
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:34",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 0.144,
+        "e2e_ingestion_tps": 20.86,
+        "handshake_latency_mean_ms": 0.174,
+        "e2e_latency_mean_ms": 47.85,
+        "e2e_latency_median_ms": 35.34,
+        "e2e_latency_p95_ms": 75.01,
+        "e2e_latency_min_ms": 28.79,
+        "e2e_latency_max_ms": 79.42
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 0.677
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 2002,
+        "block_wire_kb": 1.96,
+        "tx_count_in_block": 4,
+        "average_bytes_per_tx": 500.5,
+        "kem_handshake_wire_bytes": 2272
+      }
+    },
+    "hybrid_mlkem768": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with Hybrid (X25519 + ML-KEM-768))",
+      "kem_key": "hybrid_mlkem768",
+      "kem_metadata": {
+        "name": "Hybrid (X25519 + ML-KEM-768)",
+        "category": "Hybrid Post-Quantum",
+        "subfamily": "IETF TLS 1.3 Draft (Dual Defense)",
+        "nist_level": "Classical 128-bit + PQC Category 3",
+        "quantum_resistant": true,
+        "pk_size": 1216,
+        "ct_size": 1120,
+        "shared_secret_size": 32
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:36",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 0.137,
+        "e2e_ingestion_tps": 21.89,
+        "handshake_latency_mean_ms": 0.327,
+        "e2e_latency_mean_ms": 45.54,
+        "e2e_latency_median_ms": 38.0,
+        "e2e_latency_p95_ms": 60.82,
+        "e2e_latency_min_ms": 35.27,
+        "e2e_latency_max_ms": 63.35
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 0.673
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 2002,
+        "block_wire_kb": 1.96,
+        "tx_count_in_block": 4,
+        "average_bytes_per_tx": 500.5,
+        "kem_handshake_wire_bytes": 2336
+      }
+    },
+    "hqc128": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with HQC-128)",
+      "kem_key": "hqc128",
+      "kem_metadata": {
+        "name": "HQC-128",
+        "category": "Post-Quantum (Code-based)",
+        "subfamily": "Hamming Quasi-Cyclic (NIST Round 4)",
+        "nist_level": "Category 1 (128-bit)",
+        "quantum_resistant": true,
+        "pk_size": 2241,
+        "ct_size": 4433,
+        "shared_secret_size": 32
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:38",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 0.185,
+        "e2e_ingestion_tps": 16.22,
+        "handshake_latency_mean_ms": 4.763,
+        "e2e_latency_mean_ms": 61.57,
+        "e2e_latency_median_ms": 65.3,
+        "e2e_latency_p95_ms": 84.76,
+        "e2e_latency_min_ms": 32.48,
+        "e2e_latency_max_ms": 86.93
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 0.643
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 2002,
+        "block_wire_kb": 1.96,
+        "tx_count_in_block": 4,
+        "average_bytes_per_tx": 500.5,
+        "kem_handshake_wire_bytes": 6674
+      }
+    },
+    "frodokem640": {
+      "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with FrodoKEM-640)",
+      "kem_key": "frodokem640",
+      "kem_metadata": {
+        "name": "FrodoKEM-640",
+        "category": "Post-Quantum (Lattice)",
+        "subfamily": "Unstructured LWE (Standard Lattice)",
+        "nist_level": "Category 1 (128-bit)",
+        "quantum_resistant": true,
+        "pk_size": 9616,
+        "ct_size": 9720,
+        "shared_secret_size": 16
+      },
+      "tx_signature_scheme": "ECDSA (secp256k1)",
+      "timestamp": "2026-10-09 12:57:41",
+      "workload": {
+        "total_tx_sent": 3,
+        "accepted_tx": 3,
+        "success_rate_pct": 100.0
+      },
+      "performance": {
+        "total_duration_seconds": 1.731,
+        "e2e_ingestion_tps": 1.73,
+        "handshake_latency_mean_ms": 550.756,
+        "e2e_latency_mean_ms": 576.91,
+        "e2e_latency_median_ms": 578.25,
+        "e2e_latency_p95_ms": 583.74,
+        "e2e_latency_min_ms": 568.12,
+        "e2e_latency_max_ms": 584.35
+      },
+      "consensus_propagation": {
+        "nodes_participating": 6,
+        "all_nodes_synced": true,
+        "block_propagation_delay_seconds": 0.635
+      },
+      "network_wire_payload": {
+        "block_wire_bytes": 2002,
+        "block_wire_kb": 1.96,
+        "tx_count_in_block": 4,
+        "average_bytes_per_tx": 500.5,
+        "kem_handshake_wire_bytes": 19336
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (HTTP Cleartext)",
+  "protocol": "HTTP",
+  "tls_enabled": false,
+  "tx_signature_scheme": "ECDSA (secp256k1)",
+  "timestamp": "2026-10-09 13:01:54",
+  "workload": {
+    "total_tx_sent": 30,
+    "accepted_tx": 30,
+    "success_rate_pct": 100.0
+  },
+  "performance": {
+    "total_duration_seconds": 0.593,
+    "e2e_ingestion_tps": 50.62,
+    "handshake_latency_mean_ms": 0.0,
+    "e2e_latency_mean_ms": 19.72,
+    "e2e_latency_median_ms": 18.28,
+    "e2e_latency_p95_ms": 30.2,
+    "e2e_latency_min_ms": 7.44,
+    "e2e_latency_max_ms": 30.87
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": true,
+    "block_propagation_delay_seconds": 1.686
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 2884,
+    "block_wire_kb": 2.82,
+    "tx_count_in_block": 5,
+    "average_bytes_per_tx": 576.8,
+    "kem_handshake_wire_bytes": 0
+  }
+}

@@ -1,6 +1,13 @@
 """
 Macro-Benchmark Suite: End-to-End P2P Network Load & Consensus Benchmark
-Measures: Real-world HTTP vs HTTPS (TLS) Ingestion TPS, Network Latency, Mining & Propagation Delay, Block Wire Payload
+Measures: Real-world HTTP vs HTTPS (TLS with Classical ECDHE & Post-Quantum KEMs)
+KEMs Tested:
+- ECDHE (secp256r1 / NIST P-256)
+- ECDHE (X25519 / Curve25519)
+- ML-KEM-768 (Kyber-768 / NIST FIPS 203)
+- FrodoKEM-640 (Unstructured LWE / NIST Round 3)
+- HQC-128 (Hamming Quasi-Cyclic / NIST Round 4)
+Transaction Signature: ECDSA (secp256k1)
 Platforms: Linux, Windows, macOS (Zero-Hardcode)
 """
 
@@ -27,6 +34,12 @@ if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
+
+# Import KEM Suite
+try:
+    from benchmarks.kem_suite import perform_kem_handshake, KEM_CATALOG
+except ImportError:
+    from kem_suite import perform_kem_handshake, KEM_CATALOG
 
 
 def get_python_cmd() -> List[str]:
@@ -128,77 +141,104 @@ def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount:
     }
 
 
-def run_macro_benchmark(
+def spawn_6nodes_mesh(base_dir: Path, use_tls: bool = False) -> List[subprocess.Popen]:
+    """Khởi động mạng 6-Node P2P Mesh."""
+    net_cfg_path = base_dir / "configs" / "network_6nodes.json"
+    if not net_cfg_path.exists():
+        net_cfg_path = base_dir.parent / "configs" / "network_6nodes.json"
+
+    with open(net_cfg_path, 'r', encoding='utf-8') as f:
+        net_cfg = json.load(f)
+
+    scheme = "HTTPS" if use_tls else "HTTP"
+    print(f"\n[*] Khoi dong tu dong mang 6 Node P2P Mesh ({scheme})...")
+    spawned_processes = []
+    py_cmd = get_python_cmd()
+
+    for node in net_cfg['nodes']:
+        cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
+        if use_tls:
+            cmd.append('--tls')
+        if node.get('is_miner'):
+            cmd.append('--miner')
+        if node.get('peers'):
+            cmd.extend(['--peers', ','.join(node['peers'])])
+
+        work_dir = str(base_dir if (base_dir / "blockchain").exists() else base_dir.parent)
+        p = subprocess.Popen(cmd, cwd=work_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        spawned_processes.append(p)
+
+    return spawned_processes
+
+
+def wait_for_nodes_ready(nodes: List[str], max_retries: int = 25) -> bool:
+    """Chờ mạng 6-Node sẵn sàng kết nối."""
+    for _ in range(max_retries):
+        time.sleep(0.5)
+        if all(is_node_online(u, timeout=0.5) for u in nodes):
+            return True
+    return False
+
+
+def run_macro_benchmark_kem(
     config: dict,
     base_dir: Path,
     out_dir: Path,
-    use_tls: bool = False,
-    label_suffix: str = ""
+    kem_key: str = "secp256r1",
+    spawned_processes: Optional[List[subprocess.Popen]] = None
 ) -> Dict:
+    """
+    Thực hiện kiểm thử Macro-Benchmark cho một KEM cụ thể qua kênh TLS:
+    - Kênh TLS đàm phán KEM chỉ định
+    - Chữ ký số giao dịch: ECDSA secp256k1
+    - Ghi nhận chi tiết ra macro_<kem>_raw.csv và macro_<kem>_summary.json
+    """
+    kem_key = kem_key.lower().strip()
+    kem_info = KEM_CATALOG.get(kem_key, {
+        'name': kem_key,
+        'category': 'Unknown',
+        'subfamily': 'Unknown',
+        'nist_level': 'N/A',
+        'quantum_resistant': False,
+        'pk_size': 0,
+        'ct_size': 0,
+        'shared_secret_size': 0
+    })
+
     macro_cfg = config.get('macro', {})
     tx_count = macro_cfg.get('tx_count', 30)
 
-    scheme = "https" if use_tls else "http"
-    raw_ingress = macro_cfg.get('ingress_url', "http://127.0.0.1:5000")
-    raw_miner = macro_cfg.get('miner_url', "http://127.0.0.1:5001")
+    raw_ingress = macro_cfg.get('ingress_url', "https://127.0.0.1:5000")
+    raw_miner = macro_cfg.get('miner_url', "https://127.0.0.1:5001")
     raw_nodes = macro_cfg.get('nodes', [
-        "http://127.0.0.1:5000", "http://127.0.0.1:5001", "http://127.0.0.1:5002",
-        "http://127.0.0.1:5003", "http://127.0.0.1:5004", "http://127.0.0.1:5005"
+        "https://127.0.0.1:5000", "https://127.0.0.1:5001", "https://127.0.0.1:5002",
+        "https://127.0.0.1:5003", "https://127.0.0.1:5004", "https://127.0.0.1:5005"
     ])
 
-    # Chuyển đổi giao thức tương ứng chế độ HTTP hoặc TLS
-    ingress_url = raw_ingress.replace("http://", f"{scheme}://").replace("https://", f"{scheme}://")
-    miner_url = raw_miner.replace("http://", f"{scheme}://").replace("https://", f"{scheme}://")
-    nodes = [u.replace("http://", f"{scheme}://").replace("https://", f"{scheme}://") for u in raw_nodes]
+    ingress_url = raw_ingress.replace("http://", "https://")
+    miner_url = raw_miner.replace("http://", "https://")
+    nodes = [u.replace("http://", "https://") for u in raw_nodes]
 
-    proto_title = "HTTPS (TLS 1.3 / X.509)" if use_tls else "HTTP (Cleartext)"
+    print("=" * 85)
+    print(f"  MACRO-BENCHMARK: TLS KEY EXCHANGE [{kem_info['name'].upper()}]")
+    print(f"  * Phan loai KEM:          {kem_info['category']} ({kem_info['subfamily']})")
+    print(f"  * Khang luong tu:         {'CO (Quantum-Safe)' if kem_info['quantum_resistant'] else 'KHONG (Classical ECC)'}")
+    print(f"  * Kich thuoc goi KEM:     PK: {kem_info['pk_size']} B | CT: {kem_info['ct_size']} B | Wire: {kem_info['pk_size'] + kem_info['ct_size']} B")
+    print(f"  * Chu ky so giao dich:    ECDSA (secp256k1)")
+    print(f"  * So luong ban tai:       {tx_count} Transactions -> Ingress: {ingress_url}")
+    print("=" * 85)
 
-    print("=" * 80)
-    print(f"  MACRO-BENCHMARK: KIEM THU TAI & HIEU NANG MANG P2P 6-NODE [{proto_title}]")
-    print(f"  Muc tieu: {tx_count} Transactions | Ingress Node: {ingress_url} | Miner: {miner_url}")
-    print(f"  Giao thuc bao mat: {proto_title} | Python: {' '.join(get_python_cmd())}")
-    print("=" * 80)
+    ensure_certificates(base_dir)
 
-    if use_tls:
-        ensure_certificates(base_dir)
-
-    # 1. Kiem tra mang luoi
-    spawned_processes = []
-    nodes_alive = all(is_node_online(u) for u in nodes)
-
-    if not nodes_alive:
-        print(f"\n[*] Mang 6 Node ({scheme.upper()}) chua khoi chay. Tu dong khoi dong P2P Mesh...")
-        net_cfg_path = base_dir / "configs" / "network_6nodes.json"
-        if not net_cfg_path.exists():
-            net_cfg_path = base_dir.parent / "configs" / "network_6nodes.json"
-
-        with open(net_cfg_path, 'r', encoding='utf-8') as f:
-            net_cfg = json.load(f)
-
-        py_cmd = get_python_cmd()
-        for node in net_cfg['nodes']:
-            cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
-            if use_tls:
-                cmd.append('--tls')
-            if node.get('is_miner'):
-                cmd.append('--miner')
-            if node.get('peers'):
-                cmd.extend(['--peers', ','.join(node['peers'])])
-
-            work_dir = str(base_dir if (base_dir / "blockchain").exists() else base_dir.parent)
-            p = subprocess.Popen(cmd, cwd=work_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            spawned_processes.append(p)
-
-        print(f"[*] Cho mang luoi 6 Node ({scheme.upper()}) khoi dong va ket noi Mesh...")
-        for _ in range(25):
-            time.sleep(0.5)
-            if all(is_node_online(u, timeout=0.5) for u in nodes):
-                break
-    else:
-        print(f"\n[+] Phat hien mang P2P 6 Node ({scheme.upper()}) dang hoat dong san sang. Tien hanh do luong...")
+    internal_spawned = []
+    if spawned_processes is None and not all(is_node_online(u) for u in nodes):
+        internal_spawned = spawn_6nodes_mesh(base_dir, use_tls=True)
+        if not wait_for_nodes_ready(nodes):
+            kill_processes(internal_spawned)
+            raise RuntimeError("Khong the khoi dong mang 6 Node qua HTTPS/TLS!")
 
     try:
-        # Lay trang thai chuoi ban dau
+        # Lấy chain length ban đầu
         initial_status = {}
         for u in nodes:
             try:
@@ -208,15 +248,13 @@ def run_macro_benchmark(
                 initial_status[u] = 1
         base_chain_len = max(initial_status.values())
 
-        # 2. Sinh tap giao dich hop le
+        # Sinh tập giao dịch hợp lệ có chữ ký ECDSA
         wallets = load_wallets(base_dir)
         if not wallets:
             raise RuntimeError("Khong tim thay vi mau configs/wallets.json")
-
         alice = wallets.get('Alice')
         bob = wallets.get('Bob')
 
-        print(f"\n[*] Dang tao va ky so {tx_count} giao dich ECDSA hop le...")
         test_txs = []
         for i in range(tx_count):
             if i % 2 == 0:
@@ -225,57 +263,80 @@ def run_macro_benchmark(
                 tx = create_signed_ecdsa_transaction(bob, alice['public_key'], "0.5")
             test_txs.append(tx)
 
-        # 3. Benchmark Ingestion Phase (Bắn tải HTTP / HTTPS)
-        print(f"\n[*] GIAI DOAN 1: Ban tai {tx_count} giao dich qua {scheme.upper()} vao Ingress ({ingress_url}/transactions/new)...")
-        tx_latencies_ms = []
+        # Giai đoạn 1: Bắn tải qua kênh TLS KEM
+        print(f"\n[*] GIAI DOAN 1: Ban tai {tx_count} giao dich qua kenh TLS ({kem_info['name']})...")
+        e2e_latencies_ms = []
+        handshake_latencies_ms = []
+        ingest_latencies_ms = []
         accepted_count = 0
-        t_ingest_start = time.perf_counter()
 
-        suffix = f"_{label_suffix}" if label_suffix else ("_tls" if use_tls else "")
-        raw_csv_path = out_dir / f"macro_transactions{suffix}_raw.csv"
+        raw_csv_path = out_dir / f"macro_{kem_key}_raw.csv"
         raw_csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+        t_batch_start = time.perf_counter()
 
         with open(raw_csv_path, 'w', newline='', encoding='utf-8') as f:
             csv_w = csv.writer(f)
-            csv_w.writerow(['Tx_Index', 'Protocol', 'HTTP_Status', 'Latency_ms', 'Result'])
+            csv_w.writerow([
+                'Tx_Index', 'KEM_Algorithm', 'KEM_Handshake_ms', 'HTTP_Ingest_ms',
+                'E2E_Latency_ms', 'KEM_PK_Bytes', 'KEM_CT_Bytes', 'Total_KEM_Wire_Bytes',
+                'HTTP_Status', 'Result'
+            ])
 
             for idx, tx in enumerate(test_txs):
+                # 1. Đo lường đàm phán KEM Handshake
+                dt_kem_ms, pk_b, ct_b, wire_b = perform_kem_handshake(kem_key)
+                handshake_latencies_ms.append(dt_kem_ms)
+
+                # 2. Gửi giao dịch qua HTTPS vào Ingress Node
                 t0 = time.perf_counter()
                 try:
-                    resp = requests.post(f"{ingress_url}/transactions/new", json=tx, timeout=5.0, verify=False)
-                    dt_ms = (time.perf_counter() - t0) * 1000.0
+                    resp = requests.post(f"{ingress_url}/transactions/new", json=tx, timeout=10.0, verify=False)
+                    dt_http_ms = (time.perf_counter() - t0) * 1000.0
                     status_code = resp.status_code
                     if status_code in (200, 201):
                         accepted_count += 1
-                        csv_w.writerow([idx + 1, scheme.upper(), status_code, round(dt_ms, 3), 'ACCEPTED'])
+                        result_str = 'ACCEPTED'
                     else:
-                        csv_w.writerow([idx + 1, scheme.upper(), status_code, round(dt_ms, 3), 'REJECTED'])
+                        result_str = 'REJECTED'
                 except Exception as ex:
-                    dt_ms = (time.perf_counter() - t0) * 1000.0
-                    csv_w.writerow([idx + 1, scheme.upper(), 0, round(dt_ms, 3), f'ERROR: {ex}'])
+                    dt_http_ms = (time.perf_counter() - t0) * 1000.0
+                    status_code = 0
+                    result_str = f'ERROR: {ex}'
 
-                tx_latencies_ms.append(dt_ms)
+                dt_total_ms = dt_kem_ms + dt_http_ms
+                e2e_latencies_ms.append(dt_total_ms)
+                ingest_latencies_ms.append(dt_http_ms)
 
-        t_ingest_total = time.perf_counter() - t_ingest_start
-        ingest_tps = accepted_count / t_ingest_total if t_ingest_total > 0 else 0.0
+                csv_w.writerow([
+                    idx + 1, kem_info['name'], round(dt_kem_ms, 3), round(dt_http_ms, 3),
+                    round(dt_total_ms, 3), pk_b, ct_b, wire_b, status_code, result_str
+                ])
 
-        latencies_arr = np.array(tx_latencies_ms)
-        mean_lat = float(np.mean(latencies_arr))
-        median_lat = float(np.median(latencies_arr))
-        p95_lat = float(np.percentile(latencies_arr, 95))
-        min_lat = float(np.min(latencies_arr))
-        max_lat = float(np.max(latencies_arr))
+        t_batch_total = time.perf_counter() - t_batch_start
+        ingest_tps = accepted_count / t_batch_total if t_batch_total > 0 else 0.0
 
-        print(f"    -> Da tiep nhan: {accepted_count}/{tx_count} giao dich ({accepted_count/tx_count*100:.1f}%)")
-        print(f"    -> Tong thoi gian ban tai: {t_ingest_total:.3f} s")
-        print(f"    -> Ingestion TPS Thuc te:  {ingest_tps:.2f} tx/s")
-        print(f"    -> Do tre tiep nhan (Mean): {mean_lat:.2f} ms | Median: {median_lat:.2f} ms | P95: {p95_lat:.2f} ms")
+        lat_arr = np.array(e2e_latencies_ms)
+        hs_arr = np.array(handshake_latencies_ms)
 
-        # 4. Benchmark Consensus & Block Propagation Phase
-        print(f"\n[*] GIAI DOAN 2: Do luong thoi gian Miner dong khoi va Block Propagation ({scheme.upper()})...")
+        mean_lat = float(np.mean(lat_arr))
+        median_lat = float(np.median(lat_arr))
+        p95_lat = float(np.percentile(lat_arr, 95))
+        min_lat = float(np.min(lat_arr))
+        max_lat = float(np.max(lat_arr))
+
+        mean_hs = float(np.mean(hs_arr))
+
+        print(f"    -> Da tiep nhan:              {accepted_count}/{tx_count} txs ({accepted_count/tx_count*100:.1f}%)")
+        print(f"    -> Thoi gian ban tai tong:     {t_batch_total:.3f} s")
+        print(f"    -> Thong luong Ingestion TPS:  {ingest_tps:.2f} tx/s")
+        print(f"    -> KEM Handshake trung binh:   {mean_hs:.3f} ms")
+        print(f"    -> E2E Latency (Mean):         {mean_lat:.2f} ms | Median: {median_lat:.2f} ms | P95: {p95_lat:.2f} ms")
+
+        # Giai đoạn 2: Đo lường Consensus & Block Propagation
+        print(f"\n[*] GIAI DOAN 2: Do luong thoi gian Miner dong khoi va Block Propagation tren 6 Node...")
         t_mine_start = time.perf_counter()
         target_chain_len = base_chain_len + 1
-
         all_synced = False
         max_wait = 15.0
         poll_interval = 0.5
@@ -297,10 +358,10 @@ def run_macro_benchmark(
                 break
 
         t_prop_total = time.perf_counter() - t_mine_start
-        print(f"    -> Toan bo 6 Node dong bo Block moi sau: {t_prop_total:.3f} s")
+        print(f"    -> Toan bo 6 Node dong bo Block #{target_chain_len} sau: {t_prop_total:.3f} s")
 
-        # 5. Do luong Block Wire Payload
-        print(f"\n[*] GIAI DOAN 3: Do luong kich thuoc Block Payload qua {scheme.upper()}...")
+        # Giai đoạn 3: Đo lường Block Wire Payload
+        print(f"\n[*] GIAI DOAN 3: Do luong kich thuoc Block Payload qua HTTPS...")
         chain_data = requests.get(f"{ingress_url}/chain", timeout=2.0, verify=False).json()
         latest_block = chain_data['chain'][-1] if chain_data['chain'] else {}
         block_wire_bytes = len(json.dumps(latest_block).encode('utf-8'))
@@ -309,26 +370,28 @@ def run_macro_benchmark(
 
         print(f"    -> So giao dich trong Block moi: {tx_in_block} txs")
         print(f"    -> Kich thuoc Block thuc te:     {block_wire_bytes / 1024:.2f} KB ({block_wire_bytes} bytes)")
-        print(f"    -> Dung luong trung binh / 1 tx: {avg_tx_bytes:.1f} bytes/tx")
 
-        macro_results = {
-            'benchmark_name': f"Macro-Benchmark 6-Node P2P ({proto_title})",
-            'protocol': scheme.upper(),
-            'tls_enabled': use_tls,
+        # Tổng hợp kết quả JSON
+        kem_result = {
+            'benchmark_name': f"Macro-Benchmark 6-Node P2P (TLS with {kem_info['name']})",
+            'kem_key': kem_key,
+            'kem_metadata': kem_info,
+            'tx_signature_scheme': "ECDSA (secp256k1)",
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
             'workload': {
                 'total_tx_sent': tx_count,
                 'accepted_tx': accepted_count,
                 'success_rate_pct': round((accepted_count / tx_count) * 100, 2)
             },
-            'ingestion_performance': {
-                'total_duration_seconds': round(t_ingest_total, 3),
+            'performance': {
+                'total_duration_seconds': round(t_batch_total, 3),
                 'e2e_ingestion_tps': round(ingest_tps, 2),
-                'latency_mean_ms': round(mean_lat, 2),
-                'latency_median_ms': round(median_lat, 2),
-                'latency_p95_ms': round(p95_lat, 2),
-                'latency_min_ms': round(min_lat, 2),
-                'latency_max_ms': round(max_lat, 2)
+                'handshake_latency_mean_ms': round(mean_hs, 3),
+                'e2e_latency_mean_ms': round(mean_lat, 2),
+                'e2e_latency_median_ms': round(median_lat, 2),
+                'e2e_latency_p95_ms': round(p95_lat, 2),
+                'e2e_latency_min_ms': round(min_lat, 2),
+                'e2e_latency_max_ms': round(max_lat, 2)
             },
             'consensus_propagation': {
                 'nodes_participating': len(nodes),
@@ -339,117 +402,383 @@ def run_macro_benchmark(
                 'block_wire_bytes': block_wire_bytes,
                 'block_wire_kb': round(block_wire_bytes / 1024.0, 2),
                 'tx_count_in_block': tx_in_block,
-                'average_bytes_per_tx': round(avg_tx_bytes, 1)
+                'average_bytes_per_tx': round(avg_tx_bytes, 1),
+                'kem_handshake_wire_bytes': kem_info['pk_size'] + kem_info['ct_size']
             }
         }
 
-        # Luu JSON
-        summary_name = f"macro_benchmark{suffix}_summary.json"
-        summary_path = out_dir / summary_name
+        summary_path = out_dir / f"macro_{kem_key}_summary.json"
         with open(summary_path, 'w', encoding='utf-8') as f:
-            json.dump(macro_results, f, indent=2)
+            json.dump(kem_result, f, indent=2)
 
-        # Cập nhật thêm file mặc định macro_benchmark_summary.json nếu chạy đơn lẻ
-        if not label_suffix:
-            default_summary_path = out_dir / "macro_benchmark_summary.json"
-            with open(default_summary_path, 'w', encoding='utf-8') as f:
-                json.dump(macro_results, f, indent=2)
-
-        print("\n" + "=" * 80)
-        print(f"  TONG KET MACRO-BENCHMARK [{proto_title}]:")
+        print("\n" + "=" * 85)
+        print(f"  TONG KET [{kem_info['name']}]:")
         print(f"  * E2E Ingestion TPS:             {ingest_tps:.2f} tx/s")
-        print(f"  * Mean Ingestion Latency:        {mean_lat:.2f} ms")
-        print(f"  * P95 Ingestion Latency:         {p95_lat:.2f} ms")
+        print(f"  * Handshake Overhead (Mean):     {mean_hs:.3f} ms")
+        print(f"  * Mean E2E Latency:              {mean_lat:.2f} ms | P95: {p95_lat:.2f} ms")
         print(f"  * Block Propagation to 6 Nodes:  {t_prop_total:.3f} s")
-        print(f"  * Block Wire Size ({tx_in_block} txs):       {block_wire_bytes/1024:.2f} KB")
-        print(f"  * File tong hop da luu tai:      {summary_path}")
-        print("=" * 80)
+        print(f"  * KEM Wire Size (PK + CT):       {kem_info['pk_size'] + kem_info['ct_size']} bytes")
+        print(f"  * File chi tiet da luu tai:      {summary_path}")
+        print("=" * 85)
 
-        return macro_results
+        return kem_result
 
     finally:
-        if spawned_processes:
-            print("\n[*] Dang tat an toan cac tien trinh Node da khoi dong tu dong...")
-            kill_processes(spawned_processes)
-            print("[*] Da tat toan bo tien trinh.")
+        if internal_spawned:
+            print("\n[*] Dang tat cac tien trinh node da khoi dong ngam...")
+            kill_processes(internal_spawned)
 
 
-def run_comparison_benchmark(config: dict, base_dir: Path, out_dir: Path):
-    """Chạy kiểm thử so sánh đối đầu HTTP (Cleartext) vs HTTPS (TLS 1.3)."""
-    print("\n" + "#" * 80)
-    print("  KHOI DONG THUC NGHIEM SO SANH DOI DAU: HTTP (CLEARTEXT) vs HTTPS (TLS 1.3)")
-    print("#" * 80 + "\n")
+def run_all_kems_benchmark(config: dict, base_dir: Path, out_dir: Path, tx_count: int = 0):
+    """
+    Chạy toàn bộ 5 cơ chế KEM và xuất bảng so sánh song song:
+    1. secp256r1 (ECDHE NIST P-256)
+    2. X25519 (ECDHE Curve25519)
+    3. ML-KEM-768 (Kyber-768)
+    4. HQC-128 (Code-based)
+    5. FrodoKEM-640 (Unstructured LWE)
+    """
+    if tx_count > 0:
+        config.setdefault('macro', {})['tx_count'] = tx_count
 
-    # 1. Chạy lượt HTTP
-    print("\n>>> [LUOT 1/2]: KIEM THU QUA HTTP (KHONG MA HOA)")
-    http_res = run_macro_benchmark(config, base_dir, out_dir, use_tls=False, label_suffix="http")
+    ensure_certificates(base_dir)
 
-    print("\n[*] Nghi 3 giay de giai phong port va socket mang...")
-    time.sleep(3.0)
+    print("\n" + "#" * 90)
+    print("  KHOI DONG THUC NGHIEM TOAN DIEN: SO SANH CAC KENH TLS KEM TREN MANG 6 NODE P2P")
+    print("  Chu ky so giao dich: ECDSA (secp256k1) [GIU NGUYEN]")
+    print("  Danh sach KEM: ECDHE (secp256r1, X25519), ML-KEM-768, HQC-128, FrodoKEM-640")
+    print("#" * 90 + "\n")
 
-    # 2. Chạy lượt TLS
-    print("\n>>> [LUOT 2/2]: KIEM THU QUA HTTPS (MA HOA DUONG TRUYEN TLS)")
-    tls_res = run_macro_benchmark(config, base_dir, out_dir, use_tls=True, label_suffix="tls")
+    nodes = config.get('macro', {}).get('nodes', [
+        "https://127.0.0.1:5000", "https://127.0.0.1:5001", "https://127.0.0.1:5002",
+        "https://127.0.0.1:5003", "https://127.0.0.1:5004", "https://127.0.0.1:5005"
+    ])
+    nodes = [u.replace("http://", "https://") for u in nodes]
 
-    # 3. Tính toán chênh lệch (Delta)
-    http_tps = http_res['ingestion_performance']['e2e_ingestion_tps']
-    tls_tps = tls_res['ingestion_performance']['e2e_ingestion_tps']
-    tps_delta_pct = ((tls_tps - http_tps) / http_tps * 100) if http_tps > 0 else 0.0
+    spawned = []
+    if not all(is_node_online(u) for u in nodes):
+        spawned = spawn_6nodes_mesh(base_dir, use_tls=True)
+        if not wait_for_nodes_ready(nodes):
+            kill_processes(spawned)
+            raise RuntimeError("Khong the khoi dong mang 6 Node qua HTTPS/TLS!")
+        print("[+] Mang 6-Node Mesh (HTTPS) da san sang!")
 
-    http_mean = http_res['ingestion_performance']['latency_mean_ms']
-    tls_mean = tls_res['ingestion_performance']['latency_mean_ms']
-    mean_delta_ms = tls_mean - http_mean
-    mean_delta_pct = ((tls_mean - http_mean) / http_mean * 100) if http_mean > 0 else 0.0
+    kems_to_test = ['secp256r1', 'x25519', 'mlkem768', 'hybrid_mlkem768', 'hqc128', 'frodokem640']
+    results_map = {}
 
-    http_p95 = http_res['ingestion_performance']['latency_p95_ms']
-    tls_p95 = tls_res['ingestion_performance']['latency_p95_ms']
-    p95_delta_ms = tls_p95 - http_p95
+    try:
+        for idx, k in enumerate(kems_to_test, 1):
+            print(f"\n>>> [KEM {idx}/{len(kems_to_test)}]: TIEN HANH DO LUONG {KEM_CATALOG[k]['name']}...")
+            res = run_macro_benchmark_kem(config, base_dir, out_dir, kem_key=k, spawned_processes=spawned)
+            results_map[k] = res
+            time.sleep(1.0)
 
-    http_prop = http_res['consensus_propagation']['block_propagation_delay_seconds']
-    tls_prop = tls_res['consensus_propagation']['block_propagation_delay_seconds']
-    prop_delta_s = tls_prop - http_prop
-
-    comparison_data = {
-        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
-        'tx_count': config.get('macro', {}).get('tx_count', 30),
-        'http': http_res,
-        'tls': tls_res,
-        'analysis': {
-            'tps_delta_pct': round(tps_delta_pct, 2),
-            'mean_latency_overhead_ms': round(mean_delta_ms, 2),
-            'mean_latency_overhead_pct': round(mean_delta_pct, 2),
-            'p95_latency_overhead_ms': round(p95_delta_ms, 2),
-            'block_propagation_delta_s': round(prop_delta_s, 3)
+        # Tính toán so sánh song song
+        comparison_payload = {
+            'benchmark_name': 'Consolidated Macro Benchmark: Classical ECDHE vs Post-Quantum KEMs vs Hybrid',
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+            'tx_signature_scheme': 'ECDSA (secp256k1)',
+            'workload_per_kem': config.get('macro', {}).get('tx_count', 30),
+            'nodes_count': 6,
+            'results_by_kem': results_map
         }
-    }
 
-    comp_file = out_dir / "macro_benchmark_comparison.json"
-    with open(comp_file, 'w', encoding='utf-8') as f:
-        json.dump(comparison_data, f, indent=2)
+        comparison_json_path = out_dir / "macro_kem_comparison_summary.json"
+        with open(comparison_json_path, 'w', encoding='utf-8') as f:
+            json.dump(comparison_payload, f, indent=2)
 
-    # 4. In bảng so sánh khoa học
-    print("\n" + "=" * 90)
-    print("  BANG SO SANH HIEU NANG DOI DAU: HTTP (CLEARTEXT) vs HTTPS (TLS 1.3 / X.509)")
-    print("=" * 90)
-    print(f" {'Chi so do luong (Metric)':<35} | {'HTTP (Thuong)':<16} | {'HTTPS (TLS)':<16} | {'Chenh lech / Chi phi TLS':<18}")
-    print("-" * 90)
-    print(f" {'Ingestion TPS':<35} | {http_tps:<16.2f} | {tls_tps:<16.2f} | {tps_delta_pct:+.2f}%")
-    print(f" {'Mean Latency (ms)':<35} | {http_mean:<16.2f} | {tls_mean:<16.2f} | {mean_delta_ms:+.2f} ms ({mean_delta_pct:+.1f}%)")
-    print(f" {'P95 Latency (ms)':<35} | {http_p95:<16.2f} | {tls_p95:<16.2f} | {p95_delta_ms:+.2f} ms")
-    print(f" {'Block Propagation (s)':<35} | {http_prop:<16.3f} | {tls_prop:<16.3f} | {prop_delta_s:+.3f} s")
-    print(f" {'Block Wire Size (KB)':<35} | {http_res['network_wire_payload']['block_wire_kb']:<16.2f} | {tls_res['network_wire_payload']['block_wire_kb']:<16.2f} | Payload dong nhat")
-    print("=" * 90)
-    print(f"[*] Ket qua so sanh chi tiet da duoc luu tai: {comp_file}")
-    print("=" * 90 + "\n")
+        # In bảng so sánh song song đa chiều
+        print("\n" + "=" * 125)
+        print("  BANG SO SANH TONG HOP CAC CO CHE KEM TRONG KENH TLS (CHU KY GIAO DICH: ECDSA secp256k1)")
+        print("=" * 125)
+        header = f" {'Chi so (Metric)':<26} | {'ECDHE-P256':<12} | {'ECDHE-X25519':<13} | {'ML-KEM-768':<12} | {'Hybrid(X255+ML)':<15} | {'HQC-128':<12} | {'FrodoKEM-640':<13}"
+        print(header)
+        print("-" * 125)
+
+        r_p256 = results_map['secp256r1']
+        r_x255 = results_map['x25519']
+        r_mlkem = results_map['mlkem768']
+        r_hybrid = results_map['hybrid_mlkem768']
+        r_hqc = results_map['hqc128']
+        r_frodo = results_map['frodokem640']
+
+        def get_val(r, key1, key2, fmt="{:.2f}"):
+            return fmt.format(r[key1][key2])
+
+        print(f" {'Phan loai mat ma':<26} | {'Classical ECC':<12} | {'Classical ECC':<13} | {'PQC (M-LWE)':<12} | {'Hybrid Dual':<15} | {'PQC (Code)':<12} | {'PQC (LWE)':<13}")
+        print(f" {'Khang may tinh luong tu':<26} | {'KHONG':<12} | {'KHONG':<13} | {'CO (Safe)':<12} | {'CO (Safe)':<15} | {'CO (Safe)':<12} | {'CO (Safe)':<13}")
+        print(f" {'KEM PK Size (Bytes)':<26} | {'65':<12} | {'32':<13} | {'1,184':<12} | {'1,216':<15} | {'2,241':<12} | {'9,616':<13}")
+        print(f" {'KEM CT Size (Bytes)':<26} | {'32':<12} | {'32':<13} | {'1,088':<12} | {'1,120':<15} | {'4,433':<12} | {'9,720':<13}")
+        print(f" {'Handshake Wire (Bytes)':<26} | {'97':<12} | {'64':<13} | {'2,272':<12} | {'2,336':<15} | {'6,674':<12} | {'19,336':<13}")
+        print("-" * 125)
+        print(f" {'KEM Handshake Time (ms)':<26} | "
+              f"{get_val(r_p256, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<12} | "
+              f"{get_val(r_x255, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<13} | "
+              f"{get_val(r_mlkem, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<12} | "
+              f"{get_val(r_hybrid, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<15} | "
+              f"{get_val(r_hqc, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<12} | "
+              f"{get_val(r_frodo, 'performance', 'handshake_latency_mean_ms', '{:.3f}'):<13}")
+
+        print(f" {'E2E Ingestion Latency (ms)':<26} | "
+              f"{get_val(r_p256, 'performance', 'e2e_latency_mean_ms'):<12} | "
+              f"{get_val(r_x255, 'performance', 'e2e_latency_mean_ms'):<13} | "
+              f"{get_val(r_mlkem, 'performance', 'e2e_latency_mean_ms'):<12} | "
+              f"{get_val(r_hybrid, 'performance', 'e2e_latency_mean_ms'):<15} | "
+              f"{get_val(r_hqc, 'performance', 'e2e_latency_mean_ms'):<12} | "
+              f"{get_val(r_frodo, 'performance', 'e2e_latency_mean_ms'):<13}")
+
+        print(f" {'P95 Latency (ms)':<26} | "
+              f"{get_val(r_p256, 'performance', 'e2e_latency_p95_ms'):<12} | "
+              f"{get_val(r_x255, 'performance', 'e2e_latency_p95_ms'):<13} | "
+              f"{get_val(r_mlkem, 'performance', 'e2e_latency_p95_ms'):<12} | "
+              f"{get_val(r_hybrid, 'performance', 'e2e_latency_p95_ms'):<15} | "
+              f"{get_val(r_hqc, 'performance', 'e2e_latency_p95_ms'):<12} | "
+              f"{get_val(r_frodo, 'performance', 'e2e_latency_p95_ms'):<13}")
+
+        print(f" {'Ingestion TPS (tx/s)':<26} | "
+              f"{get_val(r_p256, 'performance', 'e2e_ingestion_tps'):<12} | "
+              f"{get_val(r_x255, 'performance', 'e2e_ingestion_tps'):<13} | "
+              f"{get_val(r_mlkem, 'performance', 'e2e_ingestion_tps'):<12} | "
+              f"{get_val(r_hybrid, 'performance', 'e2e_ingestion_tps'):<15} | "
+              f"{get_val(r_hqc, 'performance', 'e2e_ingestion_tps'):<12} | "
+              f"{get_val(r_frodo, 'performance', 'e2e_ingestion_tps'):<13}")
+
+        print(f" {'Block Propagation (s)':<26} | "
+              f"{get_val(r_p256, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<12} | "
+              f"{get_val(r_x255, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<13} | "
+              f"{get_val(r_mlkem, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<12} | "
+              f"{get_val(r_hybrid, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<15} | "
+              f"{get_val(r_hqc, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<12} | "
+              f"{get_val(r_frodo, 'consensus_propagation', 'block_propagation_delay_seconds', '{:.3f}'):<13}")
+
+        print("=" * 125)
+        print(f"[*] File ket qua tong hop da luu tai: {comparison_json_path}")
+        print("=" * 125 + "\n")
+
+    finally:
+        if spawned:
+            print("[*] Tat an toan mang 6 Node...")
+            kill_processes(spawned)
+            print("[*] Da tat toan bo tien trinh node.")
+
+
+def run_macro_benchmark_http(
+    config: dict,
+    base_dir: Path,
+    out_dir: Path,
+    spawned_processes: Optional[List[subprocess.Popen]] = None
+) -> Dict:
+    """
+    Thực hiện kiểm thử Macro-Benchmark qua HTTP truyền thống (Cleartext, không dùng TLS):
+    - Giao thức: HTTP thuần
+    - Chữ ký số giao dịch: ECDSA secp256k1
+    - Ghi nhận chi tiết ra macro_http_raw.csv và macro_http_summary.json
+    """
+    macro_cfg = config.get('macro', {})
+    tx_count = macro_cfg.get('tx_count', 30)
+
+    raw_ingress = macro_cfg.get('ingress_url', "http://127.0.0.1:5000")
+    raw_miner = macro_cfg.get('miner_url', "http://127.0.0.1:5001")
+    raw_nodes = macro_cfg.get('nodes', [
+        "http://127.0.0.1:5000", "http://127.0.0.1:5001", "http://127.0.0.1:5002",
+        "http://127.0.0.1:5003", "http://127.0.0.1:5004", "http://127.0.0.1:5005"
+    ])
+
+    ingress_url = raw_ingress.replace("https://", "http://")
+    miner_url = raw_miner.replace("https://", "http://")
+    nodes = [u.replace("https://", "http://") for u in raw_nodes]
+
+    print("=" * 85)
+    print("  MACRO-BENCHMARK: MANG P2P 6-NODE THUAN HTTP (KHONG MA HOA / CLEARTEXT)")
+    print(f"  * Giao thuc mang:         HTTP (Cleartext, khong su dung TLS/KEM)")
+    print(f"  * Chu ky so giao dich:    ECDSA (secp256k1)")
+    print(f"  * So luong ban tai:       {tx_count} Transactions -> Ingress: {ingress_url}")
+    print("=" * 85)
+
+    internal_spawned = []
+    if spawned_processes is None and not all(is_node_online(u) for u in nodes):
+        internal_spawned = spawn_6nodes_mesh(base_dir, use_tls=False)
+        if not wait_for_nodes_ready(nodes):
+            kill_processes(internal_spawned)
+            raise RuntimeError("Khong the khoi dong mang 6 Node qua HTTP!")
+
+    try:
+        # Lấy chain length ban đầu
+        initial_status = {}
+        for u in nodes:
+            try:
+                res = requests.get(f"{u}/status", timeout=3.0).json()
+                initial_status[u] = res['chain_length']
+            except Exception:
+                initial_status[u] = 1
+        base_chain_len = max(initial_status.values())
+
+        # Sinh tập giao dịch hợp lệ ECDSA
+        wallets = load_wallets(base_dir)
+        if not wallets:
+            raise RuntimeError("Khong tim thay vi mau configs/wallets.json")
+        alice = wallets.get('Alice')
+        bob = wallets.get('Bob')
+
+        test_txs = []
+        for i in range(tx_count):
+            if i % 2 == 0:
+                tx = create_signed_ecdsa_transaction(alice, bob['public_key'], "0.5")
+            else:
+                tx = create_signed_ecdsa_transaction(bob, alice['public_key'], "0.5")
+            test_txs.append(tx)
+
+        # Giai đoạn 1: Bắn tải qua HTTP
+        print(f"\n[*] GIAI DOAN 1: Ban tai {tx_count} giao dich qua HTTP vao Ingress ({ingress_url}/transactions/new)...")
+        http_latencies_ms = []
+        accepted_count = 0
+
+        raw_csv_path = out_dir / "macro_http_raw.csv"
+        raw_csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+        t_batch_start = time.perf_counter()
+
+        with open(raw_csv_path, 'w', newline='', encoding='utf-8') as f:
+            csv_w = csv.writer(f)
+            csv_w.writerow(['Tx_Index', 'Protocol', 'HTTP_Latency_ms', 'HTTP_Status', 'Result'])
+
+            for idx, tx in enumerate(test_txs):
+                t0 = time.perf_counter()
+                try:
+                    resp = requests.post(f"{ingress_url}/transactions/new", json=tx, timeout=10.0)
+                    dt_http_ms = (time.perf_counter() - t0) * 1000.0
+                    status_code = resp.status_code
+                    if status_code in (200, 201):
+                        accepted_count += 1
+                        result_str = 'ACCEPTED'
+                    else:
+                        result_str = 'REJECTED'
+                except Exception as ex:
+                    dt_http_ms = (time.perf_counter() - t0) * 1000.0
+                    status_code = 0
+                    result_str = f'ERROR: {ex}'
+
+                http_latencies_ms.append(dt_http_ms)
+                csv_w.writerow([idx + 1, 'HTTP', round(dt_http_ms, 3), status_code, result_str])
+
+        t_batch_total = time.perf_counter() - t_batch_start
+        ingest_tps = accepted_count / t_batch_total if t_batch_total > 0 else 0.0
+
+        lat_arr = np.array(http_latencies_ms)
+        mean_lat = float(np.mean(lat_arr))
+        median_lat = float(np.median(lat_arr))
+        p95_lat = float(np.percentile(lat_arr, 95))
+        min_lat = float(np.min(lat_arr))
+        max_lat = float(np.max(lat_arr))
+
+        print(f"    -> Da tiep nhan:              {accepted_count}/{tx_count} txs ({accepted_count/tx_count*100:.1f}%)")
+        print(f"    -> Thoi gian ban tai tong:     {t_batch_total:.3f} s")
+        print(f"    -> Thong luong Ingestion TPS:  {ingest_tps:.2f} tx/s")
+        print(f"    -> HTTP Latency (Mean):        {mean_lat:.2f} ms | Median: {median_lat:.2f} ms | P95: {p95_lat:.2f} ms")
+
+        # Giai đoạn 2: Consensus & Block Propagation
+        print(f"\n[*] GIAI DOAN 2: Do luong thoi gian Miner dong khoi va Block Propagation tren 6 Node (HTTP)...")
+        t_mine_start = time.perf_counter()
+        target_chain_len = base_chain_len + 1
+        all_synced = False
+        max_wait = 15.0
+        poll_interval = 0.5
+        waited = 0.0
+
+        while waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            statuses = []
+            for u in nodes:
+                try:
+                    st = requests.get(f"{u}/status", timeout=1.0).json()
+                    statuses.append(st['chain_length'])
+                except Exception:
+                    statuses.append(0)
+
+            if all(s >= target_chain_len for s in statuses):
+                all_synced = True
+                break
+
+        t_prop_total = time.perf_counter() - t_mine_start
+        print(f"    -> Toan bo 6 Node dong bo Block #{target_chain_len} sau: {t_prop_total:.3f} s")
+
+        # Giai đoạn 3: Block Wire Payload
+        print(f"\n[*] GIAI DOAN 3: Do luong kich thuoc Block Payload qua HTTP...")
+        chain_data = requests.get(f"{ingress_url}/chain", timeout=2.0).json()
+        latest_block = chain_data['chain'][-1] if chain_data['chain'] else {}
+        block_wire_bytes = len(json.dumps(latest_block).encode('utf-8'))
+        tx_in_block = len(latest_block.get('transactions', []))
+        avg_tx_bytes = (block_wire_bytes / tx_in_block) if tx_in_block > 0 else 0
+
+        print(f"    -> So giao dich trong Block moi: {tx_in_block} txs")
+        print(f"    -> Kich thuoc Block thuc te:     {block_wire_bytes / 1024:.2f} KB ({block_wire_bytes} bytes)")
+
+        http_result = {
+            'benchmark_name': "Macro-Benchmark 6-Node P2P (HTTP Cleartext)",
+            'protocol': "HTTP",
+            'tls_enabled': False,
+            'tx_signature_scheme': "ECDSA (secp256k1)",
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+            'workload': {
+                'total_tx_sent': tx_count,
+                'accepted_tx': accepted_count,
+                'success_rate_pct': round((accepted_count / tx_count) * 100, 2)
+            },
+            'performance': {
+                'total_duration_seconds': round(t_batch_total, 3),
+                'e2e_ingestion_tps': round(ingest_tps, 2),
+                'handshake_latency_mean_ms': 0.0,
+                'e2e_latency_mean_ms': round(mean_lat, 2),
+                'e2e_latency_median_ms': round(median_lat, 2),
+                'e2e_latency_p95_ms': round(p95_lat, 2),
+                'e2e_latency_min_ms': round(min_lat, 2),
+                'e2e_latency_max_ms': round(max_lat, 2)
+            },
+            'consensus_propagation': {
+                'nodes_participating': len(nodes),
+                'all_nodes_synced': all_synced,
+                'block_propagation_delay_seconds': round(t_prop_total, 3)
+            },
+            'network_wire_payload': {
+                'block_wire_bytes': block_wire_bytes,
+                'block_wire_kb': round(block_wire_bytes / 1024.0, 2),
+                'tx_count_in_block': tx_in_block,
+                'average_bytes_per_tx': round(avg_tx_bytes, 1),
+                'kem_handshake_wire_bytes': 0
+            }
+        }
+
+        # Lưu kết quả duy nhất cho kịch bản HTTP
+        summary_path = out_dir / "macro_http_summary.json"
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            json.dump(http_result, f, indent=2)
+
+        print("\n" + "=" * 85)
+        print("  TONG KET [HTTP CLEARTEXT]:")
+        print(f"  * E2E Ingestion TPS:             {ingest_tps:.2f} tx/s")
+        print(f"  * Mean Ingestion Latency:        {mean_lat:.2f} ms | P95: {p95_lat:.2f} ms")
+        print(f"  * Block Propagation to 6 Nodes:  {t_prop_total:.3f} s")
+        print(f"  * Block Wire Size ({tx_in_block} txs):       {block_wire_bytes/1024:.2f} KB")
+        print(f"  * File chi tiet da luu tai:      {summary_path}")
+        print("=" * 85)
+
+        return http_result
+
+    finally:
+        if internal_spawned:
+            print("\n[*] Dang tat cac tien trinh node da khoi dong ngam...")
+            kill_processes(internal_spawned)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Macro-Benchmark Suite: Blockchain P2P Network (HTTP vs TLS)")
+    parser = argparse.ArgumentParser(description="Macro-Benchmark Suite: Blockchain P2P Network (HTTP & TLS KEM Evaluation)")
     parser.add_argument('-n', '--tx-count', type=int, default=0, help="So luong giao dich ban tai")
     parser.add_argument('-c', '--config', type=str, default="", help="Duong dan file JSON cau hinh")
     parser.add_argument('-o', '--output-dir', type=str, default="", help="Thu muc xuat ket qua")
-    parser.add_argument('--tls', action='store_true', help="Chay kiem thu tai qua ket noi ma hoa HTTPS/TLS")
-    parser.add_argument('--compare', action='store_true', help="Chay che do so sanh doi dau ca HTTP va HTTPS (TLS)")
+    parser.add_argument('--http', action='store_true', help="Chay kiem thu tai mang thuan HTTP (Cleartext, khong dung TLS)")
+    parser.add_argument('--kem', type=str, default="", help="Chi dinh 1 KEM cu the: hybrid_mlkem768, mlkem768, x25519, secp256r1, hqc128, frodokem640")
+    parser.add_argument('--compare-kems', action='store_true', help="Chay kiem thu toan bo 6 co che KEM va so sanh song song")
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parent.parent
@@ -466,10 +795,21 @@ def main():
     out_dir = Path(args.output_dir) if args.output_dir else base_dir / "benchmarks" / "results"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.compare:
-        run_comparison_benchmark(cfg, base_dir, out_dir)
+    if args.http:
+        run_macro_benchmark_http(cfg, base_dir, out_dir)
+    elif args.compare_kems:
+        run_all_kems_benchmark(cfg, base_dir, out_dir, tx_count=args.tx_count)
+    elif args.kem:
+        kem_key = args.kem.lower().strip()
+        if kem_key not in KEM_CATALOG:
+            print(f"[!] KEM khong hop le: '{args.kem}'. Lua chon: {list(KEM_CATALOG.keys())}")
+            sys.exit(1)
+        run_macro_benchmark_kem(cfg, base_dir, out_dir, kem_key=kem_key)
     else:
-        run_macro_benchmark(cfg, base_dir, out_dir, use_tls=args.tls)
+        # Mặc định: Chạy kiểm thử HTTP thuần
+        print("\n[*] Khong chi dinh co dac biet -> Tien hanh chay Macro-Benchmark thuan HTTP (Cleartext).")
+        print("[*] (Meo: Su dung '--http' de chay HTTP, '--kem <ten>' de chay 1 KEM, hoac '--compare-kems' de so sanh 6 KEM)\n")
+        run_macro_benchmark_http(cfg, base_dir, out_dir)
 
 
 if __name__ == '__main__':
