@@ -7,6 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Set, List
 from urllib.parse import urlparse
 import requests
+import urllib3
+
+# Vô hiệu hóa cảnh báo chứng chỉ tự ký khi chạy mạng nội bộ thử nghiệm
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     from ..core.crypto import calculate_block_hash
@@ -23,9 +27,11 @@ logger = logging.getLogger("P2PNetwork")
 
 
 class P2PNetwork:
-    def __init__(self, ledger: BlockchainLedger, my_address: str = "127.0.0.1:5000", audit_logger: AuditLogger = None):
+    def __init__(self, ledger: BlockchainLedger, my_address: str = "127.0.0.1:5000", audit_logger: AuditLogger = None, use_tls: bool = False):
         self.ledger = ledger
         self.my_address = my_address
+        self.use_tls = use_tls
+        self.protocol = "https" if use_tls else "http"
         self.peers: Set[str] = set()
         self.audit = audit_logger or (ledger.audit if hasattr(ledger, 'audit') else AuditLogger())
 
@@ -45,8 +51,8 @@ class P2PNetwork:
             self.peers.add(peer_netloc)
             self.audit.log(
                 category="P2P",
-                title=f"Ket noi thanh cong Peer: {peer_netloc}",
-                details={'total_peers': len(self.peers)},
+                title=f"Ket noi thanh cong Peer: {peer_netloc} ({self.protocol.upper()})",
+                details={'total_peers': len(self.peers), 'protocol': self.protocol},
                 status="INFO"
             )
 
@@ -56,7 +62,7 @@ class P2PNetwork:
 
     def _send_post(self, url: str, data: dict):
         try:
-            requests.post(url, json=data, timeout=1.5)
+            requests.post(url, json=data, timeout=1.5, verify=False)
         except Exception:
             pass
 
@@ -77,7 +83,7 @@ class P2PNetwork:
         peer_count = len(self.peers)
         if peer_count > 0:
             for peer in list(self.peers):
-                url = f"http://{peer}/p2p/transactions/receive"
+                url = f"{self.protocol}://{peer}/p2p/transactions/receive"
                 self.executor.submit(self._send_post, url, payload)
 
             self.audit.log(
@@ -99,7 +105,7 @@ class P2PNetwork:
         payload = {'block': block}
         peer_count = len(self.peers)
         for peer in list(self.peers):
-            url = f"http://{peer}/p2p/blocks/receive"
+            url = f"{self.protocol}://{peer}/p2p/blocks/receive"
             self.executor.submit(self._send_post, url, payload)
 
         self.audit.log(
@@ -137,7 +143,7 @@ class P2PNetwork:
 
         for peer in list(self.peers):
             try:
-                response = requests.get(f"http://{peer}/chain", timeout=2.0)
+                response = requests.get(f"{self.protocol}://{peer}/chain", timeout=2.0, verify=False)
                 if response.status_code == 200:
                     data = response.json()
                     length = data.get('length', 0)
