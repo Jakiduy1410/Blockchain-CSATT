@@ -1,0 +1,43 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with ECDHE (secp256r1))",
+  "tx_signature_scheme": "ML-DSA-44",
+  "timestamp": "2026-10-11 20:33:50",
+  "workload": {
+    "total_tx_sent": 3,
+    "accepted_tx": 3,
+    "success_rate_pct": 100.0
+  },
+  "performance": {
+    "total_duration_seconds": 0.183,
+    "e2e_ingestion_tps": 16.39,
+    "handshake_latency_mean_ms": 0.988,
+    "e2e_latency_mean_ms": 60.9,
+    "e2e_latency_median_ms": 79.94,
+    "e2e_latency_p95_ms": 83.39,
+    "e2e_latency_min_ms": 18.97,
+    "e2e_latency_max_ms": 83.78
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": true,
+    "block_propagation_delay_seconds": 1.947
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 31114,
+    "block_wire_kb": 30.38,
+    "tx_count_in_block": 4,
+    "average_bytes_per_tx": 7778.5,
+    "kem_handshake_wire_bytes": 97
+  },
+  "kem_key": "secp256r1",
+  "kem_metadata": {
+    "name": "ECDHE (secp256r1)",
+    "category": "Classical ECC",
+    "subfamily": "Weierstrass Curve (NIST P-256)",
+    "nist_level": "Classical 128-bit",
+    "quantum_resistant": false,
+    "pk_size": 65,
+    "ct_size": 32,
+    "shared_secret_size": 32
+  }
+}

@@ -12,8 +12,13 @@ from collections import OrderedDict
 
 try:
     import oqs
-except ImportError:
+except BaseException:
     oqs = None
+
+try:
+    import pqcrypto.sign.ml_dsa_44 as mldsa_pqc
+except ImportError:
+    mldsa_pqc = None
 
 try:
     from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
@@ -28,14 +33,13 @@ from Crypto.Signature import PKCS1_v1_5
 def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
     Xác thực chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204).
+    Hỗ trợ đa nền tảng: ưu tiên pqcrypto hoặc liboqs.
     Zero-Trust: nếu public key, signature hoặc định dạng dữ liệu sai -> từ chối ngay.
     """
-    if oqs is None:
+    if not sender_public_key_hex or not signature_hex:
         return False
-    try:
-        if not sender_public_key_hex or not signature_hex:
-            return False
 
+    try:
         public_key_bytes = bytes.fromhex(sender_public_key_hex)
         signature_bytes = bytes.fromhex(signature_hex)
 
@@ -46,8 +50,23 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         ])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
-        with oqs.Signature("ML-DSA-44") as verifier:
-            return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
+        # 1. Thử xác thực qua pqcrypto
+        if mldsa_pqc is not None:
+            try:
+                mldsa_pqc.verify(public_key_bytes, tx_bytes, signature_bytes)
+                return True
+            except Exception:
+                pass
+
+        # 2. Thử xác thực qua liboqs nếu có
+        if oqs is not None:
+            try:
+                with oqs.Signature("ML-DSA-44") as verifier:
+                    return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
+            except Exception:
+                pass
+
+        return False
     except Exception:
         return False
 

@@ -1,0 +1,43 @@
+{
+  "benchmark_name": "Macro-Benchmark 6-Node P2P (TLS with HQC-128)",
+  "tx_signature_scheme": "ML-DSA-44",
+  "timestamp": "2026-10-11 20:35:14",
+  "workload": {
+    "total_tx_sent": 3,
+    "accepted_tx": 3,
+    "success_rate_pct": 100.0
+  },
+  "performance": {
+    "total_duration_seconds": 0.178,
+    "e2e_ingestion_tps": 16.84,
+    "handshake_latency_mean_ms": 4.872,
+    "e2e_latency_mean_ms": 59.27,
+    "e2e_latency_median_ms": 66.77,
+    "e2e_latency_p95_ms": 74.63,
+    "e2e_latency_min_ms": 35.53,
+    "e2e_latency_max_ms": 75.51
+  },
+  "consensus_propagation": {
+    "nodes_participating": 6,
+    "all_nodes_synced": false,
+    "block_propagation_delay_seconds": 19.588
+  },
+  "network_wire_payload": {
+    "block_wire_bytes": 31114,
+    "block_wire_kb": 30.38,
+    "tx_count_in_block": 4,
+    "average_bytes_per_tx": 7778.5,
+    "kem_handshake_wire_bytes": 6674
+  },
+  "kem_key": "hqc128",
+  "kem_metadata": {
+    "name": "HQC-128",
+    "category": "Post-Quantum (Code-based)",
+    "subfamily": "Hamming Quasi-Cyclic (NIST Round 4)",
+    "nist_level": "Category 1 (128-bit)",
+    "quantum_resistant": true,
+    "pk_size": 2241,
+    "ct_size": 4433,
+    "shared_secret_size": 32
+  }
+}

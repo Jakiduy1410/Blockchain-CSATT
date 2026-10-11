@@ -5,11 +5,18 @@ import binascii
 import requests
 from flask import Flask, jsonify, request, render_template
 
-# Thay thế ecdsa bằng liboqs (PQC)
-import oqs
+try:
+    import pqcrypto.sign.ml_dsa_44 as mldsa_pqc
+except ImportError:
+    mldsa_pqc = None
+
+try:
+    import oqs
+except BaseException:
+    oqs = None
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SIG_ALG = "ML-DSA-44" # Thuật toán Hậu lượng tử
+SIG_ALG = "ML-DSA-44"  # Thuật toán Hậu lượng tử
 
 class Transaction:
     def __init__(self, sender_address, sender_private_key, recipient_address, value):
@@ -28,12 +35,16 @@ class Transaction:
         try:
             private_key_bytes = bytes.fromhex(self.sender_private_key)
             transaction_string = str(self.to_dict()).encode('utf8')
-            
-            with oqs.Signature(SIG_ALG, secret_key=private_key_bytes) as signer:
-                # Thực hiện ký số
-                signature_bytes = signer.sign(transaction_string)
-                
-            return signature_bytes.hex()
+
+            if mldsa_pqc is not None:
+                sig_bytes = mldsa_pqc.sign(private_key_bytes, transaction_string)
+                return sig_bytes.hex()
+            elif oqs is not None:
+                with oqs.Signature(SIG_ALG, secret_key=private_key_bytes) as signer:
+                    signature_bytes = signer.sign(transaction_string)
+                return signature_bytes.hex()
+            else:
+                raise RuntimeError("Khong co thu vien ho tro ML-DSA-44 (pqcrypto hoac liboqs).")
         except Exception as e:
             raise ValueError(f"Lỗi trong quá trình ký số ML-DSA: {str(e)}")
 
@@ -56,13 +67,22 @@ def view_transaction():
 def new_wallet():
     # Tạo cặp khóa PQC bằng thuật toán ML-DSA-44
     try:
-        with oqs.Signature(SIG_ALG) as signer:
-            public_key = signer.generate_keypair()
-            private_key = signer.export_secret_key()
-            
+        if mldsa_pqc is not None:
+            pk, sk = mldsa_pqc.keygen()
+            public_key_hex = pk.hex()
+            private_key_hex = sk.hex()
+        elif oqs is not None:
+            with oqs.Signature(SIG_ALG) as signer:
+                pk = signer.generate_keypair()
+                sk = signer.export_secret_key()
+                public_key_hex = pk.hex()
+                private_key_hex = sk.hex()
+        else:
+            raise RuntimeError("Khong co thu vien ML-DSA-44.")
+
         response = {
-            'private_key': private_key.hex(),
-            'public_key': public_key.hex()
+            'private_key': private_key_hex,
+            'public_key': public_key_hex
         }
         return jsonify(response), 200
     except Exception as e:
