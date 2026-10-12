@@ -167,7 +167,7 @@ py -3.12 test_6nodes_simulation.py
 | :--- | :--- | :--- |
 | `/status` | `GET` | Lấy thông tin Node: port, role, mempool_count, chain_length, danh sách peers. |
 | `/audit/logs` | `GET` | Lấy danh sách lịch sử Hộp Đen Kiểm Toán An Ninh thời gian thực. |
-| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký ML-DSA-44 (PQC) / ECDSA / RSA và phát sóng Gossip. |
+| `/transactions/new` | `POST` | Tiếp nhận giao dịch từ Client, thẩm định chữ ký ML-DSA-65 (PQC) / ECDSA / RSA và phát sóng Gossip. |
 | `/transactions/get` | `GET` | Lấy danh sách giao dịch đang chờ trong Mempool. |
 | `/chain` | `GET` | Lấy toàn bộ lịch sử Sổ Cái Chuỗi Khối. |
 | `/mine` | `GET` | Kích hoạt thuật toán PoW đào khối và phát sóng Block mới. |
@@ -181,7 +181,7 @@ py -3.12 test_6nodes_simulation.py
 ## 6. Hệ Thống Đo Lường Hiệu Năng & An Ninh Mật Mã (Benchmark Suite)
 
 Hệ thống cung cấp bộ đo lường benchmark độc lập, không hardcode, hỗ trợ môi trường **Windows, Linux (Ubuntu/Kali), macOS**:
-* **Micro-Benchmark (`benchmarks/micro_benchmark.py`):** Đo đạc hiệu năng thuần tính toán (Key Generation, Signing, Verification, Public Key Size, Signature Size, Block Overhead, Theoretical TPS) cho 3 thế hệ mật mã: **RSA-2048**, **ECDSA (secp256k1)**, và **ML-DSA-44 (NIST Post-Quantum FIPS 204)**.
+* **Micro-Benchmark (`benchmarks/micro_benchmark.py`):** Đo đạc hiệu năng thuần tính toán (Key Generation, Signing, Verification, Public Key Size, Signature Size, Block Overhead, Theoretical TPS) cho 3 thế hệ mật mã: **RSA-2048**, **ECDSA (secp256k1)**, và **ML-DSA-65 (NIST Post-Quantum FIPS 204)**.
 * **Macro-Benchmark (`benchmarks/macro_benchmark.py`):** Đo đạc End-to-End hiệu năng mạng lưới 6 Node thực tế (Ingestion TPS, HTTP Latency qua mạng thật, Block Propagation delay và Kích thước Block Wire Payload).
 * **Unified Runner (`benchmarks/run_benchmarks.py`):** Trình thực thi tự động hợp nhất.
 
@@ -206,10 +206,10 @@ python benchmarks/macro_benchmark.py -n 30
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **RSA-2048** | Phân tích thừa số nguyên | ❌ Không | 66.48 ms | 1.56 ms | **0.09 ms** | 270 B | 256 B | ~758 KB | ~11.751 tx/s |
 | **ECDSA (secp256k1)** | Logarithm rời rạc Elliptic Curve | ❌ Không | 0.72 ms | 0.78 ms | 0.66 ms | **33 B** | **64 B** | **~339 KB** | ~1.517 tx/s |
-| **ML-DSA-44** | Mạng tinh thể (Module-LWE / Lattice) | ✅ **NIST FIPS 204** | **0.29 ms** | **0.69 ms** | 0.15 ms | 1.312 B | 2.420 B | ~3.89 MB | **~6.464 tx/s** |
+| **ML-DSA-65** | Mạng tinh thể (Module-LWE / Lattice) | ✅ **NIST FIPS 204** | **0.29 ms** | **0.69 ms** | 0.15 ms | 1.312 B | 2.420 B | ~3.89 MB | **~6.464 tx/s** |
 
 #### Macro-Benchmark: Mạng Lưới P2P 6-Node E2E (HTTP)
-| Chỉ số đo lường thực nghiệm | Kết quả thực tế ML-DSA-44 | Đánh giá Chuyên gia An ninh mạng |
+| Chỉ số đo lường thực nghiệm | Kết quả thực tế ML-DSA-65 | Đánh giá Chuyên gia An ninh mạng |
 | :--- | :--- | :--- |
 | **Tỷ lệ tiếp nhận giao dịch (Success Rate)** | **100% (30/30 txs)** | Ingress Node xác thực chữ ký ML-DSA và xếp hàng Mempool trơn tru. |
 | **E2E HTTP Ingestion TPS** | **15.41 tx/s** | Thông lượng tiếp nhận tải HTTP và kiểm tra chữ ký PQC tuần tự/đồng thời. |

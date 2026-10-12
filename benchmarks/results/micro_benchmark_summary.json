@@ -84,7 +84,7 @@
     }
   },
   {
-    "algorithm": "PQC: ML-DSA-44",
+    "algorithm": "PQC: ML-DSA-65",
     "keygen_ms": {
       "mean": 0.2871,
       "median": 0.2248,

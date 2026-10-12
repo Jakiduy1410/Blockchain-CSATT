@@ -1,7 +1,7 @@
 """
 Crypto Module
 Trách nhiệm:
-- Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
+- Thẩm định chữ ký số Hậu lượng tử ML-DSA-65 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
 - Tính toán hàm băm mật mã SHA-256 chuẩn cho khối (block) và giao dịch (transaction)
 """
 
@@ -27,7 +27,7 @@ from Crypto.Signature import PKCS1_v1_5
 
 def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
-    Xác thực chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204).
+    Xác thực chữ ký số Hậu lượng tử ML-DSA-65 (FIPS 204).
     Zero-Trust: nếu public key, signature hoặc định dạng dữ liệu sai -> từ chối ngay.
     """
     if oqs is None:
@@ -46,7 +46,7 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         ])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
-        with oqs.Signature("ML-DSA-44") as verifier:
+        with oqs.Signature("ML-DSA-65") as verifier:
             return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
     except Exception:
         return False
@@ -102,12 +102,12 @@ def verify_rsa_signature(sender_public_key_hex: str, signature_hex: str, transac
 def verify_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
     Hàm xác thực chữ ký số tổng quát:
-    Tự động thẩm định theo ML-DSA-44 (PQC), ECDSA hoặc RSA.
+    Tự động thẩm định theo ML-DSA-65 (PQC), ECDSA hoặc RSA.
     """
     if not sender_public_key_hex or not signature_hex:
         return False
 
-    # 1. Nếu độ dài phù hợp ML-DSA-44 (khóa pub >= 1312 bytes hoặc sig >= 2420 bytes)
+    # 1. Nếu độ dài phù hợp ML-DSA-65 (khóa pub >= 1312 bytes hoặc sig >= 2420 bytes)
     if len(signature_hex) > 1000 or len(sender_public_key_hex) > 1000:
         return verify_mldsa_signature(sender_public_key_hex, signature_hex, transaction_dict)
 
@@ -119,7 +119,7 @@ def verify_signature(sender_public_key_hex: str, signature_hex: str, transaction
     if verify_rsa_signature(sender_public_key_hex, signature_hex, transaction_dict):
         return True
 
-    # 4. Fallback thử lại ML-DSA-44 nếu có
+    # 4. Fallback thử lại ML-DSA-65 nếu có
     return verify_mldsa_signature(sender_public_key_hex, signature_hex, transaction_dict)
 
 

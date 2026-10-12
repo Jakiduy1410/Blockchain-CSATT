@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template
 import oqs
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SIG_ALG = "ML-DSA-44" # Thuật toán Hậu lượng tử
+SIG_ALG = "ML-DSA-65" # Thuật toán Hậu lượng tử
 
 class Transaction:
     def __init__(self, sender_address, sender_private_key, recipient_address, value):
@@ -24,7 +24,7 @@ class Transaction:
                             'value': self.value})
 
     def sign_transaction(self):
-        """Ký số giao dịch bằng khóa bí mật ML-DSA-44"""
+        """Ký số giao dịch bằng khóa bí mật ML-DSA-65"""
         try:
             private_key_bytes = bytes.fromhex(self.sender_private_key)
             transaction_string = str(self.to_dict()).encode('utf8')
@@ -54,7 +54,7 @@ def view_transaction():
 
 @app.route('/wallet/new', methods=['GET'])
 def new_wallet():
-    # Tạo cặp khóa PQC bằng thuật toán ML-DSA-44
+    # Tạo cặp khóa PQC bằng thuật toán ML-DSA-65
     try:
         with oqs.Signature(SIG_ALG) as signer:
             public_key = signer.generate_keypair()
