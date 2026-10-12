@@ -189,4 +189,4 @@ if __name__ == '__main__':
     
     measure_rsa()
     measure_ecdsa()
-    measure_oqs("ML-DSA-65", ITERATIONS_STD)
+    measure_oqs("ML-DSA-87", ITERATIONS_STD)

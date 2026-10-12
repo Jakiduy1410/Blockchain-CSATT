@@ -1,6 +1,6 @@
 """
 Micro-Benchmark Suite: Isolated Cryptographic Primitive Performance
-Measures: RSA-2048 vs ECDSA (secp256k1) vs ML-DSA-65 (NIST PQC)
+Measures: RSA-2048 vs ECDSA (secp256k1) vs ML-DSA-87 (NIST PQC)
 Platforms: Linux, Windows, macOS
 """
 
@@ -157,7 +157,7 @@ def run_ecdsa_benchmark(iterations: int, message: bytes) -> Tuple[Dict, np.ndarr
     }, keygen_ms, sign_ms, verify_ms, pk_sizes, sig_sizes
 
 
-def run_mldsa_benchmark(iterations: int, message: bytes, alg_name: str = "ML-DSA-65") -> Optional[Tuple[Dict, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+def run_mldsa_benchmark(iterations: int, message: bytes, alg_name: str = "ML-DSA-87") -> Optional[Tuple[Dict, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     if not OQS_AVAILABLE:
         return None
 
@@ -232,7 +232,7 @@ def main():
 
     print("=" * 80)
     print("  MICRO-BENCHMARK: DANH GIA SO SANH HIEU NANG MAT MA BLOCKCHAIN")
-    print("  Thuat toan: RSA-2048 | ECDSA (secp256k1) | ML-DSA-65 (NIST Post-Quantum)")
+    print("  Thuat toan: RSA-2048 | ECDSA (secp256k1) | ML-DSA-87 (NIST Post-Quantum)")
     print(f"  So lan lap: {iterations} trials | Moi truong: {sys.platform} | Python {sys.version.split()[0]}")
     print("=" * 80)
 
@@ -251,13 +251,13 @@ def main():
     save_raw_csv(out_dir / "ECDSA_secp256k1_micro_raw.csv", iterations, e_kg, e_sg, e_vf, e_pk, e_sig)
 
     # 3. ML-DSA
-    print("[*] Dang kiem tra ho tro thu vien liboqs (ML-DSA-65)...")
-    mldsa_out = run_mldsa_benchmark(iterations, message, "ML-DSA-65")
+    print("[*] Dang kiem tra ho tro thu vien liboqs (ML-DSA-87)...")
+    mldsa_out = run_mldsa_benchmark(iterations, message, "ML-DSA-87")
     if mldsa_out:
         mldsa_res, m_kg, m_sg, m_vf, m_pk, m_sig = mldsa_out
         results.append(mldsa_res)
         save_raw_csv(out_dir / "ML_DSA_44_micro_raw.csv", iterations, m_kg, m_sg, m_vf, m_pk, m_sig)
-        print("    -> ML-DSA-65 hoan tat thanh cong!")
+        print("    -> ML-DSA-87 hoan tat thanh cong!")
     else:
         print("    -> [Luu y] Liboqs chua duoc bien dich tren OS hien tai. Thuật toán ML-DSA se duoc chay tren Linux/Kali co liboqs.")
 

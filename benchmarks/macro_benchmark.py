@@ -58,7 +58,7 @@ def load_wallets(base_dir: Path) -> Dict[str, dict]:
     return {}
 
 def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount: str) -> dict:
-    """Create and sign a post-quantum ML-DSA-65 transaction."""
+    """Create and sign a post-quantum ML-DSA-87 transaction."""
     from collections import OrderedDict
     import oqs
 
@@ -69,7 +69,7 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
     ])
     tx_bytes = str(tx_dict).encode('utf-8')
     priv_bytes = bytes.fromhex(sender['private_key'])
-    with oqs.Signature('ML-DSA-65', secret_key=priv_bytes) as signer:
+    with oqs.Signature('ML-DSA-87', secret_key=priv_bytes) as signer:
         sig_bytes = signer.sign(tx_bytes)
 
     return {
@@ -81,7 +81,7 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
 
 
 def create_signed_transaction(sender: dict, recipient_pubkey: str, amount: str) -> dict:
-    """Polymorphic transaction signer: auto-detects ML-DSA-65 or ECDSA."""
+    """Polymorphic transaction signer: auto-detects ML-DSA-87 or ECDSA."""
     pub = sender.get('public_key', '')
     if len(pub) > 1000:
         return create_signed_mldsa_transaction(sender, recipient_pubkey, amount)
@@ -156,7 +156,7 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
         alice = wallets.get('Alice')
         bob = wallets.get('Bob')
 
-        alg_label = "ML-DSA-65" if len(alice.get('public_key', '')) > 1000 else "ECDSA"
+        alg_label = "ML-DSA-87" if len(alice.get('public_key', '')) > 1000 else "ECDSA"
         print(f"\n[*] Dang tao va ky so {tx_count} giao dich {alg_label} hop le...")
         test_txs = []
         for i in range(tx_count):

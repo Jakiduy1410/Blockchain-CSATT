@@ -150,10 +150,10 @@ class BlockchainLedger:
                 )
                 return False
 
-            # 2. Thẩm định chữ ký số (ML-DSA-65 / ECDSA / RSA)
+            # 2. Thẩm định chữ ký số (ML-DSA-87 / ECDSA / RSA)
             is_valid = tx.is_valid(self.mining_sender)
             if len(tx.signature) > 1000 or len(tx.sender_address) > 1000:
-                algo = "ML-DSA-65 (PQC)"
+                algo = "ML-DSA-87 (PQC)"
             elif len(tx.signature) <= 140:
                 algo = "ECDSA-secp256k1"
             else:
