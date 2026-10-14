@@ -1,0 +1,128 @@
+[
+  {
+    "algorithm": "RSA-2048",
+    "keygen_ms": {
+      "mean": 66.4808,
+      "median": 55.3459,
+      "std": 43.9668,
+      "ci_95_low": 63.77,
+      "ci_95_high": 69.1879
+    },
+    "sign_ms": {
+      "mean": 1.5609,
+      "median": 1.3862,
+      "std": 0.4813,
+      "ci_95_low": 1.5327,
+      "ci_95_high": 1.5911
+    },
+    "verify_ms": {
+      "mean": 0.0851,
+      "median": 0.0653,
+      "std": 0.0603,
+      "ci_95_low": 0.0816,
+      "ci_95_high": 0.0891
+    },
+    "pk_bytes": {
+      "mean": 270.0,
+      "median": 270.0,
+      "std": 0.0,
+      "ci_95_low": 270.0,
+      "ci_95_high": 270.0
+    },
+    "sig_bytes": {
+      "mean": 256.0,
+      "median": 256.0,
+      "std": 0.0,
+      "ci_95_low": 256.0,
+      "ci_95_high": 256.0
+    },
+    "blockchain_extrapolation": {
+      "simulated_block_kb": 757.81,
+      "theoretical_crypto_tps": 11750.88
+    }
+  },
+  {
+    "algorithm": "ECDSA (secp256k1)",
+    "keygen_ms": {
+      "mean": 0.7182,
+      "median": 0.692,
+      "std": 0.1145,
+      "ci_95_low": 0.7113,
+      "ci_95_high": 0.7257
+    },
+    "sign_ms": {
+      "mean": 0.7772,
+      "median": 0.7363,
+      "std": 0.4934,
+      "ci_95_low": 0.7568,
+      "ci_95_high": 0.812
+    },
+    "verify_ms": {
+      "mean": 0.6592,
+      "median": 0.6377,
+      "std": 0.0989,
+      "ci_95_low": 0.6532,
+      "ci_95_high": 0.6659
+    },
+    "pk_bytes": {
+      "mean": 33.0,
+      "median": 33.0,
+      "std": 0.0,
+      "ci_95_low": 33.0,
+      "ci_95_high": 33.0
+    },
+    "sig_bytes": {
+      "mean": 64.0,
+      "median": 64.0,
+      "std": 0.0,
+      "ci_95_low": 64.0,
+      "ci_95_high": 64.0
+    },
+    "blockchain_extrapolation": {
+      "simulated_block_kb": 338.87,
+      "theoretical_crypto_tps": 1516.99
+    }
+  },
+  {
+    "algorithm": "PQC: ML-DSA-44",
+    "keygen_ms": {
+      "mean": 0.2871,
+      "median": 0.2248,
+      "std": 0.1103,
+      "ci_95_low": 0.2805,
+      "ci_95_high": 0.2939
+    },
+    "sign_ms": {
+      "mean": 0.693,
+      "median": 0.5673,
+      "std": 0.4302,
+      "ci_95_low": 0.6676,
+      "ci_95_high": 0.7203
+    },
+    "verify_ms": {
+      "mean": 0.1547,
+      "median": 0.1203,
+      "std": 0.0661,
+      "ci_95_low": 0.1507,
+      "ci_95_high": 0.1588
+    },
+    "pk_bytes": {
+      "mean": 1312.0,
+      "median": 1312.0,
+      "std": 0.0,
+      "ci_95_low": 1312.0,
+      "ci_95_high": 1312.0
+    },
+    "sig_bytes": {
+      "mean": 2420.0,
+      "median": 2420.0,
+      "std": 0.0,
+      "ci_95_low": 2420.0,
+      "ci_95_high": 2420.0
+    },
+    "blockchain_extrapolation": {
+      "simulated_block_kb": 3888.67,
+      "theoretical_crypto_tps": 6464.12
+    }
+  }
+]

@@ -61,16 +61,16 @@ class P2PNetwork:
             pass
 
     def gossip_transaction(self, tx: Transaction) -> bool:
-        # 1. Thẩm định mật mã và số dư ví trước tiên
-        success = self.ledger.submit_transaction(tx)
-        if not success:
-            return False
-
-        # 2. Chống bão lặp DoS (nếu đã từng phát sóng giao dịch hợp lệ này rồi thì không phát lại)
+        # 1. Chống bão lặp DoS: Nếu đã thấy giao dịch này rồi -> Bỏ qua ngay
         if tx.tx_id in self.seen_tx_hashes:
             return True
 
         self.seen_tx_hashes.add(tx.tx_id)
+
+        # 2. Thẩm định mật mã và số dư ví
+        success = self.ledger.submit_transaction(tx)
+        if not success:
+            return False
 
         # 3. Lan truyền sang các peer
         payload = tx.to_full_dict()
