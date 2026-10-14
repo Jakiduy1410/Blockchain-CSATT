@@ -230,6 +230,13 @@
                   </div>
                 </div>
 
+                <div class="row">
+                  <label class="col-sm-12">Nonce (Thứ tự giao dịch chống Replay):</label>
+                  <div class="col-sm-12">
+                    <input type="text" name="nonce" id="confirmation_nonce" class="form-control" readonly>
+                  </div>
+                </div>
+
             </form>
 
 
@@ -421,6 +428,7 @@
                 document.getElementById("confirmation_recipient_address").value = response["transaction"]["recipient_address"];
                 document.getElementById("confirmation_amount").value = response["transaction"]["value"];
                 document.getElementById("transaction_signature").value = response["signature"];
+                document.getElementById("confirmation_nonce").value = response["nonce"] || "1";
 
                 $("#basicModal").modal('show');
                 

@@ -33,10 +33,10 @@ class Block:
 
     @staticmethod
     def valid_proof(transactions: List[Dict], previous_hash: str, nonce: int, difficulty: int) -> bool:
-        transaction_elements = ['sender_address', 'recipient_address', 'value']
+        transaction_elements = ['sender_address', 'recipient_address', 'value', 'nonce']
         ordered_txs = []
         for tx in transactions:
-            ordered_tx = OrderedDict((k, tx[k]) for k in transaction_elements if k in tx)
+            ordered_tx = OrderedDict((k, str(tx[k])) for k in transaction_elements if k in tx)
             ordered_txs.append(ordered_tx)
 
         guess = (str(ordered_txs) + str(previous_hash) + str(nonce)).encode('utf-8')

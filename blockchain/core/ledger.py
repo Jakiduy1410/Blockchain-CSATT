@@ -115,7 +115,7 @@ class BlockchainLedger:
     def create_genesis_block(self):
         genesis = {
             'block_number': 1,
-            'timestamp': time(),
+            'timestamp': 1700000000.0,
             'transactions': [],
             'nonce': 0,
             'previous_hash': '00'
@@ -128,8 +128,46 @@ class BlockchainLedger:
             status="SUCCESS"
         )
 
+    def get_next_nonce(self, address: str) -> int:
+        """Trả về nonce tiếp theo dự kiến của ví (số tx đã xác nhận + pending trong mempool + 1)"""
+        with self.lock:
+            confirmed_count = sum(
+                1 for block in self.chain
+                for tx in block.get('transactions', [])
+                if tx.get('sender_address') == address
+            )
+            mempool_count = sum(
+                1 for tx in self.transactions
+                if tx.get('sender_address') == address
+            )
+            return confirmed_count + mempool_count + 1
+
     def submit_transaction(self, tx: Transaction) -> bool:
         with self.lock:
+            # 0. Chống Replay Attack: kiểm tra tx đã từng được đào trong chuỗi chưa
+            for blk in self.chain:
+                for past_tx in blk.get('transactions', []):
+                    if past_tx.get('signature') and past_tx.get('signature') == tx.signature:
+                        self.audit.log(
+                            category="SECURITY",
+                            title="Tu choi giao dich: Phat hien REPLAY ATTACK (Chu ky da ton tai trong So cai)!",
+                            details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                            status="FAILED"
+                        )
+                        return False
+                    if tx.sender_address != self.mining_sender and \
+                       past_tx.get('sender_address') == tx.sender_address and \
+                       past_tx.get('nonce') is not None and \
+                       int(past_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and \
+                       int(getattr(tx, 'nonce', 0)) > 0:
+                        self.audit.log(
+                            category="SECURITY",
+                            title="Tu choi giao dich: Phat hien REPLAY ATTACK (Nonce da duoc thuc thi truoc do)!",
+                            details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                            status="FAILED"
+                        )
+                        return False
+
             # 1. Kiểm tra tính hợp lệ của số tiền
             try:
                 amount = float(tx.value)
@@ -175,9 +213,11 @@ class BlockchainLedger:
             # 3. Kiểm tra trùng lặp trong Mempool
             for existing_tx in self.transactions:
                 if existing_tx.get('sender_address') == tx.sender_address and \
-                   existing_tx.get('recipient_address') == tx.recipient_address and \
-                   existing_tx.get('value') == tx.value and \
-                   existing_tx.get('signature') == tx.signature:
+                   (existing_tx.get('signature') == tx.signature or (
+                       existing_tx.get('nonce') is not None and
+                       int(existing_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and
+                       int(getattr(tx, 'nonce', 0)) > 0
+                   )):
                     return True
 
             # 4. Kiểm tra số dư người gửi (Solvency & Anti Double-Spending)
@@ -206,6 +246,7 @@ class BlockchainLedger:
                     'sender_pubkey': f"{tx.sender_address[:24]}...",
                     'recipient': f"{tx.recipient_address[:24]}...",
                     'amount': f"{tx.value} COIN",
+                    'nonce': getattr(tx, 'nonce', 0),
                     'signature_algorithm': algo
                 },
                 status="SUCCESS"
@@ -224,6 +265,7 @@ class BlockchainLedger:
                     'from': sender_name,
                     'to': recipient_name,
                     'amount': f"{amount} COIN",
+                    'nonce': getattr(tx, 'nonce', 0),
                     'sender_remaining_balance': f"{new_avail_balance} COIN"
                 },
                 status="INFO"
@@ -294,6 +336,61 @@ class BlockchainLedger:
                 )
                 return False
 
+            # Thẩm định giao dịch bên trong Block (Chữ ký, Nonce, Số dư tuần tự & Coinbase)
+            coinbase_txs = [tx for tx in block['transactions'] if tx.get('sender_address') == self.mining_sender]
+            if len(coinbase_txs) > 1:
+                self.audit.log(category="CONSENSUS", title="Tu choi Block: Qua nhieu giao dich Coinbase!", status="FAILED")
+                return False
+            if coinbase_txs:
+                try:
+                    cb_val = float(coinbase_txs[0].get('value', 0))
+                    if cb_val > self.mining_reward:
+                        self.audit.log(category="CONSENSUS", title=f"Tu choi Block: Phan thuong Coinbase vuot nguong ({cb_val} > {self.mining_reward})!", status="FAILED")
+                        return False
+                except (ValueError, TypeError):
+                    return False
+
+            temp_balances = {}
+            seen_signatures_in_block = set()
+            for tx_data in block['transactions']:
+                if tx_data.get('sender_address') == self.mining_sender:
+                    continue
+                tx_obj = Transaction.from_dict(tx_data)
+                if not tx_obj.is_valid(self.mining_sender):
+                    self.audit.log(
+                        category="CONSENSUS",
+                        title="Tu choi Block: Phat hien chu ky giao dich khong hop le trong Block!",
+                        details={'tx_id': getattr(tx_obj, 'tx_id', '')[:16]},
+                        status="FAILED"
+                    )
+                    return False
+
+                sig = tx_data.get('signature')
+                if sig:
+                    if sig in seen_signatures_in_block:
+                        self.audit.log(category="CONSENSUS", title="Tu choi Block: Trung lap chu ky ngay trong Block!", status="FAILED")
+                        return False
+                    seen_signatures_in_block.add(sig)
+
+                sender = tx_obj.sender_address
+                amount = float(tx_obj.value)
+                if sender not in temp_balances:
+                    temp_balances[sender] = self.get_balance(sender, include_mempool=False)
+                if temp_balances[sender] < amount:
+                    self.audit.log(
+                        category="CONSENSUS",
+                        title=f"Tu choi Block: Nguoi gui [{sender[:16]}...] khong du so du (Overspending)!",
+                        details={'deficit': round(amount - temp_balances[sender], 4)},
+                        status="FAILED"
+                    )
+                    return False
+                temp_balances[sender] -= amount
+
+                recipient = tx_obj.recipient_address
+                if recipient not in temp_balances:
+                    temp_balances[recipient] = self.get_balance(recipient, include_mempool=False)
+                temp_balances[recipient] += amount
+
             # Block hợp lệ -> MERGE BLOCK
             self.chain.append(block)
 
@@ -349,6 +446,12 @@ class BlockchainLedger:
             txs_to_verify = [tx for tx in block['transactions'] if tx.get('sender_address') != self.mining_sender]
             if not Block.valid_proof(txs_to_verify, block['previous_hash'], block['nonce'], self.difficulty):
                 return False
+
+            # Thẩm định chữ ký các tx trong chain
+            for tx_data in txs_to_verify:
+                tx_obj = Transaction.from_dict(tx_data)
+                if not tx_obj.is_valid(self.mining_sender):
+                    return False
 
             last_block = block
             current_index += 1

@@ -70,7 +70,7 @@ def run_experiment():
             print(f"    - Node {node['id']} (:{node['port']}): Peers={len(res['peers'])} | Chain={res['chain_length']} | Mempool={res['mempool_count']}")
 
         # 3. Client lay vi mau da co so du khoi tao (Alice, Bob) va ky giao dich 1
-        print("\n[*] Giai doan 3: Client lay vi mau va ky giao dich bang chu ky so MLDSA-44...")
+        print("\n[*] Giai doan 3: Client lay vi mau va ky giao dich bang chu ky so ECDSA (secp256k1)...")
         wallets_res = requests.get('http://127.0.0.1:8080/wallets/sample', timeout=3).json()
         alice = wallets_res.get('Alice', {})
         bob = wallets_res.get('Bob', {})
@@ -79,11 +79,12 @@ def run_experiment():
             'sender_address': alice['public_key'],
             'sender_private_key': alice['private_key'],
             'recipient_address': bob['public_key'],
-            'amount': '40.0'
+            'amount': '40.0',
+            'nonce': '1'
         }
         signed_tx1 = requests.post('http://127.0.0.1:8080/generate/transaction', data=tx1_data, timeout=3).json()
         sig1 = signed_tx1['signature']
-        print(f"    -> Da ky giao dich 1 (Alice -> Bob: 40.0 COIN). Chữ ký MLDSA-44 hop le: {sig1[:30]}...")
+        print(f"    -> Da ky giao dich 1 (Alice -> Bob: 40.0 COIN, Nonce 1). Chu ky ECDSA: {sig1[:30]}...")
 
         # 4. Phat song giao dich 1 vao DUY NHAT Node 1
         print("\n[*] Giai doan 4: Gui giao dich vao DUY NHAT Node 1 (:5000) qua API /transactions/new...")
@@ -91,13 +92,14 @@ def run_experiment():
             'sender_address': alice['public_key'],
             'recipient_address': bob['public_key'],
             'amount': '40.0',
+            'nonce': '1',
             'signature': sig1
         }
         res1 = requests.post('http://127.0.0.1:5000/transactions/new', json=post_tx1, timeout=3).json()
         print(f"    -> Phan hoi Node 1: {res1.get('message')}")
 
-        # 5. Cho Miner Node 2 phat hien mempool, dao Block 2 va phat song Block 2
-        print("\n[*] Giai doan 5: Cho Miner (Node 2) tu dong gom mempool, dao va phat song Block 2 (5 giay)...")
+        # 5. Cho Miner Node 2 phat hien mempool, dao Block 2 va phat song Block 2 qua WebSocket
+        print("\n[*] Giai doan 5: Cho Miner (Node 2) tu dong gom mempool, dao va phat song Block 2 qua WebSocket...")
         time.sleep(5.0)
 
         # 6. Kiem tra tinh dong bo So cai tren ca 6 Node cho Block 2
@@ -114,25 +116,33 @@ def run_experiment():
             if length != 2 or txs_in_b2 < 2:
                 all_block2_ok = False
 
+        # KIEM TRA AN NINH: THU PHAT LAI GIAO DICH 1 (REPLAY ATTACK)
+        print("\n[*] [KIEM THU AN NINH] Thu phat lai Giao dich 1 (Replay Attack) vao Node 3 (:5002)...")
+        replay_res = requests.post('http://127.0.0.1:5002/transactions/new', json=post_tx1, timeout=3)
+        replay_blocked = (replay_res.status_code == 406)
+        print(f"    -> Ket qua: HTTP {replay_res.status_code} | {'REPLAY ATTACK BI CHAN THANH CONG!' if replay_blocked else 'CANH BAO: Khong chan duoc Replay!'}")
+
         # 7. Thu nghiem tinh Phi tap trung (Decentralization): Gui tiep Giao dich 2 vao Node 5!
         print("\n[*] Giai doan 7: Thu nghiem Phi tap trung - Gui Giao dich 2 vao Node 5 (:5004)...")
         tx2_data = {
             'sender_address': bob['public_key'],
             'sender_private_key': bob['private_key'],
             'recipient_address': alice['public_key'],
-            'amount': '20.0'
+            'amount': '20.0',
+            'nonce': '1'
         }
         signed_tx2 = requests.post('http://127.0.0.1:8080/generate/transaction', data=tx2_data, timeout=3).json()
         post_tx2 = {
             'sender_address': bob['public_key'],
             'recipient_address': alice['public_key'],
             'amount': '20.0',
+            'nonce': '1',
             'signature': signed_tx2['signature']
         }
         res2 = requests.post('http://127.0.0.1:5004/transactions/new', json=post_tx2, timeout=3).json()
         print(f"    -> Phan hoi Node 5: {res2.get('message')}")
 
-        print("\n[*] Giai doan 8: Cho Miner (Node 2) dao va phat song Block 3 (5 giay)...")
+        print("\n[*] Giai doan 8: Cho Miner (Node 2) dao va phat song Block 3 qua WebSocket...")
         time.sleep(5.0)
 
         # 8. Kiem tra toan bo 6 Node cho Block 3
@@ -146,16 +156,16 @@ def run_experiment():
 
         print("\n" + "=" * 75)
         print("  TONG KET THUC NGHIEM:")
-        if all_block2_ok and all_block3_ok:
+        if all_block2_ok and all_block3_ok and replay_blocked:
             print("  >>> [XAC NHAN CHUYEN GIA AN NINH MANG: THANH CONG 100%] <<<")
-            print("  1. Chữ ký số MLDSA-44 duoc kiem tra nghiem ngat tai tung node.")
-            print("  2. Co che P2P Gossip lan truyen giao dich khap mang (Node 1 -> All, Node 5 -> All).")
-            print("  3. Bo loc 'seen_tx_hashes' triet tieu hoan toan Bao Broadcast / DoS Loop.")
-            print("  4. Auto-Miner (Node 2) tu dong bat Mempool, giai PoW va broadcast Block moi.")
-            print("  5. Block Propagation dong bo 100% so cai tren ca 6 node.")
+            print("  1. Chu ky so ECDSA (secp256k1) va Nonce duoc kiem tra nghiem ngat tai tung node.")
+            print("  2. Co che P2P WebSocket TLS ECDHE lan truyen giao dich ngam lien tuc giua 6 Node.")
+            print("  3. Tan cong Phat lai (Replay Attack) bi triet tieu hoan toan nho Nonce & So cai.")
+            print("  4. Auto-Miner (Node 2) tu dong bat Mempool, giai PoW va broadcast Block moi qua wss://.")
+            print("  5. Block Propagation dong bo 100% so cai tren ca 6 node qua WebSocket.")
             print("  6. Mempool duoc tu dong don dep sau moi Block.")
         else:
-            print("  >>> [CANH BAO] Kiem tra lai cac chi so chua dong bo.")
+            print("  >>> [CANH BAO] Kiem tra lai cac chi so chua dong bo hoac Replay chua chan.")
         print("=" * 75)
 
     finally:

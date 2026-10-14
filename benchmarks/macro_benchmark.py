@@ -57,7 +57,32 @@ def load_wallets(base_dir: Path) -> Dict[str, dict]:
             return json.load(f)
     return {}
 
-def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount: str) -> dict:
+def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
+    """Tạo và ký số giao dịch chuẩn ECDSA (secp256k1) kèm nonce chống Replay."""
+    from collections import OrderedDict
+    import ecdsa
+
+    tx_dict = OrderedDict([
+        ('sender_address', sender['public_key']),
+        ('recipient_address', recipient_pubkey),
+        ('value', str(amount)),
+        ('nonce', str(nonce))
+    ])
+    tx_bytes = str(tx_dict).encode('utf-8')
+    sk_bytes = bytes.fromhex(sender['private_key'])
+    sk = ecdsa.SigningKey.from_string(sk_bytes, curve=ecdsa.SECP256k1)
+    sig_bytes = sk.sign(tx_bytes)
+
+    return {
+        'sender_address': sender['public_key'],
+        'recipient_address': recipient_pubkey,
+        'amount': str(amount),
+        'nonce': nonce,
+        'signature': sig_bytes.hex()
+    }
+
+
+def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
     """Create and sign a post-quantum ML-DSA-44 transaction."""
     from collections import OrderedDict
     import oqs
@@ -65,7 +90,8 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
     tx_dict = OrderedDict([
         ('sender_address', sender['public_key']),
         ('recipient_address', recipient_pubkey),
-        ('value', str(amount))
+        ('value', str(amount)),
+        ('nonce', str(nonce))
     ])
     tx_bytes = str(tx_dict).encode('utf-8')
     priv_bytes = bytes.fromhex(sender['private_key'])
@@ -76,16 +102,17 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
         'sender_address': sender['public_key'],
         'recipient_address': recipient_pubkey,
         'amount': str(amount),
+        'nonce': nonce,
         'signature': sig_bytes.hex()
     }
 
 
-def create_signed_transaction(sender: dict, recipient_pubkey: str, amount: str) -> dict:
+def create_signed_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
     """Polymorphic transaction signer: auto-detects ML-DSA-44 or ECDSA."""
     pub = sender.get('public_key', '')
     if len(pub) > 1000:
-        return create_signed_mldsa_transaction(sender, recipient_pubkey, amount)
-    return create_signed_ecdsa_transaction(sender, recipient_pubkey, amount)
+        return create_signed_mldsa_transaction(sender, recipient_pubkey, amount, nonce)
+    return create_signed_ecdsa_transaction(sender, recipient_pubkey, amount, nonce)
 
 
 def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
@@ -148,23 +175,51 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
                 initial_status[u] = 1
         base_chain_len = max(initial_status.values())
 
-        # 2. Sinh tap giao dich hop le
+        # 2. Sinh tap giao dich hop le chéo giữa các ví (Alice, Bob, Charlie, Dave)
         wallets = load_wallets(base_dir)
         if not wallets:
             raise RuntimeError("Khong tim thay vi mau configs/wallets.json")
 
-        alice = wallets.get('Alice')
-        bob = wallets.get('Bob')
+        wallet_names = list(wallets.keys())
+        first_wallet = wallets[wallet_names[0]]
+        alg_label = "ML-DSA-44" if len(first_wallet.get('public_key', '')) > 1000 else "ECDSA"
 
-        alg_label = "ML-DSA-44" if len(alice.get('public_key', '')) > 1000 else "ECDSA"
-        print(f"\n[*] Dang tao va ky so {tx_count} giao dich {alg_label} hop le...")
+        print(f"\n[*] Dang tao va ky so {tx_count} giao dich {alg_label} ngau nhien cheo {len(wallet_names)} vi ({', '.join(wallet_names)})...")
         test_txs = []
+        wallet_nonces = {name: 1 for name in wallet_names}
+        sim_balances = {name: float(wallets[name].get('initial_balance', 10.0)) for name in wallet_names}
+
+        import random
+        random.seed(42)  # Cố định seed ngẫu nhiên để benchmark có tính lặp lại khoa học
+
         for i in range(tx_count):
-            # Luan phien Alice -> Bob va Bob -> Alice voi so tien nho hop le
-            if i % 2 == 0:
-                tx = create_signed_transaction(alice, bob['public_key'], "0.5")
-            else:
-                tx = create_signed_transaction(bob, alice['public_key'], "0.5")
+            # Chọn người gửi có số dư khả dụng > 1.0 COIN
+            eligible_senders = [name for name in wallet_names if sim_balances[name] > 1.0]
+            if not eligible_senders:
+                eligible_senders = wallet_names
+            sender_name = random.choice(eligible_senders)
+
+            # Chọn người nhận khác người gửi
+            recipient_candidates = [name for name in wallet_names if name != sender_name]
+            recipient_name = random.choice(recipient_candidates)
+
+            # Số tiền nhỏ biến thiên hợp lệ (0.01 đến 0.15 COIN)
+            amount_val = round(0.02 + (i % 20) * 0.005, 4)
+            sender_w = wallets[sender_name]
+            recip_w = wallets[recipient_name]
+
+            tx = create_signed_transaction(
+                sender_w,
+                recip_w['public_key'],
+                str(amount_val),
+                nonce=wallet_nonces[sender_name]
+            )
+
+            # Cập nhật nonce và số dư mô phỏng để mọi giao dịch đều 100% hợp lệ
+            wallet_nonces[sender_name] += 1
+            sim_balances[sender_name] -= amount_val
+            sim_balances[recipient_name] += amount_val
+
             test_txs.append(tx)
 
         # 3. Benchmark Ingestion Phase (Bắn tải HTTP)
@@ -212,48 +267,31 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
         print(f"    -> Ingestion TPS Thuc te:  {ingest_tps:.2f} tx/s")
         print(f"    -> Do tre tiep nhan (Mean): {mean_lat:.2f} ms | Median: {median_lat:.2f} ms | P95: {p95_lat:.2f} ms")
 
-        # 4. Benchmark Consensus & Block Propagation Phase
-        print(f"\n[*] GIAI DOAN 2: Do luong thoi gian Miner dong khoi va Block Propagation tren 6 Node...")
-        t_mine_start = time.perf_counter()
+        # 4. Benchmark Consensus & Block Propagation Phase qua WebSocket
+        print(f"\n[*] GIAI DOAN 2: Do luong thoi gian Miner dong khoi va Block Propagation tu nhien qua WebSocket...")
         target_chain_len = base_chain_len + 1
 
+        # Chờ 1 giây để đảm bảo toàn bộ giao dịch từ Ingress Node (5000) đã Gossip qua WebSocket tới Miner Node (5001)
+        time.sleep(1.0)
+
+        # Kích hoạt đào trực tiếp tại Miner Node (Port 5001), không gọi tại Ingress Node
+        print(f"    [*] Kich hoat khai thac Block #{target_chain_len} tai Miner Node ({miner_url}/mine)...")
+        t_prop_start = time.perf_counter()
+        try:
+            mine_res = requests.get(f"{miner_url}/mine", timeout=10.0)
+            if mine_res.status_code == 200:
+                print(f"    [+] Miner Node ({miner_url}) khai thac thanh cong!")
+            else:
+                print(f"    [!] Miner phan hoi: {mine_res.status_code}")
+        except Exception as ex:
+            print(f"    [!] Loi khi goi miner: {ex}")
+
+        # Đo độ trễ lan truyền tự nhiên: KHÔNG gọi cưỡng bức /nodes/resolve
+        # Quan sát toàn bộ 6 Node tự động nhận Block qua đường ống WebSocket mở sẵn
         all_synced = False
         max_wait = 15.0
-        poll_interval = 0.5
+        poll_interval = 0.2
         waited = 0.0
-
-        # Cho auto-miner hoac kich hoat dao truc tiep tai node chua mempool
-        for _ in range(6):
-            time.sleep(poll_interval)
-            waited += poll_interval
-            statuses = []
-            for u in nodes:
-                try:
-                    statuses.append(requests.get(f"{u}/status", timeout=1.0).json().get('chain_length', 0))
-                except Exception:
-                    statuses.append(0)
-            if any(s >= target_chain_len for s in statuses):
-                break
-
-        statuses = []
-        for u in nodes:
-            try:
-                statuses.append(requests.get(f"{u}/status", timeout=1.0).json().get('chain_length', 0))
-            except Exception:
-                statuses.append(0)
-
-        if not any(s >= target_chain_len for s in statuses):
-            try:
-                requests.get(f"{ingress_url}/mine", timeout=5.0)
-            except Exception:
-                pass
-
-        # Phat song dong thuan (Nakamoto Consensus) tren cac peer
-        for u in nodes:
-            try:
-                requests.get(f"{u}/nodes/resolve", timeout=2.0)
-            except Exception:
-                pass
 
         while waited < max_wait:
             time.sleep(poll_interval)
@@ -262,7 +300,7 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
             for u in nodes:
                 try:
                     st = requests.get(f"{u}/status", timeout=1.0).json()
-                    statuses.append(st['chain_length'])
+                    statuses.append(st.get('chain_length', 0))
                 except Exception:
                     statuses.append(0)
 
@@ -270,11 +308,11 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
                 all_synced = True
                 break
 
-        t_prop_total = time.perf_counter() - t_mine_start
-        print(f"    -> Toan bo 6 Node dong bo Block moi sau: {t_prop_total:.3f} s (Dong bo 100%: {all_synced})")
+        t_prop_total = time.perf_counter() - t_prop_start
+        print(f"    -> Toan bo {len(nodes)} Node dong bo Block #{target_chain_len} tu nhien qua WebSocket sau: {t_prop_total:.3f} s (Dong bo 100%: {all_synced})")
 
-        # 5. Do luong Block Wire Payload (Kich thuoc goi tin qua HTTP)
-        print(f"\n[*] GIAI DOAN 3: Do luong kich thuoc Block Payload qua HTTP...")
+        # 5. Do luong Block Wire Payload (Kich thuoc goi tin qua WebSocket/Wire)
+        print(f"\n[*] GIAI DOAN 3: Do luong kich thuoc Block Payload tren duong truyen...")
         chain_data = requests.get(f"{ingress_url}/chain", timeout=2.0).json()
         latest_block = chain_data['chain'][-1] if chain_data['chain'] else {}
         block_wire_bytes = len(json.dumps(latest_block).encode('utf-8'))
@@ -282,12 +320,12 @@ def run_macro_benchmark(config: dict, base_dir: Path, out_dir: Path) -> Dict:
         avg_tx_bytes = (block_wire_bytes / tx_in_block) if tx_in_block > 0 else 0
 
         print(f"    -> So giao dich trong Block moi: {tx_in_block} txs")
-        print(f"    -> Kich thuoc Block thuc te tren duong truyen HTTP: {block_wire_bytes / 1024:.2f} KB ({block_wire_bytes} bytes)")
-        print(f"    -> Dung luong trung binh tren 1 transaction:       {avg_tx_bytes:.1f} bytes/tx")
+        print(f"    -> Kich thuoc Block thuc te tren duong truyen: {block_wire_bytes / 1024:.2f} KB ({block_wire_bytes} bytes)")
+        print(f"    -> Dung luong trung binh tren 1 transaction:  {avg_tx_bytes:.1f} bytes/tx")
 
         # Tong hop ket qua Macro
         macro_results = {
-            'benchmark_name': 'Macro-Benchmark 6-Node P2P (HTTP)',
+            'benchmark_name': 'Macro-Benchmark 6-Node P2P (WebSocket TLS ECDHE)',
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
             'workload': {
                 'total_tx_sent': tx_count,
