@@ -74,9 +74,10 @@ def create_app(config: NodeConfig = None) -> tuple[Flask, BlockchainLedger, P2PN
 def main():
     config = NodeConfig.load()
     app, ledger, network, miner = create_app(config)
-    print(f"[+] Blockchain Node dang lang nghe tai: http://{config.host}:{config.port}")
+    print(f"[+] Blockchain Node HTTP API dang lang nghe tai: http://{config.host}:{config.port}")
+    print(f"[+] Persistent WebSocket P2P (TLS 1.3/ECDHE) tai: wss://{config.host}:{network.ws_port}")
     if config.peers:
-        print(f"[+] Da ket noi voi cac Peers: {config.peers}")
+        print(f"[+] Da ket noi voi cac Peers qua WebSocket: {config.peers}")
 
     app.run(host=config.host, port=config.port, threaded=True)
 

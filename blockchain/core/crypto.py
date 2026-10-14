@@ -69,8 +69,16 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
             ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
             ('value', str(transaction_dict.get('value', '')))
         ])
+        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
+            ordered_tx['nonce'] = str(transaction_dict['nonce'])
+
         tx_bytes = str(ordered_tx).encode('utf-8')
-        return vk.verify(signature_bytes, tx_bytes)
+        try:
+            return vk.verify(signature_bytes, tx_bytes)
+        except Exception:
+            # Fallback thu verify voi DER format
+            import ecdsa.util
+            return vk.verify(signature_bytes, tx_bytes, sigdecode=ecdsa.util.sigdecode_der)
     except Exception:
         return False
 
