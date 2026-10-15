@@ -23,6 +23,16 @@
 
       <!-- Controls -->
       <div class="flex items-center space-x-2 mt-2 sm:mt-0">
+        <!-- Bộ chọn giao thức HTTP / HTTPS (TLS) -->
+        <div class="flex items-center gap-1 bg-slate-800/90 border border-slate-700 rounded-lg px-2 py-1">
+          <span class="text-[10px] text-slate-400 font-mono">Giao thức:</span>
+          <select id="protocol-select" class="bg-slate-900 text-xs font-mono font-bold text-cyan-300 rounded px-1.5 py-0.5 border border-slate-700 focus:outline-none">
+            <option value="auto">⚡ Tự động (Auto)</option>
+            <option value="http:">🌐 HTTP thường</option>
+            <option value="https:">🔒 HTTPS / TLS</option>
+          </select>
+        </div>
+
         <button id="btn-send-tx" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm flex items-center gap-1">
           <span>⚡ Mô Phỏng Gửi 1 Tx</span>
         </button>
@@ -136,12 +146,27 @@
     }
     window.addEventListener("resize", resizeCanvas);
 
+    function getActiveProtocol() {
+      const selectEl = document.getElementById("protocol-select");
+      const userChoice = selectEl ? selectEl.value : "auto";
+      if (userChoice === "http:") return "http:";
+      if (userChoice === "https:") return "https:";
+      return (window.location.protocol === "https:") ? "https:" : "http:";
+    }
+
+    // Tự động nhận diện giao thức khi tải trang
+    if (window.location.protocol === "https:") {
+      const sel = document.getElementById("protocol-select");
+      if (sel) sel.value = "https:";
+    }
+
     function renderNodeCards() {
       const container = document.getElementById("nodes-container");
       container.innerHTML = "";
+      const proto = getActiveProtocol();
       NODES.forEach(n => {
         const card = document.createElement("a");
-        card.href = `http://localhost:${n.port}`;
+        card.href = `${proto}//localhost:${n.port}`;
         card.target = "_blank";
         card.className = `node-box block p-2.5 rounded-lg border ${n.isMiner ? 'bg-amber-950/20 border-amber-800/60 hover:border-amber-500' : 'bg-slate-950 border-slate-800 hover:border-slate-600'} text-xs space-y-1.5 transition no-underline`;
         card.innerHTML = `
@@ -183,24 +208,25 @@
     // Live Polling từ các Node backend thật (ports 5000 -> 5005)
     async function fetchLiveStatus() {
       if (!isLiveSync) return;
+      const proto = getActiveProtocol();
 
       for (let node of NODES) {
         try {
-          const res = await fetch(`http://127.0.0.1:${node.port}/status`);
+          const res = await fetch(`${proto}//127.0.0.1:${node.port}/status`);
           if (res.ok) {
             const data = await res.json();
             node.mempool = data.mempool_count;
             node.chain = data.chain_length;
           }
         } catch (e) {
-          // Node chua bat hoac offline
+          // Node chua bat hoac offline hoac chua chap nhan chung chi tu ky
         }
       }
       renderNodeCards();
 
       // Lay Audit logs tu Node 1 hoac Node 2
       try {
-        const auditRes = await fetch("http://127.0.0.1:5000/audit/logs?limit=20");
+        const auditRes = await fetch(`${proto}//127.0.0.1:5000/audit/logs?limit=20`);
         if (auditRes.ok) {
           const auditData = await auditRes.json();
           renderAuditFeed(auditData.logs);
@@ -209,7 +235,7 @@
 
       // Lay Chain thuc te tu Node 1
       try {
-        const chainRes = await fetch("http://127.0.0.1:5000/chain");
+        const chainRes = await fetch(`${proto}//127.0.0.1:5000/chain`);
         if (chainRes.ok) {
           const cData = await chainRes.json();
           globalChain = cData.chain.map(b => ({
@@ -332,8 +358,9 @@
 
     // Nut Mine Node 2 that
     document.getElementById("btn-real-mine").addEventListener("click", async () => {
+      const proto = getActiveProtocol();
       try {
-        const res = await fetch("http://127.0.0.1:5001/mine");
+        const res = await fetch(`${proto}//127.0.0.1:5001/mine`);
         if (res.ok) {
           const data = await res.json();
           alert(`Đào thành công Block #${data.block_number} trên Node 2!`);
@@ -342,8 +369,13 @@
           alert("Không thể đào hoặc Node 2 chưa chạy.");
         }
       } catch (e) {
-        alert("Lỗi kết nối tới Node 2 (:5001). Đảm bảo mạng đang chạy!");
+        alert(`Lỗi kết nối tới Node 2 (:5001) qua ${proto}. Nếu dùng TLS/HTTPS, vui lòng mở tab https://localhost:5001 một lần để chấp nhận chứng chỉ tự ký!`);
       }
+    });
+
+    // Lắng nghe sự kiện đổi giao thức
+    document.getElementById("protocol-select").addEventListener("change", () => {
+      fetchLiveStatus();
     });
 
     // Nut Mo phong Gui Tx

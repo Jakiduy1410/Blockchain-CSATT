@@ -237,12 +237,22 @@
               <label class="col-sm-12">Chọn Blockchain Node để phát sóng:</label>
               <div class="col-sm-12 mb-2">
                 <select id="node_select" class="form-control" onchange="document.getElementById('node_url').value = this.value;">
-                  <option value="http://127.0.0.1:5000">Node 1 (127.0.0.1:5000 - Ingress)</option>
-                  <option value="http://127.0.0.1:5001">Node 2 (127.0.0.1:5001 - Miner ⛏️)</option>
-                  <option value="http://127.0.0.1:5002">Node 3 (127.0.0.1:5002 - Peer)</option>
-                  <option value="http://127.0.0.1:5003">Node 4 (127.0.0.1:5003 - Peer)</option>
-                  <option value="http://127.0.0.1:5004">Node 5 (127.0.0.1:5004 - Peer)</option>
-                  <option value="http://127.0.0.1:5005">Node 6 (127.0.0.1:5005 - Peer)</option>
+                  <optgroup label="🌐 Giao thức HTTP thường">
+                    <option value="http://127.0.0.1:5000">Node 1 (http://127.0.0.1:5000 - Ingress)</option>
+                    <option value="http://127.0.0.1:5001">Node 2 (http://127.0.0.1:5001 - Miner ⛏️)</option>
+                    <option value="http://127.0.0.1:5002">Node 3 (http://127.0.0.1:5002 - Peer)</option>
+                    <option value="http://127.0.0.1:5003">Node 4 (http://127.0.0.1:5003 - Peer)</option>
+                    <option value="http://127.0.0.1:5004">Node 5 (http://127.0.0.1:5004 - Peer)</option>
+                    <option value="http://127.0.0.1:5005">Node 6 (http://127.0.0.1:5005 - Peer)</option>
+                  </optgroup>
+                  <optgroup label="🔒 Giao thức HTTPS / TLS (Bảo mật đường truyền)">
+                    <option value="https://127.0.0.1:5000">Node 1 (https://127.0.0.1:5000 - Ingress [TLS])</option>
+                    <option value="https://127.0.0.1:5001">Node 2 (https://127.0.0.1:5001 - Miner [TLS] ⛏️)</option>
+                    <option value="https://127.0.0.1:5002">Node 3 (https://127.0.0.1:5002 - Peer [TLS])</option>
+                    <option value="https://127.0.0.1:5003">Node 4 (https://127.0.0.1:5003 - Peer [TLS])</option>
+                    <option value="https://127.0.0.1:5004">Node 5 (https://127.0.0.1:5004 - Peer [TLS])</option>
+                    <option value="https://127.0.0.1:5005">Node 6 (https://127.0.0.1:5005 - Peer [TLS])</option>
+                  </optgroup>
                 </select>
               </div>
               <label class="col-sm-12">Hoặc nhập URL tùy chỉnh:</label>

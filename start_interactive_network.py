@@ -42,19 +42,24 @@ def main():
     py_cmd = get_python_cmd()
     print(f"[*] He dieu hanh: {sys.platform} | Python: {' '.join(py_cmd)}")
 
+    use_tls = '--tls' in sys.argv
+    protocol = "https" if use_tls else "http"
+
     processes = []
 
     try:
-        print("\n[*] 1. Dang khoi dong 6 Node P2P Mesh...")
+        print(f"\n[*] 1. Dang khoi dong 6 Node P2P Mesh (Giao thuc: {protocol.upper()})...")
         for node in net_cfg['nodes']:
             cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
+            if use_tls:
+                cmd.append('--tls')
             # De nguoi dung tu tay bam nut 'Mine' tren Web Node 2 quan sat chu trinh
             if node['peers']:
                 cmd.extend(['--peers', ','.join(node['peers'])])
 
             p = subprocess.Popen(cmd, cwd=base_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             processes.append(p)
-            print(f"    [OK] Node {node['id']} dang chay tai: http://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
+            print(f"    [OK] Node {node['id']} dang chay tai: {protocol}://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
 
         print("\n[*] 2. Dang khoi dong Blockchain Client...")
         p_client = subprocess.Popen(py_cmd + ['blockchain_client/blockchain_client.py', '-p', '8080'],
@@ -65,16 +70,20 @@ def main():
         print("\n" + "=" * 75)
         print("  DANH SACH DUONG DAN TRINH DUYET SAN SANG DE BAN MO VA TUONG TAC:")
         print("=" * 75)
-        print("  * Tab 1 (Vi Client):   http://localhost:8080/make/transaction")
-        print("  * Tab 2 (Node 1):      http://localhost:5000  (Ingress / Relay)")
-        print("  * Tab 3 (Node 2):      http://localhost:5001  (Miner ⛏ - Co nut bam Mine)")
-        print("  * Tab 4 (Node 3):      http://localhost:5002  (Relay)")
-        print("  * Tab 5 (Node 4):      http://localhost:5003  (Relay)")
-        print("  * Tab 6 (Node 5):      http://localhost:5004  (Relay)")
-        print("  * Tab 7 (Node 6):      http://localhost:5005  (Relay)")
-        print("  * VISUALIZER LIVE:     http://localhost:5000/visualizer (Hoac bat ky Node nao)")
+        print(f"  * Tab 1 (Vi Client):   http://localhost:8080/make/transaction")
+        print(f"  * Tab 2 (Node 1):      {protocol}://localhost:5000  (Ingress / Relay)")
+        print(f"  * Tab 3 (Node 2):      {protocol}://localhost:5001  (Miner ⛏ - Co nut bam Mine)")
+        print(f"  * Tab 4 (Node 3):      {protocol}://localhost:5002  (Relay)")
+        print(f"  * Tab 5 (Node 4):      {protocol}://localhost:5003  (Relay)")
+        print(f"  * Tab 6 (Node 5):      {protocol}://localhost:5004  (Relay)")
+        print(f"  * Tab 7 (Node 6):      {protocol}://localhost:5005  (Relay)")
+        print(f"  * VISUALIZER LIVE:     {protocol}://localhost:5000/visualizer (Hoac bat ky Node nao)")
         print("-" * 75)
         print("  Luu y:")
+        if use_tls:
+            print("  - [TLS / HTTPS] Do dung chung chi tu ky (Self-signed Certificate):")
+            print("    Khi mo trinh duyet lan dau, hay bam 'Advanced' (Nang cao) -> 'Proceed to localhost (unsafe)'")
+            print("    de trinh duyet tin tuong va cho phep AJAX ket noi.")
         print("  - Cac tab Node co che do 'Live Sync (2s)' tu dong cap nhat khong can F5.")
         print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh verify MLDSA-44 & Merge Block.")
         print("=" * 75)

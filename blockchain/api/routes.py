@@ -94,10 +94,16 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
 
         tx = Transaction.from_dict(values)
 
+        is_tls = request.is_secure or network.use_tls
+        transport_channel = "TLS/HTTPS [ENCRYPTED]" if is_tls else "HTTP [PLAINTEXT]"
         ledger.audit.log(
             category="API",
-            title=f"Nhan Transaction truc tiep tu Client qua Ingress Node (Port {port})",
-            details={'amount': tx.value, 'recipient': f"{tx.recipient_address[:20]}..."},
+            title=f"Nhan Transaction tu Client qua Ingress Node (Port {port}) [{transport_channel}]",
+            details={
+                'amount': tx.value,
+                'recipient': f"{tx.recipient_address[:20]}...",
+                'transport_security': 'TLS Protected (Confidentiality & Anti-MitM)' if is_tls else 'Unencrypted Plaintext (Vulnerable to Sniffing)'
+            },
             status="INFO"
         )
 
