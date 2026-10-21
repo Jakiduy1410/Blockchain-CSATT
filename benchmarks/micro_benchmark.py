@@ -260,6 +260,29 @@ def main():
         print("    -> ML-DSA-44 hoan tat thanh cong!")
     else:
         print("    -> [Luu y] Liboqs chua duoc bien dich tren OS hien tai. Thuật toán ML-DSA se duoc chay tren Linux/Kali co liboqs.")
+    # 4. Falcon-512
+    print("[*] Dang kiem tra ho tro thu vien liboqs (Falcon-512)...")
+    # Gọi hàm cũ nhưng đổi tham số thành "Falcon-512"
+    falcon_out = run_mldsa_benchmark(iterations, message, "Falcon-512")
+    if falcon_out:
+        f_res, f_kg, f_sg, f_vf, f_pk, f_sig = falcon_out
+        results.append(f_res)
+        save_raw_csv(out_dir / "Falcon_512_micro_raw.csv", iterations, f_kg, f_sg, f_vf, f_pk, f_sig)
+        print("    -> Falcon-512 hoan tat thanh cong!")
+    else:
+        print("    -> [Luu y] Liboqs chua ho tro Falcon-512.")
+
+    # 5. SPHINCS+ (Tối ưu tốc độ)
+    print("[*] Dang kiem tra ho tro thu vien liboqs (SLH_DSA_PURE_SHA2_128S)...")
+    # Đổi tham số thành tên của SPHINCS+
+    sphincs_out = run_mldsa_benchmark(iterations, message, "SLH_DSA_PURE_SHA2_128S")
+    if sphincs_out:
+        s_res, s_kg, s_sg, s_vf, s_pk, s_sig = sphincs_out
+        results.append(s_res)
+        save_raw_csv(out_dir / "SPHINCS_128f_micro_raw.csv", iterations, s_kg, s_sg, s_vf, s_pk, s_sig)
+        print("    -> SPHINCS+ hoan tat thanh cong!")
+    else:
+        print("    -> [Luu y] Liboqs chua ho tro SPHINCS+.")
 
     # In bang tong hop
     print("\n" + "=" * 90)
