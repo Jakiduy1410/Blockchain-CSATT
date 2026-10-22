@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Mô Phỏng & Giám Sát Trực Quan Mạng P2P 6 Node</title>
+  <title>Mô Phỏng & Giám Sát Trực Quan Mạng P2P 6 Node (Post-Quantum PQC)</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
     .node-box { transition: all 0.2s ease; }
@@ -17,19 +17,20 @@
       <div>
         <h1 class="text-base font-bold text-white flex items-center gap-2">
           Blockchain P2P Network <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">6 Nodes Mesh</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-700 font-mono">PQC: ML-KEM-768 + ML-DSA-44</span>
         </h1>
-        <p class="text-xs text-slate-400">Trực quan hóa đường truyền gói tin, thẩm định chữ ký RSA và hợp nhất khối (Merge Block)</p>
+        <p class="text-xs text-slate-400">Trực quan hóa đường truyền gói tin, đàm phán KEM ML-KEM-768 (NIST FIPS 203) & Chữ ký số ML-DSA-44 (NIST FIPS 204)</p>
       </div>
 
       <!-- Controls -->
       <div class="flex items-center space-x-2 mt-2 sm:mt-0">
-        <!-- Bộ chọn giao thức HTTP / HTTPS (TLS) -->
+        <!-- Bộ chọn giao thức HTTP / HTTPS / PQC-TLS -->
         <div class="flex items-center gap-1 bg-slate-800/90 border border-slate-700 rounded-lg px-2 py-1">
           <span class="text-[10px] text-slate-400 font-mono">Giao thức:</span>
           <select id="protocol-select" class="bg-slate-900 text-xs font-mono font-bold text-cyan-300 rounded px-1.5 py-0.5 border border-slate-700 focus:outline-none">
             <option value="auto">⚡ Tự động (Auto)</option>
+            <option value="https:">🔒 PQC-TLS (ML-KEM-768)</option>
             <option value="http:">🌐 HTTP thường</option>
-            <option value="https:">🔒 HTTPS / TLS</option>
           </select>
         </div>
 
@@ -52,9 +53,9 @@
       <!-- Canvas 6 Node (7 Cột) -->
       <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col relative shadow-sm">
         <div class="flex items-center justify-between pb-2 border-b border-slate-800 mb-2 text-xs text-slate-400">
-          <span class="font-medium text-slate-300 uppercase tracking-wide">Topology Mạng 6 Node</span>
+          <span class="font-medium text-slate-300 uppercase tracking-wide">Topology Mạng 6 Node (PQC Full-Mesh)</span>
           <div class="flex items-center gap-3">
-            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Gói Tin Tx</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Gói Tin Tx (ML-DSA)</span>
             <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Gói Tin Block</span>
           </div>
         </div>
@@ -63,7 +64,7 @@
           <canvas id="p2pCanvas" class="w-full h-full block"></canvas>
           
           <div id="step-badge" class="absolute bottom-3 left-3 bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-cyan-300 shadow backdrop-blur">
-            <span class="text-slate-400">Trạng thái:</span> <span id="step-desc" class="font-medium text-white">Sẵn sàng</span>
+            <span class="text-slate-400">Trạng thái:</span> <span id="step-desc" class="font-medium text-white">Sẵn sàng (PQC Secured)</span>
           </div>
         </div>
       </div>
@@ -74,7 +75,7 @@
           <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
             <span>🛡️ Hộp Đen Kiểm Toán An Ninh (Security Trail)</span>
           </h2>
-          <span class="text-[10px] text-emerald-400 font-mono">Live Ingest</span>
+          <span class="text-[10px] text-fuchsia-400 font-mono">PQC-TLS Stream</span>
         </div>
         
         <div id="audit-feed-box" class="flex-1 max-h-[340px] overflow-y-auto space-y-1.5 font-mono text-[11px] bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
@@ -219,21 +220,21 @@
             node.chain = data.chain_length;
           }
         } catch (e) {
-          // Node chua bat hoac offline hoac chua chap nhan chung chi tu ky
+          // Node offline hoặc chưa chấp nhận chứng chỉ
         }
       }
       renderNodeCards();
 
-      // Lay Audit logs tu Node 1 hoac Node 2
+      // Lấy Audit logs từ Node 1 hoặc Node 2
       try {
-        const auditRes = await fetch(`${proto}//127.0.0.1:5000/audit/logs?limit=20`);
+        const auditRes = await fetch(`${proto}//127.0.0.1:5000/audit/logs?limit=25`);
         if (auditRes.ok) {
           const auditData = await auditRes.json();
           renderAuditFeed(auditData.logs);
         }
       } catch (e) {}
 
-      // Lay Chain thuc te tu Node 1
+      // Lấy Chain thực tế từ Node 1
       try {
         const chainRes = await fetch(`${proto}//127.0.0.1:5000/chain`);
         if (chainRes.ok) {
@@ -256,6 +257,7 @@
       logs.forEach(l => {
         let catColor = "text-blue-400";
         if (l.category === "CRYPTO") catColor = "text-cyan-400 font-bold";
+        if (l.category === "PQC-TLS") catColor = "text-fuchsia-400 font-bold";
         if (l.category === "P2P") catColor = "text-emerald-400";
         if (l.category === "CONSENSUS") catColor = "text-purple-400 font-bold";
         if (l.category === "MINER") catColor = "text-amber-400";
@@ -356,7 +358,7 @@
       requestAnimationFrame(animate);
     }
 
-    // Nut Mine Node 2 that
+    // Nút Mine Node 2
     document.getElementById("btn-real-mine").addEventListener("click", async () => {
       const proto = getActiveProtocol();
       try {
@@ -369,7 +371,7 @@
           alert("Không thể đào hoặc Node 2 chưa chạy.");
         }
       } catch (e) {
-        alert(`Lỗi kết nối tới Node 2 (:5001) qua ${proto}. Nếu dùng TLS/HTTPS, vui lòng mở tab https://localhost:5001 một lần để chấp nhận chứng chỉ tự ký!`);
+        alert(`Lỗi kết nối tới Node 2 (:5001) qua ${proto}. Đảm bảo Node đang chạy!`);
       }
     });
 
@@ -378,12 +380,12 @@
       fetchLiveStatus();
     });
 
-    // Nut Mo phong Gui Tx
+    // Nút Mô phỏng Gửi Tx
     document.getElementById("btn-send-tx").addEventListener("click", () => {
       const n1 = NODES[0];
       packets.push(new Packet(n1.x - 50, n1.y - 50, n1.x, n1.y, "#10b981", () => {
         for (let i = 1; i < NODES.length; i++) {
-          packets.push(new Packet(n1.x, n1.y, NODES[i].x, NODES[i].y, "#06b6d4"));
+          packets.push(new Packet(n1.x, n1.y, NODES[i].x, NODES[i].y, "#c084fc"));
         }
       }));
     });
@@ -402,16 +404,11 @@
       }
     });
 
-    // Boot
-    setTimeout(() => {
-      resizeCanvas();
-      renderNodeCards();
-      renderChainTimeline();
-      animate();
-      fetchLiveStatus();
-      setInterval(fetchLiveStatus, 2000);
-    }, 100);
-
+    // Init
+    resizeCanvas();
+    animate();
+    fetchLiveStatus();
+    setInterval(fetchLiveStatus, 2000);
   </script>
 </body>
 </html>

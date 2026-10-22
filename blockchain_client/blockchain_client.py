@@ -2,6 +2,7 @@ import os
 import json
 from collections import OrderedDict
 import binascii
+import time
 import requests
 from flask import Flask, jsonify, request, render_template
 
@@ -9,6 +10,11 @@ try:
     import pqcrypto.sign.ml_dsa_44 as mldsa_pqc
 except ImportError:
     mldsa_pqc = None
+
+try:
+    import pqcrypto.kem.ml_kem_768 as mlkem_pqc
+except ImportError:
+    mlkem_pqc = None
 
 try:
     import oqs
@@ -121,7 +127,7 @@ def generate_transaction():
 
 @app.route('/broadcast/transaction', methods=['POST'])
 def broadcast_transaction():
-    """Chuyển tiếp giao dịch từ Client tới Blockchain Node qua kênh TLS an toàn, chống lỗi chứng chỉ tự ký của trình duyệt."""
+    """Chuyển tiếp giao dịch từ Client tới Blockchain Node qua kênh PQC-TLS (ML-KEM-768) an toàn."""
     node_url = request.form.get('node_url', '').strip()
     if not node_url:
         return jsonify({'message': 'Vui lòng chọn hoặc nhập URL của Blockchain Node!'}), 400
@@ -133,11 +139,41 @@ def broadcast_transaction():
         'signature': request.form.get('signature', '').strip()
     }
 
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    kem_result = None
+    # 1. Thực hiện bắt tay Trao đổi khóa Hậu lượng tử ML-KEM-768 với Node nếu chạy TLS/HTTPS
+    if mlkem_pqc is not None and node_url.startswith("https://"):
+        try:
+            t0 = time.perf_counter()
+            client_pk, client_sk = mlkem_pqc.keygen()
+            hs_resp = requests.post(f"{node_url}/pqc/kem/handshake", json={'client_pk': client_pk.hex()}, timeout=4, verify=False)
+            if hs_resp.status_code == 200:
+                hs_data = hs_resp.json()
+                server_ct = bytes.fromhex(hs_data['ciphertext'])
+                shared_secret = mlkem_pqc.decaps(client_sk, server_ct)
+                dt_kem_ms = (time.perf_counter() - t0) * 1000.0
+                kem_result = {
+                    'enabled': True,
+                    'algorithm': 'ML-KEM-768',
+                    'standard': 'NIST FIPS 203',
+                    'category': 'Post-Quantum (Lattice / Module-LWE)',
+                    'pk_bytes': len(client_pk),
+                    'ct_bytes': len(server_ct),
+                    'handshake_ms': round(dt_kem_ms, 3),
+                    'fingerprint': hs_data.get('fingerprint')
+                }
+        except Exception as e:
+            print(f"[!] Warning: KEM handshake error: {e}")
+
+    # 2. Gửi giao dịch qua kênh bảo mật
     try:
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         res = requests.post(f"{node_url}/transactions/new", json=payload, timeout=6, verify=False)
-        return jsonify(res.json()), res.status_code
+        resp_data = res.json()
+        if kem_result:
+            resp_data['pqc_kem'] = kem_result
+        return jsonify(resp_data), res.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({'message': f'Không thể kết nối tới Node ({node_url}). Đảm bảo Node đang chạy! Chi tiết: {str(e)}'}), 502
 

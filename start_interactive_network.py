@@ -122,7 +122,9 @@ def main():
             print("    Hay bam 'Advanced' (Nang cao) -> 'Proceed to localhost (unsafe)' / 'Tiep tuc truy cap'")
             print("    de trinh duyet tin tuong chung chi va cho phep AJAX ket noi.")
         print("  - Cac tab Node co che do 'Live Sync (2s)' tu dong cap nhat khong can F5.")
-        print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh verify MLDSA-44 & Merge Block.")
+        if use_tls:
+            print("  - Giao thuc PQC-TLS: Ho tro trao doi khoa ML-KEM-768 (NIST FIPS 203) truc tiep giua Client & Node.")
+        print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh [PQC-TLS] KEM Handshake, verify MLDSA-44 & Merge Block.")
         print("=" * 75)
         print("\n>>> MANG DANG HOAT DONG. Nhan 'Ctrl+C' de dung toan bo mang <<<\n")
 

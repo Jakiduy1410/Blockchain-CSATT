@@ -193,7 +193,7 @@
         <div class="modal-content">
 
           <div class="modal-header">
-            <div class="modal-title col-md-10">Confirm transaction details, enter a blockchain node url and click on "Confirm Transaction" to finalize your transaction.</div>
+            <div class="modal-title col-md-10 font-weight-bold">Xác nhận giao dịch & Chọn kênh truyền PQC-TLS</div>
             <button type="button" class="close col-md-2" data-dismiss="modal" aria-hidden="true">&times;</button>
           </div>
 
@@ -202,7 +202,7 @@
             <form id="confirmation_transaction_form">
 
                 <div class="row">
-                  <label class="col-sm-12">Sender Address:</label>
+                  <label class="col-sm-12 font-weight-bold">Sender Address:</label>
                   <div class="col-sm-12">
                     <input type="text" name="sender_address" id="confirmation_sender_address" rows="2" class="form-control" readonly>
 
@@ -210,21 +210,21 @@
                 </div>
 
                 <div class="row">
-                  <label class="col-sm-12">Recipient Address:</label>
+                  <label class="col-sm-12 font-weight-bold">Recipient Address:</label>
                   <div class="col-sm-12">
                     <input type="text" name="recipient_address" id="confirmation_recipient_address" rows="2" class="form-control" readonly>
                   </div>
                 </div>
                 
                 <div class="row">
-                  <label class="col-sm-12">Amount to Send:</label>
+                  <label class="col-sm-12 font-weight-bold">Amount to Send:</label>
                   <div class="col-sm-12">
                     <input type="text" name="amount" id="confirmation_amount" rows="2" class="form-control" readonly>
                   </div>
                 </div>
 
                 <div class="row">
-                  <label class="col-sm-12">Transaction Signature:</label>
+                  <label class="col-sm-12 font-weight-bold">Transaction Signature (ML-DSA-44 PQC):</label>
                   <div class="col-sm-12">
                     <input type="text" name="signature" id="transaction_signature" rows="2" class="form-control" readonly>
                   </div>
@@ -233,11 +233,19 @@
             </form>
 
 
-            <div class="row">
-              <label class="col-sm-12">Chọn Blockchain Node để phát sóng:</label>
+            <div class="row mt-2">
+              <label class="col-sm-12 font-weight-bold">Chọn Blockchain Node & Kênh truyền bảo mật:</label>
               <div class="col-sm-12 mb-2">
-                <select id="node_select" class="form-control" onchange="document.getElementById('node_url').value = this.value;">
-                  <optgroup label="🌐 Giao thức HTTP thường">
+                <select id="node_select" class="form-control font-weight-bold" onchange="document.getElementById('node_url').value = this.value;">
+                  <optgroup label="⚛️ Giao thức PQC-TLS (ML-KEM-768)">
+                    <option value="https://127.0.0.1:5000">Node 1 (https://127.0.0.1:5000 - Ingress)</option>
+                    <option value="https://127.0.0.1:5001" selected>Node 2 (https://127.0.0.1:5001 - Miner ⛏️)</option>
+                    <option value="https://127.0.0.1:5002">Node 3 (https://127.0.0.1:5002 - Peer)</option>
+                    <option value="https://127.0.0.1:5003">Node 4 (https://127.0.0.1:5003 - Peer)</option>
+                    <option value="https://127.0.0.1:5004">Node 5 (https://127.0.0.1:5004 - Peer)</option>
+                    <option value="https://127.0.0.1:5005">Node 6 (https://127.0.0.1:5005 - Peer)</option>
+                  </optgroup>
+                  <optgroup label="🌐 Giao thức HTTP thường (Bản rõ / Cleartext)">
                     <option value="http://127.0.0.1:5000">Node 1 (http://127.0.0.1:5000 - Ingress)</option>
                     <option value="http://127.0.0.1:5001">Node 2 (http://127.0.0.1:5001 - Miner ⛏️)</option>
                     <option value="http://127.0.0.1:5002">Node 3 (http://127.0.0.1:5002 - Peer)</option>
@@ -245,19 +253,11 @@
                     <option value="http://127.0.0.1:5004">Node 5 (http://127.0.0.1:5004 - Peer)</option>
                     <option value="http://127.0.0.1:5005">Node 6 (http://127.0.0.1:5005 - Peer)</option>
                   </optgroup>
-                  <optgroup label="🔒 Giao thức HTTPS / TLS (Bảo mật đường truyền)">
-                    <option value="https://127.0.0.1:5000">Node 1 (https://127.0.0.1:5000 - Ingress [TLS])</option>
-                    <option value="https://127.0.0.1:5001">Node 2 (https://127.0.0.1:5001 - Miner [TLS] ⛏️)</option>
-                    <option value="https://127.0.0.1:5002">Node 3 (https://127.0.0.1:5002 - Peer [TLS])</option>
-                    <option value="https://127.0.0.1:5003">Node 4 (https://127.0.0.1:5003 - Peer [TLS])</option>
-                    <option value="https://127.0.0.1:5004">Node 5 (https://127.0.0.1:5004 - Peer [TLS])</option>
-                    <option value="https://127.0.0.1:5005">Node 6 (https://127.0.0.1:5005 - Peer [TLS])</option>
-                  </optgroup>
                 </select>
               </div>
-              <label class="col-sm-12">Hoặc nhập URL tùy chỉnh:</label>
+              <label class="col-sm-12">URL đích phát sóng:</label>
               <div class="col-sm-12">
-                <input type="text" name="node_url" id="node_url" class="form-control" value="http://127.0.0.1:5000">
+                <input type="text" name="node_url" id="node_url" class="form-control" value="https://127.0.0.1:5001">
               </div>
             </div>
 
@@ -280,18 +280,21 @@
         <div class="modal-content">
 
           <div class="modal-header">
+            <h5 class="modal-title text-success font-weight-bold">✅ Giao Dịch Thành Công!</h5>
             <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
           </div>
 
           <div class="modal-body">
-            <div class="alert alert-success" role="alert">
-              <h4 class="alert-heading">Successful Transaction!</h4>
-              <p>You successfully completed your transaction. It will be added to the next block.</p>
+            <div class="alert alert-success mb-2" role="alert">
+              <h5 class="alert-heading font-weight-bold">Successful Transaction!</h5>
+              <p class="mb-0">Giao dịch đã được gửi vào Mempool của Node mạng và sẽ được Miner đóng vào Khối tiếp theo.</p>
             </div>
+            <!-- Container hiển thị thông số bắt tay KEM Hậu lượng tử -->
+            <div id="pqc_kem_info" style="display: none;"></div>
           </div>
 
           <div class="modal-footer">
-            <button type="button" id="button_confirm_transaction" class="btn btn-success" data-dismiss="modal">OK</button>
+            <button type="button" class="btn btn-success" data-dismiss="modal">Đóng (OK)</button>
           </div>
 
         </div>
@@ -462,22 +465,40 @@
             var formData = $('#confirmation_transaction_form').serialize() + "&node_url=" + encodeURIComponent(targetNode);
 
             function handleSuccess(response) {
-              //reset both forms
+              // Reset forms
               $("#transaction_form")[0].reset();
               $("#confirmation_transaction_form")[0].reset();
               
-              //clean text boxes
               $("#sender_address").val("");
               $("#sender_private_key").val("");
               $("#recipient_address").val("");
               $("#amount").val("");
 
               $("#basicModal").modal('hide');
+
+              // Hiển thị thông số bắt tay PQC-TLS nếu có
+              if (response && response.pqc_kem) {
+                var k = response.pqc_kem;
+                $("#pqc_kem_info").html(
+                  '<div class="alert alert-info text-left mt-2 mb-0 border-info">' +
+                    '<h6 class="font-weight-bold text-primary mb-1">Bắt tay Trao Đổi Khóa PQC-TLS (ML-KEM-768):</h6>' +
+                    '<ul class="mb-1 pl-3 text-dark font-mono" style="font-size: 12px;">' +
+                      '<li>Thuật toán: <b>' + k.algorithm + '</b> (Chuẩn <b>' + k.standard + '</b>)</li>' +
+                      '<li>Mạng tinh thể: <b>' + k.category + '</b></li>' +
+                      '<li>Kích thước khóa: PK: <b>' + k.pk_bytes + ' Bytes</b> | CT: <b>' + k.ct_bytes + ' Bytes</b></li>' +
+                      '<li>Thời gian bắt tay KEM: <b class="text-success">' + k.handshake_ms + ' ms</b></li>' +
+                    '</ul>' +
+                  '</div>'
+                ).show();
+              } else {
+                $("#pqc_kem_info").hide();
+              }
+
               $("#success_transaction_modal").modal('show');
               fetchLiveBalances();
             }
 
-            // Gửi qua Client TLS Proxy để bảo vệ đường truyền TLS thật và tránh việc trình duyệt chặn chứng chỉ tự ký
+            // Gửi qua Client PQC-TLS Proxy để thực hiện bắt tay ML-KEM-768
             $.ajax({
               url: "/broadcast/transaction",
               type: "POST",
