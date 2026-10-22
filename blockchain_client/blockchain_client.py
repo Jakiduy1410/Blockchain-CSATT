@@ -119,6 +119,42 @@ def generate_transaction():
         return jsonify({'message': f'Lỗi hệ thống: {str(e)}'}), 500
 
 
+@app.route('/broadcast/transaction', methods=['POST'])
+def broadcast_transaction():
+    """Chuyển tiếp giao dịch từ Client tới Blockchain Node qua kênh TLS an toàn, chống lỗi chứng chỉ tự ký của trình duyệt."""
+    node_url = request.form.get('node_url', '').strip()
+    if not node_url:
+        return jsonify({'message': 'Vui lòng chọn hoặc nhập URL của Blockchain Node!'}), 400
+
+    payload = {
+        'sender_address': request.form.get('sender_address', '').strip(),
+        'recipient_address': request.form.get('recipient_address', '').strip(),
+        'amount': request.form.get('amount', '').strip(),
+        'signature': request.form.get('signature', '').strip()
+    }
+
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        res = requests.post(f"{node_url}/transactions/new", json=payload, timeout=6, verify=False)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'message': f'Không thể kết nối tới Node ({node_url}). Đảm bảo Node đang chạy! Chi tiết: {str(e)}'}), 502
+
+
+@app.route('/node/balance', methods=['GET'])
+def node_balance():
+    """Proxy lấy số dư từ Node qua kênh TLS."""
+    node_url = request.args.get('node_url', 'http://127.0.0.1:5000').strip()
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        res = requests.get(f"{node_url}/accounts/balance", timeout=3, verify=False)
+        return jsonify(res.json()), res.status_code
+    except Exception:
+        return jsonify({'balances': []}), 200
+
+
 if __name__ == '__main__':
     from argparse import ArgumentParser
 

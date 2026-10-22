@@ -3,7 +3,8 @@ Interactive Network Launcher (Khoi chay mang tuong tac 6 Node P2P)
 Muc tieu:
 - Giu cac tien trinh chay ngam de nguoi dung tu do mo cac tab trinh duyet tuong tac tay
 - Ho tro tu tay bam nut Mine tren tab Node 2 de quan sat chu trinh theo nhip do cua ban
-- Bam Ctrl+C hoac go 'q' de tat toan bo an toan
+- Tu dong giai phong cac port 5000-5005, 8080 neu bi chiem boi tien trinh cu
+- Bam Ctrl+C de tat toan bo an toan
 """
 
 import json
@@ -27,6 +28,21 @@ def get_python_cmd():
     return ['python']
 
 
+def cleanup_ports(ports):
+    """Tu dong kiem tra va giai phong cac cong bi chiem dung truoc khi chay."""
+    for port in ports:
+        try:
+            out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode('utf-8', errors='ignore')
+            for line in out.strip().splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and 'LISTENING' in parts:
+                    pid = parts[-1]
+                    if pid != str(os.getpid()):
+                        subprocess.run(f'taskkill /F /PID {pid}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+
 def main():
     print("=" * 75)
     print("  KHOI CHAY MANG BLOCKCHAIN P2P 6 NODE - CHE DO TUONG TAC THUC TE")
@@ -45,7 +61,17 @@ def main():
     use_tls = '--tls' in sys.argv
     protocol = "https" if use_tls else "http"
 
+    # 1. Tu dong don dep cac port bi ket
+    all_ports = [node['port'] for node in net_cfg['nodes']] + [8080]
+    print("[*] Kiem tra va giai phong port 5000-5005, 8080...")
+    cleanup_ports(all_ports)
+    time.sleep(0.5)
+
+    log_dir = os.path.join(base_dir, 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+
     processes = []
+    log_files = []
 
     try:
         print(f"\n[*] 1. Dang khoi dong 6 Node P2P Mesh (Giao thuc: {protocol.upper()})...")
@@ -53,18 +79,27 @@ def main():
             cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port'])]
             if use_tls:
                 cmd.append('--tls')
-            # De nguoi dung tu tay bam nut 'Mine' tren Web Node 2 quan sat chu trinh
             if node['peers']:
                 cmd.extend(['--peers', ','.join(node['peers'])])
 
-            p = subprocess.Popen(cmd, cwd=base_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            lf = open(os.path.join(log_dir, f"node_{node['port']}.log"), "w", encoding="utf-8")
+            log_files.append(lf)
+            p = subprocess.Popen(cmd, cwd=base_dir, stdout=lf, stderr=subprocess.STDOUT)
             processes.append(p)
-            print(f"    [OK] Node {node['id']} dang chay tai: {protocol}://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
+
+            time.sleep(0.2)
+            if p.poll() is not None:
+                print(f"    [X] Node {node['id']} (Port {node['port']}) bi crash! Xem logs/node_{node['port']}.log")
+            else:
+                print(f"    [OK] Node {node['id']} dang chay tai: {protocol}://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
 
         print("\n[*] 2. Dang khoi dong Blockchain Client...")
+        client_lf = open(os.path.join(log_dir, "client_8080.log"), "w", encoding="utf-8")
+        log_files.append(client_lf)
         p_client = subprocess.Popen(py_cmd + ['blockchain_client/blockchain_client.py', '-p', '8080'],
-                                    cwd=base_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                    cwd=base_dir, stdout=client_lf, stderr=subprocess.STDOUT)
         processes.append(p_client)
+        time.sleep(0.2)
         print("    [OK] Client (Vi nguoi dung) tai: http://127.0.0.1:8080")
 
         print("\n" + "=" * 75)
@@ -79,11 +114,13 @@ def main():
         print(f"  * Tab 7 (Node 6):      {protocol}://localhost:5005  (Relay)")
         print(f"  * VISUALIZER LIVE:     {protocol}://localhost:5000/visualizer (Hoac bat ky Node nao)")
         print("-" * 75)
-        print("  Luu y:")
+        print("  Luu y quan trong khi dung TLS/HTTPS:")
         if use_tls:
-            print("  - [TLS / HTTPS] Do dung chung chi tu ky (Self-signed Certificate):")
-            print("    Khi mo trinh duyet lan dau, hay bam 'Advanced' (Nang cao) -> 'Proceed to localhost (unsafe)'")
-            print("    de trinh duyet tin tuong va cho phep AJAX ket noi.")
+            print("  - Do dung chung chi tu ky (Self-signed Certificate):")
+            print("    Khi mo trinh duyet lan dau vao https://localhost:5000 hoac https://localhost:5001,")
+            print("    trinh duyet se bao 'Ket noi khong an toan' / 'Your connection is not private'.")
+            print("    Hay bam 'Advanced' (Nang cao) -> 'Proceed to localhost (unsafe)' / 'Tiep tuc truy cap'")
+            print("    de trinh duyet tin tuong chung chi va cho phep AJAX ket noi.")
         print("  - Cac tab Node co che do 'Live Sync (2s)' tu dong cap nhat khong can F5.")
         print("  - Hop den 'Security Audit Trail' se in chi tiet qua trinh verify MLDSA-44 & Merge Block.")
         print("=" * 75)
@@ -99,6 +136,11 @@ def main():
         for p in processes:
             try:
                 p.terminate()
+            except Exception:
+                pass
+        for lf in log_files:
+            try:
+                lf.close()
             except Exception:
                 pass
         print("[*] Da tat toan bo mang Blockchain. Tam biet!")

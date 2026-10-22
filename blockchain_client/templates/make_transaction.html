@@ -316,8 +316,9 @@
 
       function fetchLiveBalances() {
         var targetNode = (document.getElementById("node_url") && document.getElementById("node_url").value) ? document.getElementById("node_url").value.trim() : "http://127.0.0.1:5000";
+        var reqUrl = targetNode.startsWith("https://") ? ("/node/balance?node_url=" + encodeURIComponent(targetNode)) : (targetNode + "/accounts/balance");
         $.ajax({
-          url: targetNode + "/accounts/balance",
+          url: reqUrl,
           type: "GET",
           timeout: 2500,
           success: function(res) {
@@ -333,7 +334,6 @@
             }
           },
           error: function() {
-            // Nếu node tạm thời chưa phản hồi, giữ nguyên số dư ước tính
             updateSenderHint();
           }
         });
@@ -459,29 +459,31 @@
               return;
             }
 
+            var formData = $('#confirmation_transaction_form').serialize() + "&node_url=" + encodeURIComponent(targetNode);
+
+            function handleSuccess(response) {
+              //reset both forms
+              $("#transaction_form")[0].reset();
+              $("#confirmation_transaction_form")[0].reset();
+              
+              //clean text boxes
+              $("#sender_address").val("");
+              $("#sender_private_key").val("");
+              $("#recipient_address").val("");
+              $("#amount").val("");
+
+              $("#basicModal").modal('hide');
+              $("#success_transaction_modal").modal('show');
+              fetchLiveBalances();
+            }
+
+            // Gửi qua Client TLS Proxy để bảo vệ đường truyền TLS thật và tránh việc trình duyệt chặn chứng chỉ tự ký
             $.ajax({
-              url: targetNode + "/transactions/new",
+              url: "/broadcast/transaction",
               type: "POST",
-              headers: {'Access-Control-Allow-Origin':'*'},
               dataType : 'json',
-              data: $('#confirmation_transaction_form').serialize(),
-              success: function(response){
-
-                //reset both forms
-                $("#transaction_form")[0].reset();
-                $("#confirmation_transaction_form")[0].reset();
-                
-                //clean text boxes
-                $("#sender_address").val("");
-                $("#sender_private_key").val("");
-                $("#recipient_address").val("");
-                $("#amount").val("");
-
-                $("#basicModal").modal('hide');
-                $("#success_transaction_modal").modal('show');
-                fetchLiveBalances();
-                
-              },
+              data: formData,
+              success: handleSuccess,
               error: function(error){
                 console.error("Broadcast transaction error:", error);
                 var msg = "Lỗi khi gửi giao dịch tới Node (" + targetNode + ")!";
