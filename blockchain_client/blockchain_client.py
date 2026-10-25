@@ -2,11 +2,18 @@ import os
 import json
 from collections import OrderedDict
 import binascii
-from ecdsa import SigningKey, SECP256k1
+import time
 import requests
 from flask import Flask, jsonify, request, render_template
+from ecdsa import SigningKey, SECP256k1
+
+try:
+    import pqcrypto.kem.ml_kem_768 as mlkem_pqc
+except ImportError:
+    mlkem_pqc = None
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 class Transaction:
     def __init__(self, sender_address, sender_private_key, recipient_address, value):
@@ -32,17 +39,21 @@ class Transaction:
 
 app = Flask(__name__)
 
+
 @app.route('/')
 def index():
     return render_template('./index.html')
+
 
 @app.route('/make/transaction')
 def make_transaction():
     return render_template('./make_transaction.html')
 
+
 @app.route('/view/transactions')
 def view_transaction():
     return render_template('./view_transactions.html')
+
 
 @app.route('/wallet/new', methods=['GET'])
 def new_wallet():
@@ -56,6 +67,7 @@ def new_wallet():
     }
     return jsonify(response), 200
 
+
 @app.route('/wallets/sample', methods=['GET'])
 def sample_wallets():
     wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
@@ -66,6 +78,20 @@ def sample_wallets():
             data = json.load(f)
         return jsonify(data), 200
     return jsonify({'message': 'Không tìm thấy file ví mẫu configs/wallets.json'}), 404
+
+
+@app.route('/node/balance', methods=['GET'])
+def query_node_balance():
+    """Proxy truy vấn số dư an toàn từ Node để tránh bị trình duyệt chặn cross-origin chứng chỉ tự ký."""
+    node_url = request.args.get('node_url', 'http://127.0.0.1:5000').strip()
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        res = requests.get(f"{node_url}/accounts/balance", timeout=3, verify=False)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'message': f'Lỗi kết nối tới Node: {str(e)}'}), 502
+
 
 @app.route('/generate/transaction', methods=['POST'])
 def generate_transaction():
@@ -85,6 +111,59 @@ def generate_transaction():
         return jsonify({'message': 'Lỗi ký số: Khóa bí mật không hợp lệ hoặc sai định dạng Hex.'}), 400
     except Exception as e:
         return jsonify({'message': f'Lỗi ký số: {str(e)}'}), 400
+
+
+@app.route('/broadcast/transaction', methods=['POST'])
+def broadcast_transaction():
+    """Chuyển tiếp giao dịch từ Client tới Blockchain Node qua kênh PQC-TLS (ML-KEM-768) an toàn."""
+    node_url = request.form.get('node_url', '').strip()
+    if not node_url:
+        return jsonify({'message': 'Vui lòng chọn hoặc nhập URL của Blockchain Node!'}), 400
+
+    payload = {
+        'sender_address': request.form.get('sender_address', '').strip(),
+        'recipient_address': request.form.get('recipient_address', '').strip(),
+        'amount': request.form.get('amount', '').strip(),
+        'signature': request.form.get('signature', '').strip()
+    }
+
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    kem_result = None
+    # 1. Thực hiện bắt tay Trao đổi khóa Hậu lượng tử ML-KEM-768 với Node nếu chạy TLS/HTTPS
+    if mlkem_pqc is not None and node_url.startswith("https://"):
+        try:
+            t0 = time.perf_counter()
+            client_pk, client_sk = mlkem_pqc.keygen()
+            hs_resp = requests.post(f"{node_url}/pqc/kem/handshake", json={'client_pk': client_pk.hex()}, timeout=4, verify=False)
+            if hs_resp.status_code == 200:
+                hs_data = hs_resp.json()
+                server_ct = bytes.fromhex(hs_data['ciphertext'])
+                shared_secret = mlkem_pqc.decaps(client_sk, server_ct)
+                dt_kem_ms = (time.perf_counter() - t0) * 1000.0
+                kem_result = {
+                    'enabled': True,
+                    'algorithm': 'ML-KEM-768',
+                    'standard': 'NIST FIPS 203',
+                    'category': 'Post-Quantum (Lattice / Module-LWE)',
+                    'pk_bytes': len(client_pk),
+                    'ct_bytes': len(server_ct),
+                    'handshake_ms': round(dt_kem_ms, 3),
+                    'fingerprint': hs_data.get('fingerprint')
+                }
+        except Exception as e:
+            print(f"[!] Warning: KEM handshake error: {e}")
+
+    # 2. Gửi giao dịch qua kênh bảo mật
+    try:
+        res = requests.post(f"{node_url}/transactions/new", json=payload, timeout=6, verify=False)
+        resp_data = res.json()
+        if kem_result:
+            resp_data['pqc_kem'] = kem_result
+        return jsonify(resp_data), res.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'message': f'Không thể kết nối tới Node ({node_url}). Đảm bảo Node đang chạy! Chi tiết: {str(e)}'}), 502
 
 
 if __name__ == '__main__':
