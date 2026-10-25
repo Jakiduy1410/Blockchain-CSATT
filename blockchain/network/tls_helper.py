@@ -70,20 +70,31 @@ class TLSManager:
         cert_path, key_path = cls.get_or_create_cert()
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
+        keylog = os.environ.get("SSLKEYLOGFILE")
+        if keylog:
+            ctx.keylog_filename = keylog
         try:
-            ctx.set_ecdh_curve('prime256v1')
+            ctx.set_ecdh_curve('X25519MLKEM768:x25519_mlkem768:prime256v1:x25519')
         except Exception:
-            pass
+            try:
+                ctx.set_ecdh_curve('prime256v1')
+            except Exception:
+                pass
         return ctx
-
     @classmethod
     def create_client_ssl_context(cls) -> ssl.SSLContext:
         """Tạo SSL Context cho WebSocket Client bọc TLS 1.3 / ECDHE"""
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        keylog = os.environ.get("SSLKEYLOGFILE")
+        if keylog:
+            ctx.keylog_filename = keylog
         try:
-            ctx.set_ecdh_curve('prime256v1')
+            ctx.set_ecdh_curve('X25519MLKEM768:x25519_mlkem768:prime256v1:x25519')
         except Exception:
-            pass
+            try:
+                ctx.set_ecdh_curve('prime256v1')
+            except Exception:
+                pass
         return ctx

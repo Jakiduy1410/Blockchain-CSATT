@@ -48,6 +48,17 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
         return jsonify({}), 404
 
     # --- Audit Log Route (Hộp đen kiểm toán) ---
+    
+    @api.route('/api/audit/alert', methods=['POST'])
+    def post_audit_alert():
+        data = request.get_json(silent=True) or {}
+        cat = data.get('category', 'P2P')
+        title = data.get('title', 'Security Alert')
+        details = data.get('details', {})
+        status = data.get('status', 'CRITICAL')
+        ledger.audit.log(category=cat, title=title, details=details, status=status)
+        return jsonify({'status': 'SUCCESS'}), 200
+
     @api.route('/audit/logs', methods=['GET'])
     def get_audit_logs():
         limit = request.args.get('limit', default=50, type=int)
