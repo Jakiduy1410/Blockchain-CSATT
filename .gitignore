@@ -7,4 +7,3 @@ logs/
 __pycache__/
 *.pyc
 sslkeys.log
-*.pcap
