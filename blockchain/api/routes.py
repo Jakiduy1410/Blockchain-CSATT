@@ -282,10 +282,13 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
 
     @api.route('/mine', methods=['GET'])
     def manual_mine():
-        block = miner.mine_block()
+        max_txs = request.args.get('max_txs', default=50, type=int)
+        block = miner.mine_block(max_txs=max_txs)
         return jsonify({
             'message': 'New Block Forged',
+            'block': block,
             'block_number': block['block_number'],
+            'timestamp': block['timestamp'],
             'transactions': block['transactions'],
             'nonce': block['nonce'],
             'previous_hash': block['previous_hash']

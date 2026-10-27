@@ -46,7 +46,14 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         ])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
-        with oqs.Signature("ML-DSA-44") as verifier:
+        if len(public_key_bytes) >= 2592 or len(signature_bytes) >= 4627:
+            alg_name = "ML-DSA-87"
+        elif len(public_key_bytes) >= 1952 or len(signature_bytes) >= 3309:
+            alg_name = "ML-DSA-65"
+        else:
+            alg_name = "ML-DSA-44"
+
+        with oqs.Signature(alg_name) as verifier:
             return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
     except Exception:
         return False

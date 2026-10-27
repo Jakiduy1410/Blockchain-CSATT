@@ -74,7 +74,7 @@ class P2PNetwork:
             try:
                 self._ws_server = ws_serve(
                     self._handle_incoming_connection,
-                    host="127.0.0.1",
+                    host="0.0.0.0",
                     port=self.ws_port,
                     ssl=self.server_ssl_ctx
                 )
