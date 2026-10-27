@@ -225,7 +225,7 @@ def main():
         except Exception:
             pass
 
-    out_dir = Path(args.output_dir) if args.output_dir else base_dir / "results"
+    out_dir = Path(args.output_dir) if args.output_dir else base_dir / "results" / "crypto_micro"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     message = b'{"sender": "Alice", "recipient": "Bob", "amount": 100.0}'

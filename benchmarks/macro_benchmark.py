@@ -399,7 +399,7 @@ def main():
     if args.tx_count > 0:
         cfg.setdefault('macro', {})['tx_count'] = args.tx_count
 
-    out_dir = Path(args.output_dir) if args.output_dir else base_dir / "benchmarks" / "results"
+    out_dir = Path(args.output_dir) if args.output_dir else base_dir / "benchmarks" / "results" / "blockchain_macro"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_macro_benchmark(cfg, base_dir, out_dir)
