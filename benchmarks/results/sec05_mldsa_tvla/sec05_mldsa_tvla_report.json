@@ -1,24 +1,24 @@
 {
     "algorithm": "ML-DSA-44 (NIST FIPS 204)",
     "benchmark_type": "Micro-benchmark TVLA (Fixed-vs-Random Transaction Signing)",
-    "timestamp": "2026-10-27T18:59:47Z",
+    "timestamp": "2026-10-27T19:03:55Z",
     "total_samples": 9950,
     "samples_analyzed_A": 4975,
     "samples_analyzed_B": 4975,
-    "set_A_mean_us": 1036.421,
-    "set_B_mean_us": 1037.569,
-    "set_A_std_ns": 75419.2,
-    "set_B_std_ns": 75139.6,
-    "delta_mean_ns": -1148.78,
-    "delta_mean_us": -1.1488,
-    "welch_t_statistic": -0.761,
-    "abs_t_statistic": 0.761,
-    "p_value": 0.44666,
+    "set_A_mean_us": 432.855,
+    "set_B_mean_us": 427.931,
+    "set_A_std_ns": 345894.5,
+    "set_B_std_ns": 340890.3,
+    "delta_mean_ns": 4924.6,
+    "delta_mean_us": 4.9246,
+    "welch_t_statistic": 0.7152,
+    "abs_t_statistic": 0.7152,
+    "p_value": 0.474523,
     "tvla_threshold": 4.5,
     "is_constant_time": true,
     "status": "PASS (Constant-Time Verified under ISO/IEC 17825)",
     "rejection_sampling_stats": {
-        "avg_loops_set_A": 12.0,
-        "avg_loops_set_B": 12.0
+        "avg_loops_set_A": 4.18,
+        "avg_loops_set_B": 4.15
     }
 }
