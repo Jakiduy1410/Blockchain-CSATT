@@ -15,7 +15,8 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+PERF_DIR = Path(__file__).resolve().parent
+BASE_DIR = PERF_DIR.parent
 sys.path.insert(0, str(BASE_DIR))
 
 import ecdsa
@@ -120,7 +121,7 @@ def generate_mldsa_transactions(n: int = 3000) -> list:
 
 
 def main():
-    data_dir = BASE_DIR / "benchmarks" / "data"
+    data_dir = PERF_DIR / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Dataset 500 txs cho Thi nghiem A (Baseline)

@@ -26,9 +26,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-RESULTS_DIR = BASE_DIR / "benchmarks" / "results"
-DATA_DIR = BASE_DIR / "benchmarks" / "data"
+PERF_DIR = Path(__file__).resolve().parent
+BASE_DIR = PERF_DIR.parent
+RESULTS_DIR = PERF_DIR / "results"
+DATA_DIR = PERF_DIR / "data"
 
 PROFILES = {
     "server": {
@@ -495,7 +496,7 @@ def main():
     for algo in ALGORITHMS:
         file_path = DATA_DIR / algo['file']
         if not file_path.exists():
-            print(f"[!] Chua co tap du lieu: {file_path}. Vui long chay benchmarks/generate_perf01_txs.py truoc.")
+            print(f"[!] Chua co tap du lieu: {file_path}. Vui long chay perf/generate_perf01_txs.py truoc.")
             return
         with open(file_path, 'r', encoding='utf-8') as f:
             datasets[algo['id']] = json.load(f)

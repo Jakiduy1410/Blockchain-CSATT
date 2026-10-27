@@ -8,8 +8,8 @@ services:
   node-server:
     image: blockchain-node:perf
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: perf/Dockerfile
     container_name: btc-node-server
     environment:
       - NODE_PROFILE=server
@@ -38,8 +38,8 @@ services:
   node-edge:
     image: blockchain-node:perf
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: perf/Dockerfile
     container_name: btc-node-edge
     environment:
       - NODE_PROFILE=edge
@@ -68,8 +68,8 @@ services:
   node-iot:
     image: blockchain-node:perf
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: perf/Dockerfile
     container_name: btc-node-iot
     environment:
       - NODE_PROFILE=iot
