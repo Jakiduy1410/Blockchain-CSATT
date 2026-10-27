@@ -72,14 +72,14 @@ class TLSManager:
         ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
         keylog = os.environ.get("SSLKEYLOGFILE")
         if keylog:
-            ctx.keylog_filename = keylog
-        try:
-            ctx.set_ecdh_curve('X25519MLKEM768:x25519_mlkem768:prime256v1:x25519')
-        except Exception:
             try:
-                ctx.set_ecdh_curve('prime256v1')
+                ctx.keylog_filename = keylog
             except Exception:
                 pass
+        try:
+            ctx.set_ecdh_curve('prime256v1')
+        except Exception:
+            pass
         return ctx
     @classmethod
     def create_client_ssl_context(cls) -> ssl.SSLContext:
@@ -89,12 +89,12 @@ class TLSManager:
         ctx.verify_mode = ssl.CERT_NONE
         keylog = os.environ.get("SSLKEYLOGFILE")
         if keylog:
-            ctx.keylog_filename = keylog
-        try:
-            ctx.set_ecdh_curve('X25519MLKEM768:x25519_mlkem768:prime256v1:x25519')
-        except Exception:
             try:
-                ctx.set_ecdh_curve('prime256v1')
+                ctx.keylog_filename = keylog
             except Exception:
                 pass
+        try:
+            ctx.set_ecdh_curve('prime256v1')
+        except Exception:
+            pass
         return ctx
