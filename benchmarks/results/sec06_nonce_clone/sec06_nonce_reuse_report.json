@@ -1,0 +1,145 @@
+{
+    "title": "SEC-06 Nonce Reuse Cryptanalysis Benchmark Report",
+    "timestamp": "2026-10-27T18:59:16Z",
+    "total_test_cases": 5,
+    "ecdsa": {
+        "key_recovery_rate_percent": 100.0,
+        "avg_crack_time_us": 33.04,
+        "forged_transactions_accepted": 5,
+        "vulnerability_verdict": "CRITICAL VULNERABILITY (100% Key Compromise upon Nonce Reuse)",
+        "cases": [
+            {
+                "wallet": "Alice",
+                "algorithm": "ECDSA (secp256k1)",
+                "shared_k": "0x112233445566778899aabbccddeeff00112233445566778899aabbccddeeff01",
+                "sig1_r": "0xe4e1ce6edf7cfac3f6cdc7a87bf6f68c3a3de1e37695d7b348ba119139de53fe",
+                "sig2_r": "0xe4e1ce6edf7cfac3f6cdc7a87bf6f68c3a3de1e37695d7b348ba119139de53fe",
+                "r_matched": true,
+                "original_privkey": "0853965f7ff337f69168cb8dfae0f4716f21b43c323ef660511c5f2621ff7f55",
+                "recovered_privkey": "0853965f7ff337f69168cb8dfae0f4716f21b43c323ef660511c5f2621ff7f55",
+                "key_recovery_success": true,
+                "crack_time_us": 39.7,
+                "forged_tx_accepted_by_node": true
+            },
+            {
+                "wallet": "Bob",
+                "algorithm": "ECDSA (secp256k1)",
+                "shared_k": "0xdeadbeefcafebabe0123456789abcdefdeadbeefcafebabe0123456789abcdef",
+                "sig1_r": "0x7ea3304dcdbe64f420fa120f6ac9b428e09fe9a8bcfce340c4569a994aa70043",
+                "sig2_r": "0x7ea3304dcdbe64f420fa120f6ac9b428e09fe9a8bcfce340c4569a994aa70043",
+                "r_matched": true,
+                "original_privkey": "1b7b110676cfea39329004645fcea2a04b6e1ebf1dc8ec1c461f5949b11abd6a",
+                "recovered_privkey": "1b7b110676cfea39329004645fcea2a04b6e1ebf1dc8ec1c461f5949b11abd6a",
+                "key_recovery_success": true,
+                "crack_time_us": 36.5,
+                "forged_tx_accepted_by_node": true
+            },
+            {
+                "wallet": "Charlie",
+                "algorithm": "ECDSA (secp256k1)",
+                "shared_k": "0x7777777777777777777777777777777777777777777777777777777777777777",
+                "sig1_r": "0x7962d45b38e8bcf82fa8efa8432a01f20c9a53e24c7d3f11df197cb8e70926da",
+                "sig2_r": "0x7962d45b38e8bcf82fa8efa8432a01f20c9a53e24c7d3f11df197cb8e70926da",
+                "r_matched": true,
+                "original_privkey": "8e60ea7bbb8b0169c8448f2cf8ced988c728c7e5d91f20df2beff3d39505c1c8",
+                "recovered_privkey": "8e60ea7bbb8b0169c8448f2cf8ced988c728c7e5d91f20df2beff3d39505c1c8",
+                "key_recovery_success": true,
+                "crack_time_us": 27.7,
+                "forged_tx_accepted_by_node": true
+            },
+            {
+                "wallet": "Dave",
+                "algorithm": "ECDSA (secp256k1)",
+                "shared_k": "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+                "sig1_r": "0x4deb5e4bf849790657361d0559b96d9277fdfcf02f6f78f021e834b7282c9db8",
+                "sig2_r": "0x4deb5e4bf849790657361d0559b96d9277fdfcf02f6f78f021e834b7282c9db8",
+                "r_matched": true,
+                "original_privkey": "c6c2b64f1456c9fef79e4836ce32935341f502a9c18acf84ebfa6d4d5fd93053",
+                "recovered_privkey": "c6c2b64f1456c9fef79e4836ce32935341f502a9c18acf84ebfa6d4d5fd93053",
+                "key_recovery_success": true,
+                "crack_time_us": 29.1,
+                "forged_tx_accepted_by_node": true
+            },
+            {
+                "wallet": "Miner_Node",
+                "algorithm": "ECDSA (secp256k1)",
+                "shared_k": "0x4242424242424242424242424242424242424242424242424242424242424242",
+                "sig1_r": "0x24653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c",
+                "sig2_r": "0x24653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c",
+                "r_matched": true,
+                "original_privkey": "4d696e65725f4e6f64655f5365637265745f4b65795f323032365f5051433031",
+                "recovered_privkey": "4d696e65725f4e6f64655f5365637265745f4b65795f323032365f5051433031",
+                "key_recovery_success": true,
+                "crack_time_us": 32.2,
+                "forged_tx_accepted_by_node": true
+            }
+        ]
+    },
+    "mldsa": {
+        "key_recovery_rate_percent": 0.0,
+        "avg_hamming_distance_percent": 50.45,
+        "resistance_verdict": "ABSOLUTELY SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)",
+        "cases": [
+            {
+                "wallet": "Alice",
+                "algorithm": "ML-DSA-44 (FIPS 204)",
+                "fixed_external_seed": "112233445566778899aabbccddeeff00112233445566778899aabbccddeeff01",
+                "mu1_prefix": "112ba4cf8f8b17fa",
+                "mu2_prefix": "42fad7f9c3722da3",
+                "nonce_vectors_identical": false,
+                "hamming_distance_percent": 49.02,
+                "linear_system_solvable": false,
+                "key_recovery_success": false,
+                "defense_status": "SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)"
+            },
+            {
+                "wallet": "Bob",
+                "algorithm": "ML-DSA-44 (FIPS 204)",
+                "fixed_external_seed": "deadbeefcafebabe0123456789abcdefdeadbeefcafebabe0123456789abcdef",
+                "mu1_prefix": "8905c124bf5831f3",
+                "mu2_prefix": "4fd7d73201aec469",
+                "nonce_vectors_identical": false,
+                "hamming_distance_percent": 48.73,
+                "linear_system_solvable": false,
+                "key_recovery_success": false,
+                "defense_status": "SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)"
+            },
+            {
+                "wallet": "Charlie",
+                "algorithm": "ML-DSA-44 (FIPS 204)",
+                "fixed_external_seed": "7777777777777777777777777777777777777777777777777777777777777777",
+                "mu1_prefix": "d6abd04d92994fce",
+                "mu2_prefix": "84299c078285bc85",
+                "nonce_vectors_identical": false,
+                "hamming_distance_percent": 50.1,
+                "linear_system_solvable": false,
+                "key_recovery_success": false,
+                "defense_status": "SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)"
+            },
+            {
+                "wallet": "Dave",
+                "algorithm": "ML-DSA-44 (FIPS 204)",
+                "fixed_external_seed": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+                "mu1_prefix": "47744942870448bf",
+                "mu2_prefix": "18f68486793be854",
+                "nonce_vectors_identical": false,
+                "hamming_distance_percent": 53.61,
+                "linear_system_solvable": false,
+                "key_recovery_success": false,
+                "defense_status": "SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)"
+            },
+            {
+                "wallet": "Miner_Node",
+                "algorithm": "ML-DSA-44 (FIPS 204)",
+                "fixed_external_seed": "4242424242424242424242424242424242424242424242424242424242424242",
+                "mu1_prefix": "7b6e1955706ad943",
+                "mu2_prefix": "46a50a4ee9bfc821",
+                "nonce_vectors_identical": false,
+                "hamming_distance_percent": 50.78,
+                "linear_system_solvable": false,
+                "key_recovery_success": false,
+                "defense_status": "SECURE (Immune to Nonce Reuse via FIPS 204 Deterministic Masking)"
+            }
+        ]
+    }
+}
