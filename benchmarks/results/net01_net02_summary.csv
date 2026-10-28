@@ -1,0 +1,7 @@
+timestamp,label,algorithm,rounds,fork_rounds,fork_rate_percent,resolve_conflicts_delta,conflict_delta,fork_counter_delta,orphan_blocks_delta,propagation_samples,avg_propagation_ms,min_propagation_ms,max_propagation_ms,avg_tx_json_bytes
+2026-10-28 09:23:48,baseline_smoke,ECDSA,1,0,0.0,0,0,0,0,2,1.5013,1.0017,2.0009,469.0
+2026-10-28 09:26:49,mldsa_smoke,ML-DSA,1,1,100.0,2,2,1,1,2,3.4576,3.0138,3.9014,7677.0
+2026-10-28 10:31:14,mtu576_loss5_lag100,ECDSA,5,5,100.0,10,10,5,5,10,150.45848,105.7997,320.4773,469.2
+2026-10-28 10:31:56,mtu576_loss5_lag100,ML-DSA,5,5,100.0,10,10,5,5,10,137.8038,123.399,158.7494,7677.4
+2026-10-28 10:39:29,mtu576_loss15_lag100,ECDSA,5,5,100.0,10,10,5,5,10,212.20177,105.9332,886.081,470.0
+2026-10-28 10:39:49,mtu576_loss15_lag100,ML-DSA,5,5,100.0,10,10,5,5,10,141.53202,109.4458,215.2881,7678.0

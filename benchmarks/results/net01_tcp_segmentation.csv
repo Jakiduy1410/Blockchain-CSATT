@@ -1,0 +1,5 @@
+algorithm,mtu_bytes,mss_bytes,representative_tx_json_bytes,tcp_segments_theoretical,ip_tcp_header_bytes,estimated_wire_bytes,header_overhead_percent_of_wire,header_overhead_percent_of_payload
+ECDSA,1500,1460,470,1,40,510,7.843,8.511
+ML-DSA,1500,1460,7678,6,240,7918,3.031,3.126
+ECDSA,576,536,470,1,40,510,7.843,8.511
+ML-DSA,576,536,7678,15,600,8278,7.248,7.815

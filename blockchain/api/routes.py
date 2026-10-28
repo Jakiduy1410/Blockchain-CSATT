@@ -69,7 +69,8 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             'chain_length': len(chain),
             'peers': list(network.peers),
             'balances': balances,
-            'stack_threshold': 3
+            'stack_threshold': 3,
+            'net_metrics': network.get_net_metrics()
         }
         return jsonify(response), 200
 
