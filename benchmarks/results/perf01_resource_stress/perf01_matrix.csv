@@ -1,0 +1,10 @@
+Hardware Profile,vCPUs,RAM Limit (MB),Signature Algorithm,500 Txs Processed,Elapsed Time (s),Ingestion TPS (tx/s),Baseline RAM (MB),Peak RAM (MB),RAM Ceiling Usage (%),Avg CPU (%),Normalized CPU (%),Peak CPU (%),CPU Throttled (ms),OOM Risk Status
+Server (DataCenter / Cloud),4.0,4096,ECDSA (secp256k1),500/500,1.432,349.25,123.31,129.43,3.16,126.53,31.63,127.74,0.0,AN TOAN (<60%)
+Server (DataCenter / Cloud),4.0,4096,RSA-2048 (PKCS#1 v1.5),500/500,0.906,552.16,43.52,47.66,1.16,135.91,33.98,136.39,0.0,AN TOAN (<60%)
+Server (DataCenter / Cloud),4.0,4096,ML-DSA-87 (NIST PQC Level 5),500/500,0.912,548.25,43.47,55.68,1.36,139.54,34.88,140.25,0.0,AN TOAN (<60%)
+Edge Gateway (Raspberry Pi 4),1.0,512,ECDSA (secp256k1),500/500,1.658,301.61,43.49,45.57,8.9,104.19,104.19,114.63,832.84,AN TOAN (<60%)
+Edge Gateway (Raspberry Pi 4),1.0,512,RSA-2048 (PKCS#1 v1.5),500/500,1.227,407.6,42.56,46.08,9.0,105.26,105.26,104.38,842.38,AN TOAN (<60%)
+Edge Gateway (Raspberry Pi 4),1.0,512,ML-DSA-87 (NIST PQC Level 5),500/500,1.148,435.37,43.2,57.56,11.24,104.46,104.46,99.7,817.47,AN TOAN (<60%)
+IoT Embedded (Smart Meter / Sensor),0.5,128,ECDSA (secp256k1),500/500,3.787,132.02,42.74,45.63,35.65,52.2,104.4,53.33,5509.4,AN TOAN (<60%)
+IoT Embedded (Smart Meter / Sensor),0.5,128,RSA-2048 (PKCS#1 v1.5),500/500,2.753,181.64,46.66,48.17,37.63,51.77,103.54,54.32,5300.27,AN TOAN (<60%)
+IoT Embedded (Smart Meter / Sensor),0.5,128,ML-DSA-87 (NIST PQC Level 5),500/500,2.826,176.93,43.03,54.86,42.86,53.02,106.04,53.24,5397.27,AN TOAN (<60%)

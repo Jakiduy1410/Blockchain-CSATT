@@ -1,0 +1,4 @@
+Algorithm,Batch Size (Txs),Tx Wire Size (Bytes),100 Txs Wire (KB),Block Wire Size (KB),Server Ingest Time (s),Server Ingest TPS,Block Mining Time (s),Edge Prop Delay (ms),IoT Prop Delay (ms),E2E Total Time (s),E2E TPS,Server Peak RAM (MB),Server Avg CPU (%),Edge Peak RAM (MB),Edge Avg CPU (%),IoT Peak RAM (MB),IoT Normalized CPU (%)
+ECDSA (secp256k1),100,499,48.73,27.3,0.255,392.16,0.067,68.55,98.55,0.489,204.5,125.22,68.8,47.27,17.27,43.97,35.32
+RSA-2048 (PKCS#1 v1.5),100,1346,131.45,1.74,0.208,480.77,0.005,23.26,22.63,0.259,386.1,46.73,92.2,44.99,15.25,48.01,32.16
+ML-DSA-87 (NIST PQC Level 5),100,14685,1434.08,719.78,0.161,621.12,0.027,17.53,38.48,0.244,409.84,51.55,88.25,48.94,12.63,49.28,24.94

@@ -1,6 +1,10 @@
 venv/
+.agentvenv/
 __pycache__/
+*.pyc
 .vscode/
 logs/
 *.log
+sslkeys.log
+*.jsonl
 .agent

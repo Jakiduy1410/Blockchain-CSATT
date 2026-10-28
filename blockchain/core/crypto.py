@@ -10,7 +10,17 @@ import hashlib
 import json
 from collections import OrderedDict
 
+import os
+import sys
+
 try:
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        for dll_dir in [os.path.abspath('.'), os.path.abspath('liboqs'), os.path.abspath('liboqs/build/bin')]:
+            if os.path.isdir(dll_dir):
+                try:
+                    os.add_dll_directory(dll_dir)
+                except Exception:
+                    pass
     import oqs
 except ImportError:
     oqs = None
@@ -46,7 +56,14 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         ])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
-        with oqs.Signature("ML-DSA-44") as verifier:
+        if len(public_key_bytes) >= 2592 or len(signature_bytes) >= 4627:
+            alg_name = "ML-DSA-87"
+        elif len(public_key_bytes) >= 1952 or len(signature_bytes) >= 3309:
+            alg_name = "ML-DSA-65"
+        else:
+            alg_name = "ML-DSA-44"
+
+        with oqs.Signature(alg_name) as verifier:
             return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
     except Exception:
         return False
