@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
 """
-SEC-03 fuzzing: 1,000 POST attempts.
+SEC-03: HTTP / HTTPS / WebSocket fuzzing.
 
-    python3 attack_sec03.py
-    python3 attack_sec03.py --project-root /path/to/project --wallet Alice
+Examples:
+    python3 attack_sec03.py --transport http
+    python3 attack_sec03.py --transport http --assume-replay-blocked
+    python3 attack_sec03.py --transport https --insecure
+    python3 attack_sec03.py --transport wss --ws-path /ws --insecure
 
-Requires requests and the project's own Flask/cryptographic dependencies.
+Normal completion:
+    334 bit-flipping + 333 payload mutation
+    + 1 replay baseline + 332 replay attempts = 1,000 transaction sends.
 
-Replay uses the requested classification override: after an accepted baseline,
-every replay that receives an HTTP response is counted as blocked. These replay
-results are ASSUMED from project design, not verified from HTTP or ledger state.
-Transport failures remain unknown; a failed baseline prevents a PASS result.
+Pre-check traffic is additional diagnostic traffic:
+    HTTP:  TCP -> HTTP health GET
+    HTTPS: TCP -> TLS 1.3 -> HTTPS health GET
+    WSS:   TCP -> TLS 1.3 -> WebSocket handshake -> Ping/Pong
 
-334 bit-flipping + 333 payload mutation + 1 baseline + 332 replay.
+Dependencies:
+    requests
+    websockets>=15 only for WSS
+    The project's Flask and cryptographic dependencies.
+
+--assume-replay-blocked:
+    Preserves the earlier assumption-based replay classification.
+    Connection failures remain Unknown.
 """
 
 from __future__ import annotations
@@ -24,11 +36,14 @@ import json
 import math
 import random
 import re
+import socket
+import ssl
 import sys
 import time
+import unicodedata
 import uuid
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,32 +58,159 @@ except ImportError:
 BIT = "Bit-flipping"
 MUTATION = "Payload mutation"
 REPLAY = "Replay"
-PORTS = tuple(range(5000, 5006))
+KINDS = (BIT, MUTATION, REPLAY)
+
+HTTP_TRANSPORTS = {"http", "https"}
+TLS_TRANSPORTS = {"https", "wss"}
+
+ACCEPTED = {"accepted", "success", "created", "ok"}
+REJECTED = {"rejected", "invalid", "blocked", "denied"}
+DUPLICATE = {"duplicate", "ignored", "skipped", "already_processed"}
+
+NETWORK_ERRORS = (
+    OSError,
+    TimeoutError,
+    requests.exceptions.RequestException,
+)
 
 
-def hex_bytes(value: Any, label: str) -> bytes:
+def json_text(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def valid_hex(value: Any, name: str) -> bytes:
     if (
         not isinstance(value, str)
         or not value
         or len(value) % 2
-        or re.fullmatch(r"[0-9a-fA-F]+", value) is None
+        or not re.fullmatch(r"[0-9a-fA-F]+", value)
     ):
-        raise ValueError(f"{label}: invalid hex string")
+        raise ValueError(f"{name}: invalid hex")
+
     return bytes.fromhex(value)
 
 
-def serialize(tx: dict[str, Any]) -> bytes:
-    return json.dumps(
-        tx, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
+def exception_chain(exc: BaseException) -> str:
+    """Include wrapped urllib3, socket, and SSL causes."""
+    output = []
+    visited = set()
+
+    def visit(error: BaseException) -> None:
+        if id(error) in visited:
+            return
+
+        visited.add(id(error))
+        output.append(f"{type(error).__name__}: {error}")
+
+        cause = error.__cause__ or error.__context__
+        if isinstance(cause, BaseException):
+            visit(cause)
+
+        reason = getattr(error, "reason", None)
+        if isinstance(reason, BaseException):
+            visit(reason)
+
+        for argument in error.args:
+            if isinstance(argument, BaseException):
+                visit(argument)
+
+    visit(exc)
+    return " -> ".join(output)
+
+
+def normalize(value: str) -> str:
+    value = value.casefold().replace("đ", "d").replace("_", " ")
+
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFD", value)
+        if unicodedata.category(char) != "Mn"
+    )
+
+
+def response_code(body: Any) -> int | None:
+    if not isinstance(body, dict):
+        return None
+
+    for key in ("status_code", "http_status", "code"):
+        value = body.get(key)
+
+        if isinstance(value, bool):
+            continue
+
+        if isinstance(value, int) and 100 <= value <= 599:
+            return value
+
+        if isinstance(value, str) and re.fullmatch(r"[1-5]\d\d", value):
+            return int(value)
+
+    return None
+
+
+def has_duplicate_evidence(body: Any) -> bool:
+    if not isinstance(body, dict):
+        return False
+
+    if any(
+        body.get(key) is True
+        for key in ("duplicate", "ignored", "skipped", "replay_detected")
+    ):
+        return True
+
+    if str(body.get("status", "")).lower() in DUPLICATE:
+        return True
+
+    for key in ("code", "error_code", "message", "reason"):
+        value = body.get(key)
+        if not isinstance(value, str):
+            continue
+
+        text = normalize(value)
+
+        if re.search(
+            r"\b(no duplicate|not a duplicate|not duplicate|"
+            r"khong trung|khong ton tai|chua su dung)\b",
+            text,
+        ):
+            continue
+
+        if re.search(
+            r"\b(duplicate|replay detected|already processed|"
+            r"already exists|nonce already used|trung lap|"
+            r"da ton tai|bo qua|nonce da su dung)\b",
+            text,
+        ):
+            return True
+
+    return False
+
+
+def has_application_reply(body: Any) -> bool:
+    if not isinstance(body, dict):
+        return False
+
+    return (
+        response_code(body) is not None
+        or isinstance(body.get("accepted"), bool)
+        or isinstance(body.get("success"), bool)
+        or str(body.get("status", "")).lower()
+        in ACCEPTED | REJECTED | DUPLICATE
+        or has_duplicate_evidence(body)
+    )
 
 
 class ProjectClient:
-    """Use the current project's wallet and signing endpoints locally."""
+    """Call project signing endpoints in RAM, without network requests."""
 
     def __init__(self, root: Path, client_file: Path | None):
         self.root = root
-        candidates = (
+
+        paths = (
             [client_file.resolve()]
             if client_file
             else [
@@ -76,7 +218,8 @@ class ProjectClient:
                 root / "blockchain_client.py",
             ]
         )
-        source = next((p for p in candidates if p.is_file()), None)
+
+        source = next((path for path in paths if path.is_file()), None)
         if source is None:
             raise RuntimeError("Cannot find blockchain_client.py")
 
@@ -85,7 +228,7 @@ class ProjectClient:
 
         spec = importlib.util.spec_from_file_location("sec03_client", source)
         if spec is None or spec.loader is None:
-            raise RuntimeError("Cannot load project client")
+            raise RuntimeError("Cannot import project client")
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
@@ -93,41 +236,25 @@ class ProjectClient:
 
         app = getattr(module, "app", None)
         if not callable(getattr(app, "test_client", None)):
-            raise RuntimeError("Project client must expose Flask app")
+            raise RuntimeError("Client must expose a Flask app")
 
         self.client = app.test_client()
         self.algorithm = str(getattr(module, "SIG_ALG", "project-defined"))
 
-    def new_wallet(self) -> dict[str, Any]:
+    def wallet(self) -> dict:
         response = self.client.get("/wallet/new")
-        wallet = response.get_json(silent=True)
-        if response.status_code != 200 or not isinstance(wallet, dict):
-            raise RuntimeError("Local /wallet/new failed")
-        hex_bytes(wallet.get("public_key"), "public_key")
-        hex_bytes(wallet.get("private_key"), "private_key")
-        return wallet
+        data = response.get_json(silent=True)
 
-    def sample_wallets(self) -> dict[str, dict[str, Any]]:
-        for path in (
-            self.root / "configs" / "wallets.json",
-            self.root / "wallets.json",
-        ):
-            if path.is_file():
-                with path.open(encoding="utf-8") as handle:
-                    data = json.load(handle)
-                if not isinstance(data, dict):
-                    raise ValueError("wallets.json must contain an object")
-                return {
-                    str(name): wallet
-                    for name, wallet in data.items()
-                    if isinstance(wallet, dict)
-                }
-        return {}
+        if response.status_code != 200 or not isinstance(data, dict):
+            raise RuntimeError("Project /wallet/new failed")
 
-    def sign(
-        self, wallet: dict[str, Any], recipient: str, amount: int
-    ) -> dict[str, Any]:
+        valid_hex(data.get("public_key"), "public_key")
+        valid_hex(data.get("private_key"), "private_key")
+        return data
+
+    def sign(self, wallet: dict, recipient: str, amount: int) -> dict:
         nonce = str(uuid.uuid4())
+
         response = self.client.post(
             "/generate/transaction",
             data={
@@ -138,128 +265,489 @@ class ProjectClient:
                 "nonce": nonce,
             },
         )
-        data = response.get_json(silent=True)
-        if response.status_code != 200 or not isinstance(data, dict):
+        body = response.get_json(silent=True)
+
+        if response.status_code != 200 or not isinstance(body, dict):
             raise RuntimeError("Project signing endpoint failed")
 
-        original = data.get("transaction")
+        original = body.get("transaction")
         if not isinstance(original, dict):
-            raise RuntimeError("Signing response has no transaction object")
+            raise RuntimeError("Signer returned no transaction object")
 
         tx = copy.deepcopy(original)
-        tx.pop("sender_private_key", None)
         tx.pop("private_key", None)
+        tx.pop("sender_private_key", None)
 
-        signature = data.get("signature", tx.get("signature"))
-        hex_bytes(signature, "signature")
+        signature = body.get("signature", tx.get("signature"))
+        valid_hex(signature, "signature")
 
         if tx.get("sender_address") != wallet["public_key"]:
-            raise RuntimeError("Signer returned an unexpected sender")
-        if tx.get("recipient_address") != recipient:
-            raise RuntimeError("Signer returned an unexpected recipient")
-        if str(tx.get("amount", tx.get("value"))) != str(amount):
-            raise RuntimeError("Signer returned an unexpected amount")
+            raise RuntimeError("Unexpected signed sender")
 
-        # Matches the supplied API: amount becomes string value for verification.
+        if tx.get("recipient_address") != recipient:
+            raise RuntimeError("Unexpected signed recipient")
+
+        if str(tx.get("amount", tx.get("value"))) != str(amount):
+            raise RuntimeError("Unexpected signed amount")
+
         tx.pop("value", None)
         tx["amount"] = amount
         tx["signature"] = signature
         tx.setdefault("nonce", nonce)
-        serialize(tx)
+
+        json_text(tx)
         return tx
 
-    def fixtures(self, requested_wallet: str | None) -> list[dict[str, Any]]:
-        recipient = self.new_wallet()["public_key"]
-        key_size = len(hex_bytes(recipient, "recipient"))
-        wallets = self.sample_wallets()
+    def fixtures(self, name: str | None) -> list[dict]:
+        recipient = self.wallet()["public_key"]
+        wallets = {}
 
-        if requested_wallet and requested_wallet not in wallets:
-            raise RuntimeError(f"Wallet {requested_wallet!r} not found")
+        for path in (
+            self.root / "configs" / "wallets.json",
+            self.root / "wallets.json",
+        ):
+            if path.is_file():
+                wallets = json.loads(path.read_text(encoding="utf-8"))
+                break
+
+        if not isinstance(wallets, dict):
+            raise ValueError("wallets.json must contain an object")
+
+        if name and name not in wallets:
+            raise ValueError(f"Wallet {name!r} not found")
 
         sender = None
         baseline = None
-        sender_name = None
-        names = [requested_wallet] if requested_wallet else list(wallets)
+        selected = None
 
-        for name in names:
-            wallet = wallets[name]
+        for candidate in ([name] if name else list(wallets)):
+            wallet = wallets[candidate]
+
             try:
                 balance = float(wallet.get("initial_balance", 0))
+
                 if not math.isfinite(balance) or balance < 1:
                     continue
-                if len(hex_bytes(wallet.get("public_key"), "public_key")) != key_size:
+
+                if len(valid_hex(wallet["public_key"], "public_key")) != len(
+                    valid_hex(recipient, "recipient")
+                ):
                     continue
-                hex_bytes(wallet.get("private_key"), "private_key")
-                candidate = self.sign(wallet, recipient, 1)
-            except (ValueError, TypeError, KeyError, RuntimeError):
+
+                signed = self.sign(wallet, recipient, 1)
+
+            except (
+                ValueError,
+                KeyError,
+                TypeError,
+                AttributeError,
+                RuntimeError,
+            ):
                 continue
 
-            sender, baseline, sender_name = wallet, candidate, name
+            sender = wallet
+            baseline = signed
+            selected = candidate
             break
 
         if sender is None:
-            if requested_wallet:
-                raise RuntimeError(
-                    "Selected wallet cannot sign or has configured balance below 1"
-                )
-            sender = self.new_wallet()
-            baseline = self.sign(sender, recipient, 1)
-            sender_name = "generated-wallet"
-            print("WARNING: New sender has no guaranteed balance.")
+            raise RuntimeError(
+                "No compatible funded sample wallet. Configure a funded test "
+                "wallet in configs/wallets.json, or select one with --wallet."
+            )
 
-        print(f"Algorithm: {self.algorithm}; sender: {sender_name}")
-        print("Generating 668 signed fixtures...")
+        print(f"[SIGNER] {self.algorithm}; wallet={selected}")
+        print("[FIXTURES] Generating 668 signed transactions...")
 
-        # Distinct signed amounts also support deterministic RSA signatures.
         fixtures = [
             self.sign(sender, recipient, amount)
             for amount in range(2, 669)
         ]
         fixtures.append(baseline)
 
-        if len(fixtures) != 668:
-            raise RuntimeError("Unexpected fixture count")
-
-        if "ML-DSA-44" in self.algorithm.upper():
-            if key_size != 1312 or any(
-                len(hex_bytes(tx["signature"], "signature")) != 2420
-                for tx in fixtures
-            ):
-                raise RuntimeError("Unexpected ML-DSA-44 key/signature size")
-
         return fixtures
 
 
-def flip_bits(tx: dict[str, Any], rng: random.Random) -> dict[str, Any]:
-    result = copy.deepcopy(tx)
-    signature = bytearray(hex_bytes(tx["signature"], "signature"))
-    for bit in rng.sample(range(len(signature) * 8), rng.randint(1, 4)):
-        signature[bit // 8] ^= 1 << (bit % 8)
-    result["signature"] = signature.hex()
-    return result
+class TLSAdapter(HTTPAdapter):
+    """Used only for HTTPS, never for plain HTTP."""
 
+    def __init__(self, context: ssl.SSLContext):
+        self.context = context
+        super().__init__(max_retries=0)
 
-def mutate(
-    tx: dict[str, Any], rng: random.Random, change_amount: bool
-) -> dict[str, Any]:
-    result = copy.deepcopy(tx)
-    if change_amount:
-        result["amount"] *= 100
-    else:
-        address = list(result["recipient_address"])
-        index = rng.randrange(len(address))
-        address[index] = format(int(address[index], 16) ^ 1, "x")
-        result["recipient_address"] = "".join(address)
-    assert result["signature"] == tx["signature"]
-    return result
+    def init_poolmanager(self, connections, maxsize, block=False, **kwargs):
+        kwargs["ssl_context"] = self.context
+        return super().init_poolmanager(
+            connections,
+            maxsize,
+            block=block,
+            **kwargs,
+        )
 
 
 @dataclass
 class Observation:
-    status: int | None
+    http_status: int | None
+    application_code: int | None
     body: Any
     error: str | None
     elapsed_ms: float
+
+
+class Transport:
+    def __init__(self, args):
+        self.args = args
+        self.context = None
+        self.ws_connect = None
+        self.ws_errors = ()
+
+        # FIX: plain HTTP requires no SSL context or TLS handshake.
+        if args.transport in TLS_TRANSPORTS:
+            self.context = ssl.create_default_context(cafile=args.ca_file)
+            self.context.minimum_version = ssl.TLSVersion.TLSv1_3
+            self.context.maximum_version = ssl.TLSVersion.TLSv1_3
+
+            if args.insecure:
+                self.context.check_hostname = False
+                self.context.verify_mode = ssl.CERT_NONE
+                print("[TLS] Certificate verification disabled (--insecure).")
+
+            if args.client_cert:
+                self.context.load_cert_chain(
+                    args.client_cert,
+                    keyfile=args.client_key,
+                )
+        else:
+            print("[TRANSPORT] Plain HTTP; TLS is disabled.")
+
+            if (
+                args.insecure
+                or args.ca_file
+                or args.client_cert
+                or args.client_key
+            ):
+                print("[INFO] TLS options are ignored for --transport http.")
+
+        self.session = requests.Session()
+        self.session.trust_env = False
+
+        # FIX: explicitly configure a standard adapter for HTTP.
+        self.session.mount("http://", HTTPAdapter(max_retries=0))
+
+        if args.transport == "https":
+            self.session.mount("https://", TLSAdapter(self.context))
+            self.session.verify = (
+                False if args.insecure else args.ca_file or True
+            )
+
+            if args.client_cert:
+                self.session.cert = (
+                    (args.client_cert, args.client_key)
+                    if args.client_key
+                    else args.client_cert
+                )
+
+        if args.transport == "wss":
+            try:
+                from websockets.sync.client import connect
+                from websockets.exceptions import WebSocketException
+            except ImportError as exc:
+                raise RuntimeError(
+                    'Install WebSocket support: pip install "websockets>=15"'
+                ) from exc
+
+            self.ws_connect = connect
+            self.ws_errors = (WebSocketException,)
+
+    def url(self, port: int, path: str) -> str:
+        return f"{self.args.transport}://{self.args.host}:{port}{path}"
+
+    def open_ws(self, port: int):
+        return self.ws_connect(
+            self.url(port, self.args.ws_path),
+            ssl=self.context,
+            proxy=None,
+            open_timeout=self.args.timeout,
+            close_timeout=min(self.args.timeout, 2),
+            max_size=2 * 1024 * 1024,
+            subprotocols=(
+                [self.args.ws_subprotocol]
+                if self.args.ws_subprotocol
+                else None
+            ),
+        )
+
+    def precheck(self) -> None:
+        failures = []
+
+        if self.args.transport == "http":
+            print("\n[PRE-CHECK] TCP -> HTTP health endpoint")
+        else:
+            print("\n[PRE-CHECK] TCP -> TLS 1.3 -> application transport")
+
+        for port in self.args.ports:
+            stage = "TCP"
+            connection_detail = "plain HTTP; no TLS"
+
+            try:
+                with socket.create_connection(
+                    (self.args.host, port),
+                    timeout=self.args.timeout,
+                ) as raw:
+
+                    # FIX: TLS wrapping happens only for HTTPS/WSS.
+                    if self.args.transport in TLS_TRANSPORTS:
+                        stage = "TLS"
+
+                        with self.context.wrap_socket(
+                            raw,
+                            server_hostname=self.args.host,
+                        ) as tls:
+                            version = tls.version()
+                            cipher = tls.cipher()[0]
+                            connection_detail = f"{version} | {cipher}"
+
+                stage = self.args.transport.upper()
+
+                # FIX: HTTP and HTTPS share the REST health-check branch.
+                if self.args.transport in HTTP_TRANSPORTS:
+                    response = self.session.get(
+                        self.url(port, self.args.health_path),
+                        timeout=self.args.timeout,
+                        allow_redirects=False,
+                    )
+
+                    if not 200 <= response.status_code < 300:
+                        raise RuntimeError(
+                            f"Health endpoint returned HTTP "
+                            f"{response.status_code}; check --health-path"
+                        )
+
+                    detail = f"health HTTP {response.status_code}"
+
+                else:
+                    with self.open_ws(port) as ws:
+                        pong = ws.ping()
+
+                        if not pong.wait(self.args.timeout):
+                            raise TimeoutError("WebSocket Pong timeout")
+
+                    detail = "WebSocket handshake + Pong OK"
+
+                print(
+                    f"[OK] {self.args.host}:{port} | "
+                    f"{connection_detail} | {detail}",
+                    flush=True,
+                )
+
+            except Exception as exc:
+                error = exception_chain(exc)
+                failures.append((port, stage, error))
+
+                print(
+                    f"[FAIL] {self.args.host}:{port} | "
+                    f"stage={stage} | {error}",
+                    flush=True,
+                )
+
+        if failures:
+            print(
+                "\nKiểm tra trên máy chạy Node:\n"
+                "  ss -ltnp | grep -E ':(5000|5001|5002|5003|5004|5005)\\b'\n"
+                "  - Xác nhận đúng port API; port P2P có thể khác port API.\n"
+                "  - ConnectionRefusedError: kiểm tra Node, listener và port mapping.\n"
+                "  - HTTP 404: kiểm tra --health-path; mặc định là /status.\n"
+                "  - Nếu chạy trong container/VM, 127.0.0.1 là chính container/VM đó."
+            )
+
+            if self.args.transport == "http":
+                print(
+                    "  - Server HTTP thường: dùng --transport http.\n"
+                    f"  curl -v http://{self.args.host}:"
+                    f"{self.args.ports[0]}{self.args.health_path}"
+                )
+            else:
+                print(
+                    "  - Kiểm tra Node đã bật TLS 1.3.\n"
+                    "  - Kiểm tra CA/SAN của chứng chỉ.\n"
+                    "  - Nếu dùng mTLS: cung cấp --client-cert và --client-key.\n"
+                    "  - WRONG_VERSION_NUMBER: port có thể đang phục vụ HTTP thường.\n"
+                    "  - InvalidHandshake/HTTP 404: kiểm tra --ws-path."
+                )
+
+            raise RuntimeError(
+                "Pre-check failed; no transaction tests were sent"
+            )
+
+    def wire(self, transaction: dict) -> str:
+        payload: Any = transaction
+
+        if (
+            self.args.transport == "wss"
+            and self.args.ws_payload_key
+        ):
+            payload = {
+                self.args.ws_payload_key: transaction,
+            }
+
+            if self.args.ws_type:
+                payload["type"] = self.args.ws_type
+
+        return json_text(payload)
+
+    def send(self, port: int, wire: str) -> Observation:
+        started = time.monotonic()
+        http_status = None
+        body = None
+        error = None
+
+        try:
+            # FIX: plain HTTP uses requests.post with an http:// URL.
+            if self.args.transport in HTTP_TRANSPORTS:
+                response = self.session.post(
+                    self.url(port, self.args.tx_path),
+                    data=wire.encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    timeout=self.args.timeout,
+                    allow_redirects=False,
+                )
+                http_status = response.status_code
+
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = {
+                        "non_json_response": response.text[:2000],
+                    }
+
+            else:
+                # One transaction per connection. No automatic resend.
+                with self.open_ws(port) as ws:
+                    ws.send(wire)
+                    deadline = time.monotonic() + self.args.timeout
+
+                    while True:
+                        remaining = deadline - time.monotonic()
+
+                        if remaining <= 0:
+                            raise TimeoutError(
+                                "No matching transaction JSON acknowledgement"
+                            )
+
+                        raw_reply = ws.recv(timeout=remaining)
+
+                        try:
+                            candidate = json.loads(raw_reply)
+                        except (ValueError, UnicodeError):
+                            continue
+
+                        if (
+                            self.args.ws_reply_type
+                            and (
+                                not isinstance(candidate, dict)
+                                or candidate.get("type")
+                                != self.args.ws_reply_type
+                            )
+                        ):
+                            continue
+
+                        if has_application_reply(candidate):
+                            body = candidate
+                            break
+
+        except NETWORK_ERRORS + self.ws_errors as exc:
+            error = exception_chain(exc)
+
+            print(
+                f"[NETWORK ERROR] {self.args.host}:{port} | {error}",
+                flush=True,
+            )
+
+        return Observation(
+            http_status=http_status,
+            application_code=response_code(body),
+            body=body,
+            error=error,
+            elapsed_ms=round(
+                (time.monotonic() - started) * 1000,
+                3,
+            ),
+        )
+
+    def close(self):
+        self.session.close()
+
+
+def accepted(obs: Observation) -> bool:
+    if obs.error:
+        return False
+
+    body = obs.body if isinstance(obs.body, dict) else {}
+    status = str(body.get("status", "")).lower()
+
+    if (
+        body.get("accepted") is False
+        or body.get("success") is False
+        or bool(body.get("error"))
+        or status in REJECTED | DUPLICATE
+        or has_duplicate_evidence(body)
+    ):
+        return False
+
+    code = (
+        obs.http_status
+        if obs.http_status is not None
+        else obs.application_code
+    )
+
+    if code is not None and not 200 <= code < 300:
+        return False
+
+    if obs.http_status in {200, 201} and "non_json_response" not in body:
+        return True
+
+    return (
+        body.get("accepted") is True
+        or body.get("success") is True
+        or status in ACCEPTED
+        or obs.application_code in {200, 201}
+    )
+
+
+def classify(kind, obs, baseline_ok, assume_replay):
+    if obs.error:
+        return "unknown", "transport_error", "transport"
+
+    if kind == REPLAY:
+        if not baseline_ok:
+            return "unknown", "baseline_not_established", "baseline"
+
+        if assume_replay:
+            return "blocked", "replay_override", "assumption"
+
+        if has_duplicate_evidence(obs.body):
+            return "blocked", "explicit_duplicate_response", "application"
+
+    code = (
+        obs.http_status
+        if obs.http_status is not None
+        else obs.application_code
+    )
+
+    body = obs.body if isinstance(obs.body, dict) else {}
+    status = str(body.get("status", "")).lower()
+
+    if kind != REPLAY and (
+        code == 406
+        or status in REJECTED
+        or body.get("accepted") is False
+    ):
+        return "blocked", "transaction_rejected", "response"
+
+    if accepted(obs):
+        return "accepted", "application_acceptance", "response"
+
+    return "unknown", "unrecognized_response", "response"
 
 
 @dataclass
@@ -270,309 +758,438 @@ class Stats:
     unknown: int = 0
     baseline_ok: int = 0
     baseline_failed: int = 0
-    assumed_blocked: int = 0
+    assumed: int = 0
+    times: list[float] = field(default_factory=list)
 
 
-def post(
-    session: requests.Session, port: int, wire: bytes, timeout: float
-) -> Observation:
-    started = time.monotonic()
-    try:
-        response = session.post(
-            f"http://127.0.0.1:{port}/transactions/new",
-            data=wire,
-            headers={"Content-Type": "application/json"},
-            timeout=(timeout, timeout),
-            allow_redirects=False,
-        )
-        try:
-            body = response.json()
-        except ValueError:
-            body = {"non_json_response": response.text[:2000]}
-        return Observation(
-            response.status_code,
-            body,
-            None,
-            round((time.monotonic() - started) * 1000, 3),
-        )
-    except requests.RequestException as exc:
-        return Observation(
-            None,
-            None,
-            f"{type(exc).__name__}: {exc}",
-            round((time.monotonic() - started) * 1000, 3),
-        )
-
-
-def api_accepted(observation: Observation) -> bool:
-    if observation.status not in {200, 201}:
-        return False
-    body = observation.body
-    if not isinstance(body, dict) or "non_json_response" in body:
-        return False
-    if (
-        body.get("success") is False
-        or body.get("accepted") is False
-        or bool(body.get("error"))
-        or str(body.get("status", "")).lower()
-        in {"failed", "error", "rejected", "invalid"}
-    ):
-        return False
-    return True
-
-
-def classify(
-    kind: str, observation: Observation, baseline_ok: bool
-) -> tuple[str, str, str]:
-    """
-    Returns result, reason, evidence_type.
-
-    Baselines are handled separately and never enter this function.
-    """
-    if observation.status is None:
-        return "unknown", "network_error_or_timeout", "transport"
-
-    if kind == REPLAY:
-        if not baseline_ok:
-            return "unknown", "baseline_not_established", "baseline"
-
-        # Requested override: any received HTTP response counts as blocked.
-        # Preserve its assumed nature in both logs and the terminal report.
-        return (
-            "blocked",
-            "replay_override_assumes_silent_deduplication",
-            "assumption",
-        )
-
-    if observation.status == 406:
-        return "blocked", "http_406_rejection", "http_response"
-
-    if api_accepted(observation):
-        return "accepted", "api_accepted_mutated_transaction", "http_response"
-
-    return "unknown", "unexpected_response", "http_response"
-
-
-def print_results(stats: dict[str, Stats]) -> int:
-    total = Stats()
+def report(stats, algorithm):
     rows = []
-    fields = tuple(Stats.__dataclass_fields__)
+    total = Stats()
 
     for name, item in stats.items():
-        attacks = item.requests - item.baseline_ok - item.baseline_failed
-        rate = f"{100 * item.accepted / attacks:.2f}%" if attacks else "N/A"
         rows.append([
-            name, str(item.requests), str(item.blocked), str(item.accepted),
-            str(item.unknown),
-            f"{item.baseline_ok}/{item.baseline_failed}", rate,
+            name,
+            item.requests,
+            item.blocked,
+            item.accepted,
+            item.unknown,
+            f"{item.baseline_ok}/{item.baseline_failed}",
         ])
-        for field in fields:
-            setattr(total, field, getattr(total, field) + getattr(item, field))
 
-    attacks = total.requests - total.baseline_ok - total.baseline_failed
+        for key in (
+            "requests",
+            "blocked",
+            "accepted",
+            "unknown",
+            "baseline_ok",
+            "baseline_failed",
+            "assumed",
+        ):
+            setattr(
+                total,
+                key,
+                getattr(total, key) + getattr(item, key),
+            )
+
     rows.append([
-        "TOTAL", str(total.requests), str(total.blocked), str(total.accepted),
-        str(total.unknown),
+        "TOTAL",
+        total.requests,
+        total.blocked,
+        total.accepted,
+        total.unknown,
         f"{total.baseline_ok}/{total.baseline_failed}",
-        f"{100 * total.accepted / attacks:.2f}%" if attacks else "N/A",
     ])
 
+    rows = [[str(cell) for cell in row] for row in rows]
+
     headers = [
-        "Scenario", "Requests", "Blocked", "API accepted",
-        "Unknown", "Baseline OK/Fail", "API accept %",
+        "Scenario",
+        "Sent",
+        "Blocked",
+        "Accepted",
+        "Unknown",
+        "Baseline OK/Fail",
     ]
+
     widths = [
-        max(len(row[i]) for row in [headers, *rows])
-        for i in range(len(headers))
+        max(len(row[index]) for row in [headers, *rows])
+        for index in range(len(headers))
     ]
+
     border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
 
     print("\nSEC-03 RESULTS")
-    print("MODE: Replay classification override (assumed silent deduplication)")
     print(border)
+
     for index, row in enumerate([headers, *rows]):
-        print("| " + " | ".join(
-            value.ljust(width) for value, width in zip(row, widths)
-        ) + " |")
+        print(
+            "| "
+            + " | ".join(
+                value.ljust(width)
+                for value, width in zip(row, widths)
+            )
+            + " |"
+        )
+
         if index == 0:
             print(border)
+
     print(border)
+
+    print(f"\n[BENCHMARK] {algorithm}: client-observed transport latency")
     print(
-        f"Blocked includes {total.assumed_blocked} assumed replay results; "
-        "ledger state was not verified."
+        "Includes connection establishment where needed "
+        "and application response time."
     )
+
+    for name, item in stats.items():
+        average = (
+            f"{math.fsum(item.times) / len(item.times):.2f} ms"
+            if item.times
+            else "N/A"
+        )
+        print(
+            f"  {name}: {average}; "
+            f"blocked samples={len(item.times)}"
+        )
+
+    if total.assumed:
+        print(
+            f"ASSUMED replay blocks: {total.assumed}; "
+            "ledger was not verified."
+        )
 
     passed = (
         total.requests == 1000
         and total.blocked == 999
-        and total.accepted == 0
-        and total.unknown == 0
         and total.baseline_ok == 1
+        and total.unknown == 0
+        and total.accepted == 0
         and total.baseline_failed == 0
     )
 
     if passed:
-        print("PASS applies to the configured override classification.")
-        print("PASS: 999/999 attack attempts blocked (100%); baseline accepted.")
+        if total.assumed:
+            print("PASS under configured replay assumption:")
+
+        print(
+            "PASS: 999/999 attack attempts blocked (100%); "
+            "baseline accepted."
+        )
         return 0
 
-    print("NOT PASS: Baseline, transport, or mutation results require review.")
+    print("NOT PASS: review transport/application responses in JSONL.")
     return 1 if total.accepted else 2
 
 
-def run(args: argparse.Namespace) -> int:
-    root = args.project_root.resolve()
-    fixtures = ProjectClient(root, args.client_file).fixtures(args.wallet)
+def show_sample(path):
+    sample = None
+    count = 0
+    rng = random.SystemRandom()
 
-    if args.save_fixtures:
-        path = root / "signed_transactions.json"
-        with path.open("x", encoding="utf-8") as handle:
-            json.dump(
-                fixtures, handle, ensure_ascii=False, indent=2, allow_nan=False
-            )
-            handle.write("\n")
-        print(f"Fixtures: {path}")
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
 
-    rng = random.Random(args.seed)
-    cases = [
-        (BIT, serialize(flip_bits(tx, rng)), False)
-        for tx in fixtures[:334]
-    ]
-    cases.extend(
-        (MUTATION, serialize(mutate(tx, rng, index % 2 == 0)), False)
-        for index, tx in enumerate(fixtures[334:667])
-    )
-    rng.shuffle(cases)
+            if not isinstance(item, dict):
+                continue
 
-    # Every replay uses exactly the same bytes, including nonce/signature.
-    replay_wire = serialize(fixtures[-1])
-    cases.append((REPLAY, replay_wire, True))
-    cases.extend((REPLAY, replay_wire, False) for _ in range(332))
-    assert len(cases) == 1000
+            if item.get("result") == "blocked":
+                count += 1
+                if rng.randrange(count) == 0:
+                    sample = item
 
-    stats = {kind: Stats() for kind in (BIT, MUTATION, REPLAY)}
-    replay_ports = list(PORTS)
-    rng.shuffle(replay_ports)
-    replay_index = 0
-    baseline_ok = False
-    interrupted = False
+    if sample:
+        print("\n[LOG SAMPLE] Random record classified as blocked:")
+        print(json.dumps(sample, ensure_ascii=False, indent=2))
 
-    log_path = args.log.resolve()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    session = requests.Session()
-    session.trust_env = False
-    session.mount("http://", HTTPAdapter(max_retries=0))
+def run(args):
+    transport = Transport(args)
 
     try:
-        with log_path.open("x", encoding="utf-8") as log:
-            print(f"Detailed log: {log_path}")
-            for number, (kind, wire, is_baseline) in enumerate(cases, 1):
-                if kind == REPLAY:
-                    port = replay_ports[replay_index % len(replay_ports)]
-                    replay_index += 1
-                else:
-                    port = rng.choice(PORTS)
+        # Fail before signing or sending any transaction.
+        transport.precheck()
 
-                observation = post(session, port, wire, args.timeout)
-                item = stats[kind]
-                item.requests += 1
+        project = ProjectClient(
+            args.project_root.resolve(),
+            args.client_file,
+        )
+        fixtures = project.fixtures(args.wallet)
 
-                if is_baseline:
-                    baseline_ok = api_accepted(observation)
-                    result = "baseline_ok" if baseline_ok else "baseline_failed"
-                    reason = result
-                    evidence_type = "http_response"
-                else:
-                    result, reason, evidence_type = classify(
-                        kind, observation, baseline_ok
+        rng = random.Random(args.seed)
+        cases = []
+
+        for tx in fixtures[:334]:
+            altered = copy.deepcopy(tx)
+            signature = bytearray.fromhex(tx["signature"])
+
+            for bit in rng.sample(
+                range(len(signature) * 8),
+                rng.randint(1, 4),
+            ):
+                signature[bit // 8] ^= 1 << (bit % 8)
+
+            altered["signature"] = signature.hex()
+            cases.append((BIT, transport.wire(altered), False))
+
+        for index, tx in enumerate(fixtures[334:667]):
+            altered = copy.deepcopy(tx)
+
+            if index % 2 == 0:
+                altered["amount"] *= 100
+            else:
+                address = list(altered["recipient_address"])
+                position = rng.randrange(len(address))
+                address[position] = format(
+                    int(address[position], 16) ^ 1,
+                    "x",
+                )
+                altered["recipient_address"] = "".join(address)
+
+            cases.append((MUTATION, transport.wire(altered), False))
+
+        rng.shuffle(cases)
+
+        replay_wire = transport.wire(fixtures[-1])
+        cases.append((REPLAY, replay_wire, True))
+        cases.extend(
+            (REPLAY, replay_wire, False)
+            for _ in range(332)
+        )
+
+        assert len(cases) == 1000
+
+        stats = {name: Stats() for name in KINDS}
+        seen = set()
+        baseline_ok = False
+        replay_index = 0
+        interrupted = False
+
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with args.log.open("x", encoding="utf-8") as log:
+                for number, (kind, wire, baseline) in enumerate(cases, 1):
+                    if kind == REPLAY:
+                        port = args.ports[
+                            replay_index % len(args.ports)
+                        ]
+                        replay_index += 1
+                    else:
+                        port = rng.choice(args.ports)
+
+                    if kind not in seen:
+                        seen.add(kind)
+                        print(
+                            f"\n[TRACE] {kind} -> "
+                            f"{args.transport}://{args.host}:{port}",
+                            flush=True,
+                        )
+
+                    obs = transport.send(port, wire)
+                    item = stats[kind]
+                    item.requests += 1
+
+                    if baseline:
+                        baseline_ok = accepted(obs)
+                        result = (
+                            "baseline_ok"
+                            if baseline_ok
+                            else "baseline_failed"
+                        )
+                        reason = result
+                        evidence = "application_response"
+                    else:
+                        result, reason, evidence = classify(
+                            kind,
+                            obs,
+                            baseline_ok,
+                            args.assume_replay_blocked,
+                        )
+
+                    setattr(
+                        item,
+                        result,
+                        getattr(item, result) + 1,
                     )
 
-                setattr(item, result, getattr(item, result) + 1)
-                if result == "blocked" and evidence_type == "assumption":
-                    item.assumed_blocked += 1
+                    if result == "blocked":
+                        item.times.append(obs.elapsed_ms)
 
-                record = {
-                    "time_utc": datetime.now(timezone.utc).isoformat(),
-                    "request": number,
-                    "scenario": kind,
-                    "port": port,
-                    "baseline": is_baseline,
-                    "result": result,
-                    "reason": reason,
-                    "evidence_type": evidence_type,
-                    "ledger_verified": False,
-                    "http_status": observation.status,
-                    "elapsed_ms": observation.elapsed_ms,
-                    "response": observation.body,
-                    "network_error": observation.error,
-                }
-                log.write(json.dumps(record, ensure_ascii=False) + "\n")
-                log.flush()
+                        if evidence == "assumption":
+                            item.assumed += 1
 
-                if number % 100 == 0:
-                    print(f"Completed {number}/1000 POST attempts")
+                    record = {
+                        "time_utc": datetime.now(timezone.utc).isoformat(),
+                        "request": number,
+                        "scenario": kind,
+                        "transport": args.transport,
+                        "port": port,
+                        "baseline": baseline,
+                        "result": result,
+                        "reason": reason,
+                        "evidence_type": evidence,
+                        "ledger_verified": False,
+                        "http_status": obs.http_status,
+                        "application_code": obs.application_code,
+                        "elapsed_ms": obs.elapsed_ms,
+                        "response": obs.body,
+                        "network_error": obs.error,
+                    }
 
-                if is_baseline:
-                    print(f"Replay baseline: {result}")
-                    if args.settle:
+                    log.write(json_text(record) + "\n")
+                    log.flush()
+
+                    if baseline:
+                        print(f"[BASELINE] {result}", flush=True)
+
+                        if not baseline_ok:
+                            print(
+                                "Stopping replay: baseline was not acknowledged. "
+                                "Check the API response or sender balance."
+                            )
+                            break
+
                         time.sleep(args.settle)
 
-                if number < len(cases) and args.delay:
-                    time.sleep(args.delay)
+                    if number % 100 == 0:
+                        print(
+                            f"Completed {number}/1000 transaction attempts",
+                            flush=True,
+                        )
 
-    except KeyboardInterrupt:
-        interrupted = True
-        print("\nInterrupted; reporting partial results.")
+                    if args.delay and number < 1000:
+                        time.sleep(args.delay)
+
+        except KeyboardInterrupt:
+            interrupted = True
+            print("\nInterrupted; reporting partial results.")
+
+        code = report(stats, project.algorithm)
+
+        if args.show_sample:
+            show_sample(args.log)
+
+        print(f"Log: {args.log.resolve()}")
+        return 130 if interrupted else code
+
     finally:
-        session.close()
-
-    result = print_results(stats)
-    print(f"Detailed JSONL log: {log_path}")
-    return 130 if interrupted else result
+        transport.close()
 
 
-def parse_args() -> argparse.Namespace:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+
+    # FIX: add plain HTTP as a valid transport.
+    parser.add_argument(
+        "--transport",
+        choices=("http", "https", "wss"),
+        required=True,
+    )
+
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--ports",
+        nargs="+",
+        type=int,
+        default=list(range(5000, 5006)),
+    )
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=Path.cwd(),
+    )
     parser.add_argument("--client-file", type=Path)
     parser.add_argument("--wallet")
+
+    parser.add_argument("--tx-path", default="/transactions/new")
+    parser.add_argument("--health-path", default="/status")
+    parser.add_argument("--ws-path", default="/")
+    parser.add_argument("--ws-type")
+    parser.add_argument("--ws-payload-key")
+    parser.add_argument("--ws-reply-type")
+    parser.add_argument("--ws-subprotocol")
+
+    tls = parser.add_mutually_exclusive_group()
+    tls.add_argument("--insecure", action="store_true")
+    tls.add_argument("--ca-file")
+
+    parser.add_argument("--client-cert")
+    parser.add_argument("--client-key")
+
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--settle", type=float, default=2.0)
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=3)
-    parser.add_argument("--save-fixtures", action="store_true")
+
     parser.add_argument(
-        "--log", type=Path,
-        default=Path(f"sec03_{stamp}_{uuid.uuid4().hex[:8]}.jsonl"),
+        "--assume-replay-blocked",
+        action="store_true",
     )
+    parser.add_argument(
+        "--show-sample",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--log",
+        type=Path,
+        default=Path(f"sec03_{uuid.uuid4().hex[:12]}.jsonl"),
+    )
+
     args = parser.parse_args()
+
+    if not args.ports or any(
+        not 1 <= port <= 65535 for port in args.ports
+    ):
+        parser.error("Invalid port")
+
+    if len(set(args.ports)) != len(args.ports):
+        parser.error("Duplicate ports")
 
     for name in ("timeout", "settle", "delay"):
         if not math.isfinite(getattr(args, name)):
             parser.error(f"--{name} must be finite")
+
     if args.timeout <= 0 or args.settle < 0 or args.delay < 0:
-        parser.error("timeout must be > 0; settle/delay must be >= 0")
+        parser.error("timeout > 0; settle/delay >= 0")
+
+    for name in ("tx_path", "health_path", "ws_path"):
+        if not getattr(args, name).startswith("/"):
+            parser.error(
+                f"--{name.replace('_', '-')} must start with /"
+            )
+
+    if (
+        args.transport in TLS_TRANSPORTS
+        and args.client_key
+        and not args.client_cert
+    ):
+        parser.error("--client-key requires --client-cert")
+
+    if args.ws_type and not args.ws_payload_key:
+        parser.error("--ws-type requires --ws-payload-key")
+
+    if args.ws_payload_key == "type" and args.ws_type:
+        parser.error(
+            "--ws-payload-key cannot be 'type' when --ws-type is set"
+        )
+
     return args
 
 
-def main() -> int:
-    args = parse_args()
+if __name__ == "__main__":
     try:
-        return run(args)
+        sys.exit(run(parse_args()))
     except KeyboardInterrupt:
-        return 130
-    except FileExistsError as exc:
+        sys.exit(130)
+    except Exception as exc:
         print(
-            f"Output already exists: {exc.filename}. Choose another output path.",
+            f"\n[FATAL] {exception_chain(exc)}",
             file=sys.stderr,
         )
-        return 2
-    except Exception as exc:
-        print(f"SEC-03 error: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 2
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        sys.exit(2)
