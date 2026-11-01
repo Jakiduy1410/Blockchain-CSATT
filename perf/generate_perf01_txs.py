@@ -1,8 +1,9 @@
 """
-PERF-01: Load Dataset Generator (ML-DSA-87 Level 5 & Baseline)
+PERF-01: Load Dataset Generator (ML-DSA-44 Level 2, ML-DSA-87 Level 5 & Baseline)
 Sinh san tap du lieu giao dich da ky hop le:
 - ECDSA (secp256k1): 500 txs (Baseline) va 2000 txs (Stress Test)
 - RSA-2048 (PKCS#1 v1.5): 500 txs (Baseline)
+- ML-DSA-44 (NIST FIPS 204 Level 2 PQC): 500 txs (Baseline) va 2000 txs (Stress Test)
 - ML-DSA-87 (NIST FIPS 204 Level 5 PQC): 500 txs (Baseline) va 2000 txs (Extreme OOM Hunt)
 Toi uu: Chi sinh dung so luong can chay theo yeu cau, dung chung khoa de dam bao so du hop le.
 """
@@ -88,6 +89,36 @@ def generate_rsa_transactions(n: int = 500) -> list:
     return txs
 
 
+def generate_mldsa44_transactions(n: int = 2000) -> list:
+    if not OQS_AVAILABLE:
+        print("[!] Can chay qua Docker de co thu vien liboqs sinh ML-DSA-44")
+        return []
+    print(f"[*] Dang sinh {n} giao dich Hau luong tu ML-DSA-44 (NIST FIPS 204 Level 2)...")
+    recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
+
+    txs = []
+    with oqs.Signature('ML-DSA-44') as signer:
+        pub_bytes = signer.generate_keypair()
+        pub_hex = pub_bytes.hex()
+        for i in range(1, n + 1):
+            tx_dict = OrderedDict([
+                ('sender_address', pub_hex),
+                ('recipient_address', recipient_hex),
+                ('value', "1.0")
+            ])
+            sig_bytes = signer.sign(str(tx_dict).encode('utf-8'))
+            txs.append({
+                'sender_address': pub_hex,
+                'recipient_address': recipient_hex,
+                'amount': "1.0",
+                'nonce': i,
+                'signature': sig_bytes.hex(),
+                'algorithm': 'ML-DSA-44'
+            })
+    print(f"    -> Da sinh xong {len(txs)} txs ML-DSA-44. Size: PK={len(pub_hex)//2}B, Sig={len(txs[0]['signature'])//2}B (Total Payload: {(len(pub_hex)+len(txs[0]['signature']))//2}B/tx)")
+    return txs
+
+
 def generate_mldsa87_transactions(n: int = 2000) -> list:
     if not OQS_AVAILABLE:
         print("[!] Can chay qua Docker de co thu vien liboqs sinh ML-DSA-87")
@@ -134,16 +165,24 @@ def main():
     with open(data_dir / "txs_500_rsa.json", "w", encoding="utf-8") as f:
         json.dump(rsa_500, f, indent=2)
 
-    # 3. Sinh 2000 ML-DSA-87 va chia lam 500 / 2000
+    # 3. Sinh 2000 ML-DSA-44 va chia lam 500 / 2000
+    mldsa44_all = []
     mldsa87_all = []
     if OQS_AVAILABLE:
+        mldsa44_all = generate_mldsa44_transactions(2000)
+        with open(data_dir / "txs_500_mldsa44.json", "w", encoding="utf-8") as f:
+            json.dump(mldsa44_all[:500], f, indent=2)
+        with open(data_dir / "txs_stress_mldsa44.json", "w", encoding="utf-8") as f:
+            json.dump(mldsa44_all, f, indent=2)
+
+        # 4. Sinh 2000 ML-DSA-87 va chia lam 500 / 2000
         mldsa87_all = generate_mldsa87_transactions(2000)
         with open(data_dir / "txs_500_mldsa87.json", "w", encoding="utf-8") as f:
             json.dump(mldsa87_all[:500], f, indent=2)
         with open(data_dir / "txs_stress_mldsa87.json", "w", encoding="utf-8") as f:
             json.dump(mldsa87_all, f, indent=2)
 
-    # 4. Cap nhat vi trong configs/wallets.json de dam bao so du hop le
+    # 5. Cap nhat vi trong configs/wallets.json de dam bao so du hop le
     wallets_path = BASE_DIR / "configs" / "wallets.json"
     wallets = {}
     if wallets_path.exists():
@@ -162,6 +201,13 @@ def main():
         "public_key": rsa_500[0]['sender_address'],
         "private_key": ""
     }
+    if OQS_AVAILABLE and mldsa44_all:
+        wallets["Perf_MLDSA44"] = {
+            "name": "Perf_MLDSA44",
+            "initial_balance": 5000000.0,
+            "public_key": mldsa44_all[0]['sender_address'],
+            "private_key": ""
+        }
     if OQS_AVAILABLE and mldsa87_all:
         wallets["Perf_MLDSA87"] = {
             "name": "Perf_MLDSA87",

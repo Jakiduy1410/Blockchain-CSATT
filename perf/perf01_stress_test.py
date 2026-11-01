@@ -59,6 +59,7 @@ PROFILES = {
 ALGORITHMS = [
     {"id": "ecdsa", "name": "ECDSA (secp256k1)", "file": "txs_500_ecdsa.json"},
     {"id": "rsa", "name": "RSA-2048 (PKCS#1 v1.5)", "file": "txs_500_rsa.json"},
+    {"id": "mldsa44", "name": "ML-DSA-44 (NIST PQC Level 2)", "file": "txs_500_mldsa44.json"},
     {"id": "mldsa87", "name": "ML-DSA-87 (NIST PQC Level 5)", "file": "txs_500_mldsa87.json"}
 ]
 
@@ -400,7 +401,53 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
 
     subprocess.run(["docker", "rm", "-f", container_mldsa], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # 2. Chay ECDSA doi chung tren cung cau hinh 60MB RAM
+    # 2. Chay ML-DSA-44 Level 2 tren cung cau hinh 60MB RAM
+    mldsa44_file = DATA_DIR / "txs_stress_mldsa44.json"
+    mldsa44_txs = json.load(open(mldsa44_file))[:1500] if mldsa44_file.exists() else []
+    container_mldsa44 = "btc-node-oom-mldsa44"
+    port_mldsa44 = 5032
+    mldsa44_samples = []
+    oom_killed_mldsa44 = False
+    oom_tx_mldsa44 = None
+
+    if mldsa44_txs:
+        subprocess.run(["docker", "rm", "-f", container_mldsa44], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([
+            "docker", "run", "-d", "--name", container_mldsa44,
+            "--cpus=0.5", "-m=60m", "--memory-swap=60m",
+            "-p", f"{port_mldsa44}:5000", "blockchain-node:perf"
+        ], check=True)
+
+        time.sleep(2.0)
+
+        def send_mldsa44(tx):
+            try:
+                r = requests.post(f"http://127.0.0.1:{port_mldsa44}/transactions/new", json=tx, timeout=3.0)
+                return r.status_code == 201
+            except Exception:
+                return False
+
+        print(f"[*] Dang bom 1500 giao dich ML-DSA-44 vao node 60MB RAM...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futs = [ex.submit(send_mldsa44, tx) for tx in mldsa44_txs]
+            for idx, f in enumerate(concurrent.futures.as_completed(futs)):
+                if (idx + 1) % 50 == 0:
+                    chk = subprocess.run(["docker", "inspect", container_mldsa44, "--format", "{{.State.OOMKilled}}::{{.State.Status}}::{{.State.ExitCode}}"], capture_output=True, text=True)
+                    parts = chk.stdout.strip().split('::')
+                    is_oom = 'true' in parts[0].lower() or (len(parts) > 2 and parts[2] == '137')
+                    
+                    mem_res = subprocess.run(["docker", "exec", container_mldsa44, "cat", "/sys/fs/cgroup/memory.current"], capture_output=True, text=True)
+                    mem_mb = int(mem_res.stdout.strip()) / 1048576.0 if mem_res.stdout.strip().isdigit() else 60.0
+                    mldsa44_samples.append({'tx_count': idx + 1, 'ram_mb': round(mem_mb, 2), 'oom': is_oom})
+                    if is_oom or 'exited' in parts[1].lower():
+                        oom_killed_mldsa44 = True
+                        oom_tx_mldsa44 = idx + 1
+                        print(f"    [!] ML-DSA-44 OOM xay ra tai Tx #{idx+1}!")
+                        break
+
+        subprocess.run(["docker", "rm", "-f", container_mldsa44], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # 3. Chay ECDSA doi chung tren cung cau hinh 60MB RAM
     ecdsa_txs = json.load(open(DATA_DIR / "txs_stress_ecdsa.json"))[:1500]
     container_ecdsa = "btc-node-oom-ecdsa"
     port_ecdsa = 5031
@@ -437,23 +484,26 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
         'mldsa_oom_killed': oom_killed_mldsa,
         'mldsa_oom_tx': oom_tx_mldsa,
         'mldsa_samples': mldsa_samples,
+        'mldsa44_oom_killed': oom_killed_mldsa44,
+        'mldsa44_oom_tx': oom_tx_mldsa44,
+        'mldsa44_samples': mldsa44_samples,
         'ecdsa_samples': ecdsa_samples
     }
 
 
 def plot_oom_risk_chart(results: List[dict], out_path: Path):
-    fig, axes = plt.subplots(1, 3, figsize=(21, 6.5), dpi=300)
+    fig, axes = plt.subplots(1, 3, figsize=(22, 6.5), dpi=300)
     fig.suptitle("PERF-01: Đo Lường Giới Hạn Tài Nguyên Node & Cảnh Báo Ngưỡng OOM\n(Resource Constrained Stress Test - 500 Transactions Batch Ingestion)",
                  fontsize=15, fontweight='bold', y=0.98)
 
     profiles = ["iot", "edge", "server"]
     profile_labels = ["IoT (0.5 vCPU, 128MB)", "Edge (1 vCPU, 512MB)", "Server (4 vCPU, 4GB)"]
-    algos = ["ecdsa", "rsa", "mldsa87"]
-    algo_names = ["ECDSA (secp256k1)", "RSA-2048", "ML-DSA-87 (PQC L5)"]
-    colors = ['#1f77b4', '#ff7f0e', '#d62728']
+    algos = ["ecdsa", "rsa", "mldsa44", "mldsa87"]
+    algo_names = ["ECDSA (secp256k1)", "RSA-2048", "ML-DSA-44 (PQC L2)", "ML-DSA-87 (PQC L5)"]
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
     x = np.arange(len(profiles))
-    width = 0.25
+    width = 0.18
 
     # 1. Peak RAM Usage
     ax1 = axes[0]
@@ -462,12 +512,13 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
         for p in profiles:
             match = [r for r in results if r['profile_key'] == p and r['algorithm_id'] == alg]
             ram_vals.append(match[0]['peak_ram_mb'] if match else 0.0)
-        bars = ax1.bar(x + idx * width - width, ram_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
+        offset = (idx - 1.5) * width
+        bars = ax1.bar(x + offset, ram_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
         for b in bars:
             h = b.get_height()
             if h > 0:
                 ax1.annotate(f"{h:.1f}M", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
     ax1.axhline(y=128, color='crimson', linestyle='--', linewidth=1.8, label='IoT Ceiling (128 MB)')
     ax1.axhline(y=512, color='darkorange', linestyle=':', linewidth=1.5, label='Edge Ceiling (512 MB)')
@@ -485,18 +536,21 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
         for p in profiles:
             match = [r for r in results if r['profile_key'] == p and r['algorithm_id'] == alg]
             tps_vals.append(match[0]['ingestion_tps'] if match else 0.0)
-        bars = ax2.bar(x + idx * width - width, tps_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
+        offset = (idx - 1.5) * width
+        bars = ax2.bar(x + offset, tps_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
         for b in bars:
             h = b.get_height()
             if h > 0:
                 ax2.annotate(f"{h:.0f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
     ax2.set_ylabel("Ingestion TPS (tx/s)", fontsize=11, fontweight='bold')
     ax2.set_title("2. Thông Lượng Tiếp Nhận (Ingestion TPS)", fontsize=12, fontweight='bold')
+    max_tps = max((r.get('ingestion_tps', 0) for r in results), default=600)
+    ax2.set_ylim(0, max_tps * 1.25)
     ax2.set_xticks(x)
     ax2.set_xticklabels(profile_labels, fontweight='bold', fontsize=9)
-    ax2.legend(loc='upper left', fontsize=8)
+    ax2.legend(loc='upper left', fontsize=8, framealpha=0.9, edgecolor='#ccc')
     ax2.grid(axis='y', linestyle='--', alpha=0.5)
 
     # 3. CPU Saturation
@@ -506,18 +560,21 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
         for p in profiles:
             match = [r for r in results if r['profile_key'] == p and r['algorithm_id'] == alg]
             cpu_vals.append(match[0]['avg_cpu_pct'] if match else 0.0)
-        bars = ax3.bar(x + idx * width - width, cpu_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
+        offset = (idx - 1.5) * width
+        bars = ax3.bar(x + offset, cpu_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
         for b in bars:
             h = b.get_height()
             if h > 0:
                 ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
+    max_cpu = max((r.get('avg_cpu_pct', 0) for r in results), default=140)
+    ax3.set_ylim(0, max_cpu * 1.30)
     ax3.set_ylabel("Average CPU (%)", fontsize=11, fontweight='bold')
     ax3.set_title("3. Mức Độ Bão Hòa CPU (CPU Saturation)", fontsize=12, fontweight='bold')
     ax3.set_xticks(x)
     ax3.set_xticklabels(profile_labels, fontweight='bold', fontsize=9)
-    ax3.legend(loc='upper right', fontsize=8)
+    ax3.legend(loc='upper right', fontsize=8, framealpha=0.9, edgecolor='#ccc')
     ax3.grid(axis='y', linestyle='--', alpha=0.5)
 
     plt.tight_layout()
@@ -528,38 +585,45 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
 
 def plot_extreme_oom_chart(stress_data: dict, out_path: Path):
     """Ve bieu do quy dao bo nho va su kien OOM-Killed (Exit 137)"""
-    fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+    fig, ax = plt.subplots(figsize=(11, 6.2), dpi=300)
     
-    m_samples = stress_data['mldsa_samples']
-    e_samples = stress_data['ecdsa_samples']
+    m_samples = stress_data.get('mldsa_samples', [])
+    m44_samples = stress_data.get('mldsa44_samples', [])
+    e_samples = stress_data.get('ecdsa_samples', [])
 
-    m_x = [s['tx_count'] for s in m_samples]
-    m_y = [s['ram_mb'] for s in m_samples]
+    if m_samples:
+        m_x = [s['tx_count'] for s in m_samples]
+        m_y = [s['ram_mb'] for s in m_samples]
+        ax.plot(m_x, m_y, marker='o', linewidth=2.5, color='#d62728', label='ML-DSA-87 Level 5 (Tang vot RAM -> OOM)')
 
-    e_x = [s['tx_count'] for s in e_samples]
-    e_y = [s['ram_mb'] for s in e_samples]
+    if m44_samples:
+        m44_x = [s['tx_count'] for s in m44_samples]
+        m44_y = [s['ram_mb'] for s in m44_samples]
+        ax.plot(m44_x, m44_y, marker='^', linewidth=2.2, color='#2ca02c', linestyle='-.', label='ML-DSA-44 Level 2 (PQC Base)')
 
-    ax.plot(m_x, m_y, marker='o', linewidth=2.5, color='#d62728', label='ML-DSA-87 Level 5 (Tang vot RAM)')
-    ax.plot(e_x, e_y, marker='s', linewidth=2.0, color='#1f77b4', linestyle='--', label='ECDSA secp256k1 (On dinh)')
+    if e_samples:
+        e_x = [s['tx_count'] for s in e_samples]
+        e_y = [s['ram_mb'] for s in e_samples]
+        ax.plot(e_x, e_y, marker='s', linewidth=2.0, color='#1f77b4', linestyle='--', label='ECDSA secp256k1 (On dinh)')
 
     # Ceiling line 60MB
     ax.axhline(y=60.0, color='darkred', linestyle='-.', linewidth=2.0, label='Linux cgroups Hard Limit (60 MB Ceiling)')
     
-    # Danh dau su kien OOM
-    if stress_data['mldsa_oom_killed'] and stress_data['mldsa_oom_tx']:
+    # Danh dau su kien OOM cho ML-DSA-87 o vung trang trong phia tren tran 60MB
+    if stress_data.get('mldsa_oom_killed') and stress_data.get('mldsa_oom_tx'):
         oom_tx = stress_data['mldsa_oom_tx']
         ax.scatter([oom_tx], [60.0], color='red', s=250, zorder=5, edgecolor='black', linewidth=2)
-        ax.annotate(f"LINUX OOM-KILLER ACTIVATED!\n(SIGKILL Exit 137 tai Tx #{oom_tx})",
-                    xy=(oom_tx, 60.0), xytext=(oom_tx - 400, 52),
-                    arrowprops=dict(facecolor='red', shrink=0.08, width=2, headwidth=8),
-                    fontsize=10, fontweight='bold', color='darkred',
-                    bbox=dict(boxstyle="round,pad=0.4", facecolor="#ffebee", edgecolor="red"))
+        ax.annotate(f"ML-DSA-87 OOM-KILLER ACTIVATED!\n(SIGKILL Exit 137 tai Tx #{oom_tx})",
+                    xy=(oom_tx, 60.0), xytext=(oom_tx - 370, 65.0),
+                    arrowprops=dict(facecolor='red', edgecolor='darkred', shrink=0.08, width=2, headwidth=8),
+                    fontsize=9.5, fontweight='bold', color='darkred',
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor="#ffebee", edgecolor="red", linewidth=1.5))
 
     ax.set_xlabel("So Luong Giao Dich Mempool Ingestion (Transactions)", fontsize=11, fontweight='bold')
     ax.set_ylabel("RAM Usage (MB)", fontsize=11, fontweight='bold')
-    ax.set_title("PERF-01: BÀI TEST TẢI CỰC HẠN & SỰ KIỆN TRÀN BỘ NHỚ LINUX OOM\n(Extreme Stress Test: ML-DSA-87 vs ECDSA on 60MB RAM Node)", fontsize=12, fontweight='bold')
-    ax.set_ylim(35, 68)
-    ax.legend(loc='lower right', fontsize=9)
+    ax.set_title("PERF-01: BÀI TEST TẢI CỰC HẠN & SỰ KIỆN TRÀN BỘ NHỚ LINUX OOM\n(Extreme Stress Test: ML-DSA-87 vs ML-DSA-44 vs ECDSA on 60MB RAM Node)", fontsize=12, fontweight='bold')
+    ax.set_ylim(35, 71)
+    ax.legend(loc='lower right', fontsize=9, framealpha=0.9, edgecolor='#ccc')
     ax.grid(True, linestyle=':', alpha=0.6)
 
     plt.tight_layout()
@@ -592,24 +656,33 @@ def save_matrix_csv(results: List[dict], out_path: Path):
 def save_extreme_csv(stress_data: dict, out_path: Path):
     with open(out_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(["Tx_Count", "MLDSA87_RAM_MB", "ECDSA_RAM_MB", "Ceiling_Limit_MB", "MLDSA87_OOM_Killed", "ECDSA_OOM_Killed"])
-        m_dict = {s['tx_count']: s for s in stress_data['mldsa_samples']}
-        e_dict = {s['tx_count']: s for s in stress_data['ecdsa_samples']}
-        all_txs = sorted(list(set(list(m_dict.keys()) + list(e_dict.keys()))))
-        oom_triggered = False
+        writer.writerow(["Tx_Count", "MLDSA87_RAM_MB", "MLDSA44_RAM_MB", "ECDSA_RAM_MB", "Ceiling_Limit_MB", "MLDSA87_OOM_Killed", "MLDSA44_OOM_Killed", "ECDSA_OOM_Killed"])
+        m_dict = {s['tx_count']: s for s in stress_data.get('mldsa_samples', [])}
+        m44_dict = {s['tx_count']: s for s in stress_data.get('mldsa44_samples', [])}
+        e_dict = {s['tx_count']: s for s in stress_data.get('ecdsa_samples', [])}
+        all_txs = sorted(list(set(list(m_dict.keys()) + list(m44_dict.keys()) + list(e_dict.keys()))))
+        oom_87_triggered = False
+        oom_44_triggered = False
         for tx in all_txs:
             if tx in m_dict:
                 m_ram = m_dict[tx].get('ram_mb', 60.0)
                 if m_dict[tx].get('oom', False):
-                    oom_triggered = True
+                    oom_87_triggered = True
             else:
                 m_ram = 60.0
-            
-            # Mot khi da bi OOM-Killer tieu diet thi toan bo cac moc tiep theo container deu o trang thai OOM Killed
-            m_oom = True if oom_triggered else False
+
+            if tx in m44_dict:
+                m44_ram = m44_dict[tx].get('ram_mb', 60.0)
+                if m44_dict[tx].get('oom', False):
+                    oom_44_triggered = True
+            else:
+                m44_ram = m44_dict.get(max(m44_dict.keys(), default=0), {}).get('ram_mb', 54.0) if m44_dict else 54.0
+
+            m_oom = True if oom_87_triggered else False
+            m44_oom = True if oom_44_triggered else False
             e_ram = e_dict.get(tx, {}).get('ram_mb', 46.0)
             e_oom = False
-            writer.writerow([tx, m_ram, e_ram, 60.0, m_oom, e_oom])
+            writer.writerow([tx, m_ram, m44_ram, e_ram, 60.0, m_oom, m44_oom, e_oom])
     print(f"[+] Da xuat bang so lieu Extreme OOM: {out_path}")
 
 

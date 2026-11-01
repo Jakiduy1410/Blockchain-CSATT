@@ -1,6 +1,6 @@
 # BÁO CÁO KỸ THUẬT TOÀN DIỆN: KỊCH BẢN KIỂM THỬ PERF-01
 # ĐO LƯỜNG GIỚI HẠN TÀI NGUYÊN NODE TRÊN PHẦN CỨNG YẾU (RESOURCE CONSTRAINED STRESS TEST)
-## Tích Hợp Mật Mã Hậu Lượng Tử ML-DSA-87 (NIST Level 5), Sự Kiện OOM-Killer Thực Tế & So Sánh Micro vs Macro Benchmark
+## Tích Hợp Mật Mã Hậu Lượng Tử ML-DSA-44 & ML-DSA-87 (NIST Level 2 & 5), Sự Kiện OOM-Killer Thực Tế & So Sánh Micro vs Macro Benchmark
 
 **Học phần:** Cơ sở An toàn Thông tin / Blockchain Engineering  
 **Vai trò phụ trách:** Thành viên 4 (Hardware Benchmark & DevOps)  
@@ -15,13 +15,13 @@
 1. [Tổng Quan & Mục Tiêu Kịch Bản PERF-01](#1-tổng-quan--mục-tiêu-kịch-bản-perf-01)
 2. [Thiết Kế Kiến Trúc DevOps & Giới Hạn Phần Cứng Docker](#2-thiết-kế-kiến-trúc-devops--giới-hạn-phần-cứng-docker)
 3. [Nâng Cấp Mật Mã Hậu Lượng Tử: ML-DSA-87 (NIST PQC Level 5)](#3-nâng-cấp-mật-mã-hậu-lượng-tử-ml-dsa-87-nist-pqc-level-5)
-4. [Thực Nghiệm Cấp Vi Mô (Micro-Benchmark): Ma Trận 3x3 Baseline](#4-thực-nghiệm-cấp-vi-mô-micro-benchmark-ma-trận-3x3-baseline)
-   - 4.1. Bảng số liệu ma trận thực nghiệm 9 đợt
+4. [Thực Nghiệm Cấp Vi Mô (Micro-Benchmark): Ma Trận 3x4 Baseline](#4-thực-nghiệm-cấp-vi-mô-micro-benchmark-ma-trận-3x4-baseline)
+   - 4.1. Bảng số liệu ma trận thực nghiệm 12 đợt
    - 4.2. Giải thích chuyên sâu: AVG CPU 126% - 139% trên Server
    - 4.3. Phân tích bão hòa CPU và CFS Throttling trên Edge và IoT
 5. [Bài Test Tải Cực Hạn (Extreme Stress Test): Săn Tìm Sự Kiện OOM-Killed (Exit 137)](#5-bài-test-tải-cực-hạn-extreme-stress-test-săn-tìm-sự-kiện-oom-killed-exit-137)
    - 5.1. Thiết kế kịch bản bão hòa bộ nhớ
-   - 5.2. Kết quả đo đạc thực tế: ML-DSA-87 vs ECDSA
+   - 5.2. Kết quả đo đạc thực tế: ML-DSA-87 vs ML-DSA-44 vs ECDSA
    - 5.3. Bằng chứng kích hoạt Linux Kernel OOM-Killer tại Giao dịch #1050
 6. [Thực Nghiệm Cấp Vĩ Mô (Macro-Benchmark): Mạng P2P Phân Cấp 3 Nodes](#6-thực-nghiệm-cấp-vĩ-mô-macro-benchmark-mạng-p2p-phân-cấp-3-nodes)
    - 6.1. Khái niệm và sự khác biệt cốt lõi giữa Micro vs Macro Benchmark
@@ -101,22 +101,25 @@ Theo yêu cầu nâng cấp kỹ thuật, kịch bản đã chuyển dịch từ
 
 ---
 
-## 4. THỰC NGHIỆM CẤP VI MÔ (MICRO-BENCHMARK): MA TRẬN 3X3 BASELINE
+## 4. THỰC NGHIỆM CẤP VI MÔ (MICRO-BENCHMARK): MA TRẬN 3X4 BASELINE
 
-### 4.1. Bảng Số Liệu Ma Trận Thực Nghiệm 9 Đợt (500 Giao dịch Batch Ingestion)
-Thực nghiệm được thực hiện trên 9 kịch bản độc lập (3 Cấu hình phần cứng $\times$ 3 Thuật toán ký số). Mỗi kịch bản tiếp nhận dồn dập 500 giao dịch qua cổng HTTP POST `/transactions/new`:
+### 4.1. Bảng Số Liệu Ma Trận Thực Nghiệm 12 Đợt (500 Giao dịch Batch Ingestion)
+Thực nghiệm được thực hiện trên 12 kịch bản độc lập (3 Cấu hình phần cứng $\times$ 4 Thuật toán ký số). Mỗi kịch bản tiếp nhận dồn dập 500 giao dịch qua cổng HTTP POST `/transactions/new`:
 
 | Cấu hình Phần cứng | vCPU | RAM Limit | Thuật toán Ký số | Số Tx Đạt | Thời gian (s) | Ingestion TPS | Baseline RAM | Peak RAM (MB) | % Đạt Trần RAM | Avg CPU (Core) | Normalized CPU (% Quota) | CPU Throttled (ms) | Trạng thái OOM |
-| :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | ECDSA (secp256k1) | 500/500 | 1.432 s | **349.25 tx/s** | 123.31 MB | 129.43 MB | 3.16% | 126.53% | **31.63%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | RSA-2048 | 500/500 | 0.906 s | **552.16 tx/s** | 43.52 MB | 47.66 MB | 1.16% | 135.91% | **33.98%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 0.912 s | **548.25 tx/s** | 43.47 MB | 55.68 MB | 1.36% | 139.54% | **34.88%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | ECDSA (secp256k1) | 500/500 | 1.658 s | **301.61 tx/s** | 43.49 MB | 45.57 MB | 8.90% | 104.19% | **104.19%** | 832.8 ms (16 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | RSA-2048 | 500/500 | 1.227 s | **407.60 tx/s** | 42.56 MB | 46.08 MB | 9.00% | 105.26% | **105.26%** | 842.4 ms (12 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 1.148 s | **435.37 tx/s** | 43.20 MB | 57.56 MB | 11.24% | 104.46% | **104.46%** | 817.5 ms (11 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | ECDSA (secp256k1) | 500/500 | 3.787 s | **132.02 tx/s** | 42.74 MB | 45.63 MB | 35.65% | 52.20% | **104.40%** | 5509.4 ms (39 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | RSA-2048 | 500/500 | 2.753 s | **181.64 tx/s** | 46.66 MB | 48.17 MB | 37.63% | 51.77% | **103.54%** | 5300.3 ms (28 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 2.826 s | **176.93 tx/s** | 43.03 MB | **54.86 MB** | **42.86%** | 53.02% | **106.04%** | 5397.3 ms (29 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Server (Datacenter)** | **4.0** | **4096 MB** | ECDSA (secp256k1) | 500/500 | 1.258 s | **397.41 tx/s** | 46.32 MB | 46.32 MB | 1.13% | 125.58% | **31.39%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Server (Datacenter)** | **4.0** | **4096 MB** | RSA-2048 | 500/500 | 0.862 s | **579.78 tx/s** | 45.88 MB | 47.15 MB | 1.15% | 128.69% | **32.17%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-44 (PQC L2)** | 500/500 | 0.781 s | **640.59 tx/s** | 42.80 MB | 54.23 MB | 1.32% | 136.31% | **34.08%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 0.806 s | **620.21 tx/s** | 42.74 MB | 55.06 MB | 1.34% | 137.14% | **34.28%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Edge Gateway** | **1.0** | **512 MB** | ECDSA (secp256k1) | 500/500 | 1.598 s | **312.96 tx/s** | 43.00 MB | 45.71 MB | 8.93% | 103.16% | **103.16%** | 589.7 ms (16 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Edge Gateway** | **1.0** | **512 MB** | RSA-2048 | 500/500 | 1.088 s | **459.67 tx/s** | 45.70 MB | 45.70 MB | 8.93% | 106.74% | **106.74%** | 553.3 ms (12 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Edge Gateway** | **1.0** | **512 MB** | **ML-DSA-44 (PQC L2)** | 500/500 | 0.937 s | **533.89 tx/s** | 45.49 MB | 54.72 MB | 10.69% | 103.82% | **103.82%** | 618.9 ms (13 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Edge Gateway** | **1.0** | **512 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 1.137 s | **439.89 tx/s** | 43.37 MB | 57.99 MB | 11.33% | 104.26% | **104.26%** | 1044.6 ms (15 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **IoT Embedded** | **0.5** | **128 MB** | ECDSA (secp256k1) | 500/500 | 3.426 s | **145.96 tx/s** | 43.88 MB | 48.55 MB | 37.93% | 52.30% | **104.60%** | 4627.6 ms (35 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **IoT Embedded** | **0.5** | **128 MB** | RSA-2048 | 500/500 | 2.294 s | **218.00 tx/s** | 43.10 MB | 47.07 MB | 36.78% | 52.70% | **105.40%** | 3743.6 ms (23 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **IoT Embedded** | **0.5** | **128 MB** | **ML-DSA-44 (PQC L2)** | 500/500 | 2.246 s | **222.58 tx/s** | 46.58 MB | 51.70 MB | 40.39% | 52.52% | **105.04%** | 4399.8 ms (22 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **IoT Embedded** | **0.5** | **128 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 2.405 s | **207.89 tx/s** | 43.50 MB | **57.95 MB** | **45.28%** | 51.87% | **103.74%** | 4794.4 ms (24 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
 
 *Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv) và [`perf/results/perf01_results.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_results.json)*
 
@@ -155,20 +158,19 @@ Trong thử nghiệm 500 giao dịch cơ sở với trần 128MB RAM, ML-DSA-87 
   - Nhánh 1: **ML-DSA-87 (NIST Level 5)** - Kích thước giao dịch ~14.7 KB.
   - Nhánh 2: **ECDSA (secp256k1)** - Kích thước giao dịch ~0.5 KB.
 
-### 5.2. Kết Quả Đo Đạc Thực Tế: ML-DSA-87 vs ECDSA (1,500 Giao dịch trên Node 60MB RAM)
+### 5.2. Kết Quả Đo Đạc Thực Tế: ML-DSA-87 vs ML-DSA-44 vs ECDSA (1,500 Giao dịch trên Node 60MB RAM)
 
-| Mốc Giao dịch (Tx Count) | ML-DSA-87 RAM (MB) | ECDSA RAM (MB) | Ngưỡng Trần (Ceiling Limit) | Trạng thái ML-DSA-87 | Trạng thái ECDSA |
-| :---: | :---: | :---: | :---: | :--- | :--- |
-| **0 txs (Idle)** | 42.50 MB | 42.60 MB | 60.0 MB | An toàn | An toàn |
-| **100 txs** | 44.29 MB | 43.70 MB | 60.0 MB | An toàn | An toàn |
-| **250 txs** | 50.23 MB | 44.75 MB | 60.0 MB | Tăng trưởng đều | Ổn định phẳng |
-| **400 txs** | 53.55 MB | 45.11 MB | 60.0 MB | Cảnh báo vừa | Ổn định phẳng |
-| **600 txs** | 53.95 MB | 45.60 MB | 60.0 MB | Cảnh báo vừa | Ổn định phẳng |
-| **650 txs** | 59.10 MB | 45.06 MB | 60.0 MB | Cận kề trần (>98%) | Ổn định phẳng |
-| **800 txs** | 59.77 MB | 46.06 MB | 60.0 MB | Nguy cơ cực hạn (99.6%) | Ổn định phẳng |
-| **1,000 txs** | 60.00 MB | 45.62 MB | 60.0 MB | Chạm trần 100% | Ổn định phẳng |
-| **1,050 txs** | **60.00 MB** | **45.36 MB** | **60.0 MB** | <span style="color:red;font-weight:bold;">OOM-KILLER KÍCH HOẠT (EXIT 137)</span> | <span style="color:green;font-weight:bold;">HOÀN TẤT AN TOÀN</span> |
-| **1,500 txs** | *Container đã chết* | **45.36 MB** | 60.0 MB | Tiến trình bị tiêu diệt | Sống sót 100% (45.36 MB / 60 MB) |
+| Mốc Giao dịch (Tx Count) | ML-DSA-87 RAM (MB) | ML-DSA-44 RAM (MB) | ECDSA RAM (MB) | Ngưỡng Trần (Ceiling Limit) | Trạng thái ML-DSA-87 | Trạng thái ML-DSA-44 | Trạng thái ECDSA |
+| :---: | :---: | :---: | :---: | :---: | :--- | :--- | :--- |
+| **0 txs (Idle)** | 42.50 MB | 42.25 MB | 42.60 MB | 60.0 MB | An toàn | An toàn | An toàn |
+| **100 txs** | 45.04 MB | 43.37 MB | 44.51 MB | 60.0 MB | An toàn | An toàn | An toàn |
+| **250 txs** | 51.54 MB | 44.59 MB | 44.07 MB | 60.0 MB | Tăng trưởng nhanh | Ổn định thấp | Ổn định phẳng |
+| **500 txs** | 52.02 MB | 48.02 MB | 44.90 MB | 60.0 MB | Cảnh báo vừa | Vùng xanh an toàn | Ổn định phẳng |
+| **750 txs** | 59.85 MB | 50.92 MB | 45.59 MB | 60.0 MB | Cận kề trần (>99%) | Vùng xanh an toàn | Ổn định phẳng |
+| **1,000 txs** | 59.99 MB | 54.10 MB | 45.98 MB | 60.0 MB | Chạm trần 100% | Tăng vừa phải | Ổn định phẳng |
+| **1,050 txs** | **60.00 MB** | **54.40 MB** | **45.82 MB** | **60.0 MB** | <span style="color:red;font-weight:bold;">OOM-KILLER (EXIT 137)</span> | <span style="color:green;font-weight:bold;">HOÀN TẤT AN TOÀN</span> | <span style="color:green;font-weight:bold;">HOÀN TẤT AN TOÀN</span> |
+| **1,250 txs** | *Container đã chết* | 58.36 MB | 46.19 MB | 60.0 MB | Tiến trình bị tiêu diệt | Tiệm cận trần | Ổn định phẳng |
+| **1,500 txs** | *Container đã chết* | **59.54 MB** | **46.20 MB** | **60.0 MB** | **Chết tại Tx #1050** | **SỐNG SÓT 100% (59.54M)** | **SỐNG SÓT 100% (46.2M)** |
 
 *Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_extreme_oom_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv)*
 
@@ -236,23 +238,23 @@ Lệnh kiểm tra trạng thái container thời gian thực từ Docker Engine 
 
 ---
 
-### 6.3. Kết Quả Đo Đạc Thực Nghiệm Macro-Benchmark (So Sánh 3 Thuật Toán: ECDSA vs RSA vs ML-DSA-87)
+### 6.3. Kết Quả Đo Đạc Thực Nghiệm Macro-Benchmark (So Sánh 4 Thuật Toán: ECDSA vs RSA vs ML-DSA-44 vs ML-DSA-87)
 
-| Chỉ số Đo lường Kỹ thuật | ECDSA (secp256k1) | RSA-2048 (PKCS#1 v1.5) | ML-DSA-87 (NIST PQC Level 5) | Đánh giá Chênh lệch & Tác động |
-| :--- | :---: | :---: | :---: | :--- |
-| **Kích thước 1 Giao dịch trên dây mạng** | 499 Bytes | 1,346 Bytes | **14,685 Bytes (~14.7 KB)** | **ML-DSA-87 lớn gấp 29.4x ECDSA, 10.9x RSA** |
-| **Tổng dung lượng gói 100 Giao dịch** | 48.73 KB | 131.45 KB | **1,434.08 KB (~1.43 MB)** | Băng thông PQC truyền mempool gấp ~30 lần |
-| **Kích thước Khối đã đào (Block Wire Size)** | **27.30 KB** | 1.74 KB | **719.78 KB (~0.72 MB)** | **Khối PQC lớn gấp 26.4 lần ECDSA** |
-| **Thời gian Server tiếp nhận 100 txs** | 0.255 s (392.16 tx/s) | 0.208 s (480.77 tx/s) | **0.161 s (621.12 tx/s)** | ML-DSA-87 tiếp nhận nhanh nhất nhờ NTT |
-| **Thời gian Server đào khối (PoW)** | 0.067 s | 0.005 s | 0.027 s | PoW biến thiên nhẹ theo độ khó nonce |
-| **Độ trễ Lan truyền & Xác thực tới Edge** | 68.55 ms | 23.26 ms | **17.53 ms** | Edge thẩm định khối PQC cực nhanh |
-| **Độ trễ Lan truyền & Xác thực tới IoT** | **98.55 ms** | 22.63 ms | **38.48 ms** | **Node IoT hoàn tất thẩm định khối an toàn** |
-| **Tổng thời gian End-to-End** | 0.489 s | 0.259 s | **0.244 s** | ML-DSA-87 hoàn tất toàn trình nhanh nhất |
-| **Thông lượng toàn mạng (E2E TPS)** | 204.50 tx/s | 386.10 tx/s | **409.84 tx/s** | Thông lượng PQC nhỉnh hơn nhờ thuật toán NTT |
-| **Peak RAM Node Server** | 125.22 MB (3.06%) | 46.73 MB (1.14%) | 51.55 MB (1.26%) | Server vận hành hoàn toàn ổn định |
-| **Peak RAM Node Edge** | 47.27 MB (9.23%) | 44.99 MB (8.79%) | 48.94 MB (9.56%) | Nằm trong vùng xanh an toàn |
-| **Peak RAM Node IoT** | 43.97 MB (34.35%) | 48.01 MB (37.51%) | **49.28 MB (38.50%)** | Tăng tiệm cận 50MB trần |
-| **Normalized CPU Node IoT** | **35.32%** | **32.16%** | **24.94%** | IoT chịu tải xác thực phân bổ đều |
+| Chỉ số Đo lường Kỹ thuật | ECDSA (secp256k1) | RSA-2048 (PKCS#1 v1.5) | ML-DSA-44 (NIST PQC Level 2) | ML-DSA-87 (NIST PQC Level 5) | Đánh giá Chênh lệch & Tác động |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Kích thước 1 Giao dịch trên dây mạng** | 499 Bytes | 1,346 Bytes | **7,711 Bytes (~7.7 KB)** | **14,685 Bytes (~14.7 KB)** | **ML-DSA-44 chỉ bằng 52.5% của ML-DSA-87** |
+| **Tổng dung lượng gói 100 Giao dịch** | 48.73 KB | 131.45 KB | **753.03 KB (~0.75 MB)** | **1,434.08 KB (~1.43 MB)** | Băng thông ML-DSA-44 tiết kiệm 47.5% so với L5 |
+| **Kích thước Khối đã đào (Block Wire Size)** | **27.30 KB** | 1.74 KB | **379.26 KB (~0.38 MB)** | **719.79 KB (~0.72 MB)** | Khối ML-DSA-44 gọn nhẹ hơn đáng kể |
+| **Thời gian Server tiếp nhận 100 txs** | 0.240 s (416.67 tx/s) | 0.181 s (552.49 tx/s) | **0.137 s (729.93 tx/s)** | 0.175 s (571.43 tx/s) | **ML-DSA-44 tiếp nhận nhanh nhất (730 tx/s)** |
+| **Thời gian Server đào khối (PoW)** | 0.084 s | 0.017 s | 0.065 s | 0.125 s | PoW biến thiên nhẹ theo độ khó nonce |
+| **Độ trễ Lan truyền & Xác thực tới Edge** | 65.87 ms | 48.41 ms | **11.36 ms** | 36.77 ms | **Edge thẩm định ML-DSA-44 siêu tốc (11 ms)** |
+| **Độ trễ Lan truyền & Xác thực tới IoT** | 105.52 ms | 47.39 ms | **31.26 ms** | 45.09 ms | **IoT thẩm định ML-DSA-44 nhanh hơn cả ML-DSA-87** |
+| **Tổng thời gian End-to-End** | 0.495 s | 0.294 s | **0.245 s** | 0.382 s | **ML-DSA-44 hoàn tất toàn trình nhanh nhất** |
+| **Thông lượng toàn mạng (E2E TPS)** | 202.02 tx/s | 340.14 tx/s | **408.16 tx/s** | 261.78 tx/s | **ML-DSA-44 đạt đỉnh TPS toàn hệ thống** |
+| **Peak RAM Node Server** | 45.54 MB (1.11%) | 45.18 MB (1.10%) | 48.85 MB (1.19%) | 52.41 MB (1.28%) | Server vận hành hoàn toàn ổn định |
+| **Peak RAM Node Edge** | 46.62 MB (9.11%) | 44.03 MB (8.60%) | 47.37 MB (9.25%) | 46.54 MB (9.09%) | Nằm trong vùng xanh an toàn |
+| **Peak RAM Node IoT** | 44.07 MB (34.43%) | 43.97 MB (34.35%) | 45.78 MB (35.76%) | 48.54 MB (37.92%) | Vùng an toàn (<40% trần 128MB) |
+| **Normalized CPU Node IoT** | 32.52% | 26.90% | **19.80%** | 15.86% | IoT tối ưu năng lượng xác thực |
 
 *Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_macro_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_matrix.csv) và [`perf/results/perf01_macro_results.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_results.json)*
 
