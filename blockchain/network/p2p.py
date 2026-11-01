@@ -4,6 +4,7 @@ Thay thế hoàn toàn cơ chế HTTP POST rời rạc bằng kết nối WebSoc
 """
 
 import json
+import os
 import logging
 import threading
 import time
@@ -32,10 +33,12 @@ logger = logging.getLogger("P2PNetwork")
 
 
 class P2PNetwork:
-    def __init__(self, ledger: BlockchainLedger, my_address: str = "127.0.0.1:5000", audit_logger: AuditLogger = None, ws_port: int = None):
+    def __init__(self, ledger: BlockchainLedger, my_address: str = "127.0.0.1:5000", audit_logger: AuditLogger = None, ws_port: int = None, tls_mode: str = None, sig_mode: str = None):
         self.ledger = ledger
         self.my_address = my_address
         self.audit = audit_logger or (ledger.audit if hasattr(ledger, 'audit') else AuditLogger())
+        self.sig_mode = sig_mode or os.environ.get("BLOCKCHAIN_SIG_MODE", "all")
+        self.tls_mode = (tls_mode or os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe")).lower()
 
         # Tính toán cổng HTTP và cổng WebSocket P2P riêng biệt (mặc định HTTP port + 1000)
         try:
@@ -57,9 +60,22 @@ class P2PNetwork:
         self.executor = ThreadPoolExecutor(max_workers=15)
         self._running = True
 
-        # Thiết lập SSL Context (TLS 1.3 / ECDHE)
-        self.server_ssl_ctx = TLSManager.create_server_ssl_context()
-        self.client_ssl_ctx = TLSManager.create_client_ssl_context()
+        # Thiết lập SSL Context theo chế độ TLS được chọn
+        if self.tls_mode in ("none", "plaintext", "http"):
+            self.server_ssl_ctx = None
+            self.client_ssl_ctx = None
+            self.proto = "ws"
+            self.tls_desc = "Plaintext (No TLS)"
+        elif self.tls_mode in ("hybrid", "mlkem768", "mlkem", "pqc"):
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
+            self.proto = "wss"
+            self.tls_desc = "TLS 1.3 Hybrid (X25519 + ML-KEM-768)"
+        else:
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="ecdhe")
+            self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="ecdhe")
+            self.proto = "wss"
+            self.tls_desc = "TLS 1.3 ECDHE (prime256v1)"
 
         # 1. Khởi chạy WebSocket Server P2P trên cổng ws_port
         self._ws_server = None
@@ -80,8 +96,8 @@ class P2PNetwork:
                 )
                 self.audit.log(
                     category="P2P",
-                    title=f"Khoi chay WebSocket P2P Server (wss://127.0.0.1:{self.ws_port})",
-                    details={'tls': 'TLS 1.3 / ECDHE', 'ws_port': self.ws_port},
+                    title=f"Khoi chay WebSocket P2P Server ({self.proto}://127.0.0.1:{self.ws_port})",
+                    details={'tls': self.tls_desc, 'sig_profile': self.sig_mode, 'ws_port': self.ws_port},
                     status="SUCCESS"
                 )
                 self._ws_server.serve_forever()
@@ -117,7 +133,7 @@ class P2PNetwork:
                 port = p + 1000 if p < 6000 else p
             except ValueError:
                 port = 6001
-        return f"wss://{host}:{port}"
+        return f"{self.proto}://{host}:{port}"
 
     def register_peer(self, peer_url: str):
         if not peer_url:
@@ -158,7 +174,7 @@ class P2PNetwork:
                         self.audit.log(
                             category="P2P",
                             title=f"Thiet lap Persistent WebSocket toi Peer: {peer}",
-                            details={'ws_url': ws_url, 'cipher': 'TLS 1.3 / ECDHE'},
+                            details={'ws_url': ws_url, 'cipher': self.tls_desc},
                             status="SUCCESS"
                         )
 
@@ -264,7 +280,7 @@ class P2PNetwork:
         active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
         self.audit.log(
             category="P2P",
-            title=f"Gossip P2P (WebSocket TLS ECDHE): Phat song giao dich qua {active_conn_count} ket noi wss://",
+            title=f"Gossip P2P ({self.tls_desc}): Phat song giao dich qua {active_conn_count} ket noi {self.proto}://",
             details={'tx_id': f"{tx.tx_id[:16]}...", 'nonce': getattr(tx, 'nonce', 0)},
             status="SUCCESS"
         )
@@ -287,7 +303,7 @@ class P2PNetwork:
         active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
         self.audit.log(
             category="P2P",
-            title=f"Block Broadcast (WebSocket TLS ECDHE): Phat song Block #{block['block_number']} qua {active_conn_count} ket noi wss://",
+            title=f"Block Broadcast ({self.tls_desc}): Phat song Block #{block['block_number']} qua {active_conn_count} ket noi {self.proto}://",
             details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce'], 'tx_count': len(block.get('transactions', []))},
             status="SUCCESS"
         )

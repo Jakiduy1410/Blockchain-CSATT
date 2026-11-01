@@ -79,7 +79,10 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             'chain_length': len(chain),
             'peers': list(network.peers),
             'balances': balances,
-            'stack_threshold': 3
+            'stack_threshold': 3,
+            'tls_desc': getattr(network, 'tls_desc', 'TLS 1.3 / ECDHE'),
+            'tls_mode': getattr(network, 'tls_mode', 'ecdhe'),
+            'sig_mode': getattr(network, 'sig_mode', 'all')
         }
         return jsonify(response), 200
 

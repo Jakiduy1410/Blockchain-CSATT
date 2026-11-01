@@ -19,4 +19,4 @@ else
 fi
 
 echo "[*] Su dung Python interpreter: $PYTHON_CMD"
-$PYTHON_CMD start_interactive_network.py
+$PYTHON_CMD start_interactive_network.py "$@"

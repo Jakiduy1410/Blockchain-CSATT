@@ -65,8 +65,8 @@ class TLSManager:
         return cert_path, key_path
 
     @classmethod
-    def create_server_ssl_context(cls) -> ssl.SSLContext:
-        """Tạo SSL Context cho WebSocket Server bọc TLS 1.3 / ECDHE"""
+    def create_server_ssl_context(cls, mode: str = "ecdhe") -> ssl.SSLContext:
+        """Tạo SSL Context cho WebSocket Server bọc TLS 1.3 / ECDHE hoặc Hybrid ML-KEM"""
         cert_path, key_path = cls.get_or_create_cert()
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
@@ -76,15 +76,26 @@ class TLSManager:
                 ctx.keylog_filename = keylog
             except Exception:
                 pass
-        try:
-            ctx.set_ecdh_curve('prime256v1')
-        except Exception:
-            pass
+
+        mode = (mode or "ecdhe").lower()
+        if mode in ("hybrid", "mlkem768", "mlkem", "pqc"):
+            hybrid_groups = ['X25519MLKEM768', 'x25519_mlkem768', 'x25519_kyber768', 'prime256v1']
+            for grp in hybrid_groups:
+                try:
+                    ctx.set_ecdh_curve(grp)
+                    break
+                except Exception:
+                    pass
+        else:
+            try:
+                ctx.set_ecdh_curve('prime256v1')
+            except Exception:
+                pass
         return ctx
 
     @classmethod
-    def create_client_ssl_context(cls) -> ssl.SSLContext:
-        """Tạo SSL Context cho WebSocket Client bọc TLS 1.3 / ECDHE"""
+    def create_client_ssl_context(cls, mode: str = "ecdhe") -> ssl.SSLContext:
+        """Tạo SSL Context cho WebSocket Client bọc TLS 1.3 / ECDHE hoặc Hybrid ML-KEM"""
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -94,8 +105,19 @@ class TLSManager:
                 ctx.keylog_filename = keylog
             except Exception:
                 pass
-        try:
-            ctx.set_ecdh_curve('prime256v1')
-        except Exception:
-            pass
+
+        mode = (mode or "ecdhe").lower()
+        if mode in ("hybrid", "mlkem768", "mlkem", "pqc"):
+            hybrid_groups = ['X25519MLKEM768', 'x25519_mlkem768', 'x25519_kyber768', 'prime256v1']
+            for grp in hybrid_groups:
+                try:
+                    ctx.set_ecdh_curve(grp)
+                    break
+                except Exception:
+                    pass
+        else:
+            try:
+                ctx.set_ecdh_curve('prime256v1')
+            except Exception:
+                pass
         return ctx

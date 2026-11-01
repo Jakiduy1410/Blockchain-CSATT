@@ -22,12 +22,12 @@ try:
                 except Exception:
                     pass
     import oqs
-except ImportError:
+except (ImportError, Exception):
     oqs = None
 
 try:
     from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
-except ImportError:
+except (ImportError, Exception):
     VerifyingKey = None
 
 from Crypto.Hash import SHA
@@ -54,6 +54,8 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
             ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
             ('value', str(transaction_dict.get('value', '')))
         ])
+        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
+            ordered_tx['nonce'] = str(transaction_dict['nonce'])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
         if len(public_key_bytes) >= 2592 or len(signature_bytes) >= 4627:

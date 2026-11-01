@@ -44,7 +44,7 @@ def create_app(config: NodeConfig = None) -> tuple[Flask, BlockchainLedger, P2PN
 
     # 2. Khởi tạo P2P Network
     my_address = f"{config.host}:{config.port}"
-    network = P2PNetwork(ledger=ledger, my_address=my_address)
+    network = P2PNetwork(ledger=ledger, my_address=my_address, tls_mode=config.tls_mode, sig_mode=config.sig_mode)
     if config.peers:
         network.register_peers_bulk(config.peers)
 

@@ -1,0 +1,23 @@
+{
+    "algorithm": "ML-KEM-768",
+    "timestamp": "2026-11-01T19:03:41.591318",
+    "samples_collected_each": 50,
+    "samples_analyzed_A": 49,
+    "samples_analyzed_B": 49,
+    "set_A_mean_ns": 45244.897959183676,
+    "set_A_mean_us": 45.244897959183675,
+    "set_A_std_ns": 38461.322895131125,
+    "set_A_median_ns": 34000.0,
+    "set_B_mean_ns": 34865.30612244898,
+    "set_B_mean_us": 34.86530612244898,
+    "set_B_std_ns": 3246.8928108531804,
+    "set_B_median_ns": 34100.0,
+    "delta_mean_ns": 10379.591836734697,
+    "delta_mean_us": 10.379591836734697,
+    "welch_t_statistic": 1.8824005740746375,
+    "abs_t_statistic": 1.8824005740746375,
+    "p_value": 0.06576533947718281,
+    "tvla_threshold": 4.5,
+    "is_constant_time": true,
+    "status": "PASS (Constant-Time Verified)"
+}

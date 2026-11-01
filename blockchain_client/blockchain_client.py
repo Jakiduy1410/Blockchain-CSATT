@@ -11,7 +11,7 @@ import ecdsa
 try:
     import oqs
     OQS_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     OQS_AVAILABLE = False
     oqs = None
 
@@ -70,7 +70,8 @@ def index():
 
 @app.route('/make/transaction')
 def make_transaction():
-    return render_template('./make_transaction.html')
+    default_sig = app.config.get('DEFAULT_SIG_MODE', os.environ.get('BLOCKCHAIN_SIG_MODE', 'all'))
+    return render_template('./make_transaction.html', default_sig_mode=default_sig)
 
 
 @app.route('/view/transactions')
@@ -136,7 +137,9 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
     parser.add_argument('-p', '--port', default=8080, type=int, help='port to listen on')
+    parser.add_argument('--sig', default=os.environ.get('BLOCKCHAIN_SIG_MODE', 'all'), type=str, help='Default signature mode (ecdsa, mldsa44, all)')
     args = parser.parse_args()
     port = args.port
+    app.config['DEFAULT_SIG_MODE'] = args.sig
 
     app.run(host='127.0.0.1', port=port)

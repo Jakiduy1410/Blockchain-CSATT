@@ -84,6 +84,8 @@
                 <span class="badge badge-primary" id="badge_port">Port: Loading...</span>
                 <span class="badge badge-warning" id="badge_role">Role: Loading...</span>
                 <span class="badge badge-info" id="badge_peers">Peers: 0</span>
+                <span class="badge badge-dark" id="badge_tls" style="display:none;"></span>
+                <span class="badge badge-secondary" id="badge_sig" style="display:none;"></span>
               </h5>
               <small class="text-muted" id="node_uuid">Node ID: ...</small>
             </div>
@@ -213,6 +215,17 @@
             $("#badge_peers").text("Peers: " + res.peers.length);
             $("#badge_chain").text("Chain: " + res.chain_length + " Blocks");
             $("#badge_mempool").text("Mempool: " + res.mempool_count + " tx");
+
+            if (res.tls_desc) {
+              $("#badge_tls").text(res.tls_desc).show();
+            }
+            if (res.sig_mode) {
+              var sigText = "Sig: " + res.sig_mode.toUpperCase();
+              if (res.sig_mode === "mldsa44" || res.sig_mode === "pqc") sigText = "Sig: ML-DSA-44 (PQC)";
+              else if (res.sig_mode === "ecdsa") sigText = "Sig: Classical ECDSA";
+              else if (res.sig_mode === "all") sigText = "Sig: Multi-Algorithm (Hybrid)";
+              $("#badge_sig").text(sigText).show();
+            }
 
             // Cập nhật trạng thái Mempool Queue gom khối
             var threshold = res.stack_threshold || 3;

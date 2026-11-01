@@ -19,6 +19,8 @@ class NodeConfig:
         self.is_miner: bool = False
         self.difficulty: int = 2
         self.auto_mine_interval: float = 2.0
+        self.tls_mode: str = "ecdhe"
+        self.sig_mode: str = "all"
 
     @classmethod
     def load(cls) -> 'NodeConfig':
@@ -30,6 +32,8 @@ class NodeConfig:
         parser.add_argument('--peers', default="", type=str, help='Danh sách Peers ban đầu, cách nhau bằng dấu phẩy (vd: 127.0.0.1:5001,127.0.0.1:5002)')
         parser.add_argument('--miner', action='store_true', help='Kích hoạt chế độ Auto-Miner cho Node này')
         parser.add_argument('--difficulty', default=2, type=int, help='Độ khó Proof of Work (mặc định: 2)')
+        parser.add_argument('--tls', default=os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe"), type=str, help='Chế độ TLS (ecdhe, hybrid, mlkem768, none)')
+        parser.add_argument('--sig', default=os.environ.get("BLOCKCHAIN_SIG_MODE", "all"), type=str, help='Chế độ Chữ ký số (ecdsa, mldsa44, mldsa87, rsa, all)')
         parser.add_argument('-c', '--config', default="", type=str, help='Đường dẫn tới file cấu hình JSON')
 
         args, _ = parser.parse_known_args()
@@ -55,5 +59,7 @@ class NodeConfig:
         if args.miner:
             config.is_miner = True
         config.difficulty = args.difficulty
+        config.tls_mode = (args.tls or "ecdhe").lower()
+        config.sig_mode = (args.sig or "all").lower()
 
         return config
