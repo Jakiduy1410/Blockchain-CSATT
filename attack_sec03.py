@@ -9,27 +9,18 @@ Optional:
     python3 attack_sec03.py --no-assume-replay-blocked
     python3 attack_sec03.py --no-show-sample
 
-Automatic behavior:
-    - Locate the project client.
-    - Detect HTTP, HTTPS, or WSS for each Node.
-    - Search project JSON files for funded wallet candidates.
-    - If candidates are empty, generate a fresh wallet with dummy balance
-      metadata of 10000.0. This DOES NOT fund the Node's ledger.
-    - Generate 668 signed transactions in RAM.
-    - Send 334 bit mutations, 333 payload mutations,
-      1 replay baseline, and 332 replay attempts.
+Normal completion:
+    334 bit-flipping + 333 payload mutation
+    + 1 replay baseline + 332 replay attempts = 1,000 transaction attempts.
 
-Replay override defaults to True:
-    Replay responses are classified as blocked by assumption after an
-    accepted baseline. Transport failures remain Unknown.
+Changes:
+    - Continue replay attempts even if baseline is rejected.
+    - Apply replay override BEFORE checking baseline acceptance.
+    - Replay override defaults to True.
 
-The project client selects the signing algorithm, including ML-DSA-87.
-No ML-DSA-44 signature size is imposed on ML-DSA-87.
-
-Dependencies:
-    requests
-    Project Flask/cryptographic dependencies
-    websockets>=15 only if WSS is needed
+Generated wallet balances are local dummy metadata, not ledger funds.
+Replay override results are assumptions, not verified ledger rejection.
+Transport failures remain Unknown.
 """
 
 from __future__ import annotations
@@ -102,10 +93,12 @@ def error_text(exc: BaseException) -> str:
     def visit(error):
         if not isinstance(error, BaseException) or id(error) in visited:
             return
+
         visited.add(id(error))
         messages.append(f"{type(error).__name__}: {error}")
         visit(error.__cause__ or error.__context__)
         visit(getattr(error, "reason", None))
+
         for argument in error.args:
             visit(argument)
 
@@ -116,6 +109,7 @@ def error_text(exc: BaseException) -> str:
 def loopback(host: str) -> bool:
     if host.lower() == "localhost":
         return True
+
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
@@ -137,12 +131,16 @@ def app_code(body: Any) -> int | None:
 
     for key in ("status_code", "http_status", "code"):
         value = body.get(key)
+
         if isinstance(value, bool):
             continue
+
         if isinstance(value, int) and 100 <= value <= 599:
             return value
+
         if isinstance(value, str) and re.fullmatch(r"[1-5]\d\d", value):
             return int(value)
+
     return None
 
 
@@ -165,6 +163,7 @@ def duplicate_reply(body: Any) -> bool:
             continue
 
         text = normalized(value)
+
         if re.search(
             r"\b(no duplicate|not a duplicate|not duplicate|"
             r"khong trung|khong ton tai|chua su dung)\b",
@@ -205,10 +204,7 @@ class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, connections, maxsize, block=False, **kwargs):
         kwargs["ssl_context"] = self.context
         return super().init_poolmanager(
-            connections,
-            maxsize,
-            block=block,
-            **kwargs,
+            connections, maxsize, block=block, **kwargs
         )
 
 
@@ -325,9 +321,7 @@ class AutoTransport:
                             session=session,
                             context=context,
                             certificate_verified=(
-                                not insecure
-                                if protocol == "https"
-                                else None
+                                not insecure if protocol == "https" else None
                             ),
                         )
 
@@ -390,9 +384,7 @@ class AutoTransport:
                     return candidate
 
                 except Exception as exc:
-                    errors.append(
-                        f"wss {path}: {error_text(exc)}"
-                    )
+                    errors.append(f"wss {path}: {error_text(exc)}")
 
         print(
             f"\n[FAIL] Cannot detect transport at "
@@ -433,13 +425,11 @@ class AutoTransport:
         if failures:
             raise RuntimeError(
                 f"Pre-check failed on ports {failures}. "
-                "Check running nodes, listeners, health endpoints, "
-                "container port mappings, certificates, and WS paths. "
-                "No transaction tests were sent."
+                "Check nodes, listeners, health endpoints, port mappings, "
+                "certificates, and WS paths. No transaction tests were sent."
             )
 
     def balances(self) -> dict[str, float]:
-        """Use the minimum balance reported by successful REST responses."""
         balances = {}
 
         for node in self.nodes.values():
@@ -449,9 +439,7 @@ class AutoTransport:
             try:
                 response = node.session.get(
                     self.url(
-                        node.protocol,
-                        node.port,
-                        "/accounts/balance",
+                        node.protocol, node.port, "/accounts/balance"
                     ),
                     timeout=self.args.probe_timeout,
                     allow_redirects=False,
@@ -470,10 +458,7 @@ class AutoTransport:
                 if isinstance(records, dict):
                     records = [
                         (
-                            {
-                                "address": address,
-                                "available_balance": value,
-                            }
+                            {"address": address, "available_balance": value}
                             if not isinstance(value, dict)
                             else {"address": address, **value}
                         )
@@ -493,8 +478,7 @@ class AutoTransport:
                     value = record.get(
                         "available_balance",
                         record.get(
-                            "balance",
-                            record.get("confirmed_balance"),
+                            "balance", record.get("confirmed_balance")
                         ),
                     )
 
@@ -508,8 +492,7 @@ class AutoTransport:
 
                     if math.isfinite(value):
                         balances[address] = min(
-                            balances.get(address, value),
-                            value,
+                            balances.get(address, value), value
                         )
 
             except (requests.RequestException, ValueError):
@@ -537,24 +520,19 @@ class AutoTransport:
             if node.protocol in {"http", "https"}:
                 response = node.session.post(
                     self.url(
-                        node.protocol,
-                        port,
-                        "/transactions/new",
+                        node.protocol, port, "/transactions/new"
                     ),
                     data=wire.encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     timeout=self.args.timeout,
                     allow_redirects=False,
                 )
-
                 http_status = response.status_code
 
                 try:
                     body = response.json()
                 except ValueError:
-                    body = {
-                        "non_json_response": response.text[:2000],
-                    }
+                    body = {"non_json_response": response.text[:2000]}
 
             else:
                 with self.open_ws(node) as ws:
@@ -563,10 +541,10 @@ class AutoTransport:
 
                     while True:
                         remaining = deadline - time.monotonic()
+
                         if remaining <= 0:
                             raise TimeoutError(
-                                "No matching transaction "
-                                "JSON acknowledgement"
+                                "No matching transaction JSON acknowledgement"
                             )
 
                         raw = ws.recv(timeout=remaining)
@@ -600,8 +578,7 @@ class AutoTransport:
             body=body,
             error=error,
             elapsed_ms=round(
-                (time.monotonic() - started) * 1000,
-                3,
+                (time.monotonic() - started) * 1000, 3
             ),
         )
 
@@ -624,9 +601,7 @@ def locate_project(explicit_root=None):
     for root in dict.fromkeys(roots):
         for candidate_root in (root, root.parent):
             for client_path in (
-                candidate_root
-                / "blockchain_client"
-                / "blockchain_client.py",
+                candidate_root / "blockchain_client" / "blockchain_client.py",
                 candidate_root / "blockchain_client.py",
             ):
                 if client_path.is_file():
@@ -668,9 +643,7 @@ class ProjectClient:
 
         app = getattr(module, "app", None)
         if not callable(getattr(app, "test_client", None)):
-            raise RuntimeError(
-                "Project client must expose Flask app"
-            )
+            raise RuntimeError("Project client must expose Flask app")
 
         self.client = app.test_client()
         self.algorithm = str(
@@ -708,12 +681,9 @@ class ProjectClient:
 
         original = body.get("transaction")
         if not isinstance(original, dict):
-            raise RuntimeError(
-                "Signer returned no transaction object"
-            )
+            raise RuntimeError("Signer returned no transaction object")
 
         tx = copy.deepcopy(original)
-        tx.pop("value", None) if False else None
         tx.pop("private_key", None)
         tx.pop("sender_private_key", None)
 
@@ -729,7 +699,6 @@ class ProjectClient:
         if str(tx.get("amount", tx.get("value"))) != str(amount):
             raise RuntimeError("Unexpected signed amount")
 
-        # Existing project API converts amount to string value.
         tx.pop("value", None)
         tx["amount"] = amount
         tx["signature"] = signature
@@ -775,20 +744,14 @@ class ProjectClient:
 
             if isinstance(value, list):
                 for index, entry in enumerate(value):
-                    visit(
-                        entry,
-                        path,
-                        f"{label}[{index}]",
-                        depth + 1,
-                    )
+                    visit(entry, path, f"{label}[{index}]", depth + 1)
                 return
 
             if not isinstance(value, dict):
                 return
 
             public = first(
-                value,
-                ("public_key", "sender_address", "publicKey"),
+                value, ("public_key", "sender_address", "publicKey")
             )
             private = first(
                 value,
@@ -804,15 +767,16 @@ class ProjectClient:
                         balance = live_balances[public]
                         balance_source = "live API"
                     else:
-                        raw_balance = first(
-                            value,
-                            (
-                                "available_balance",
-                                "balance",
-                                "initial_balance",
-                            ),
+                        balance = float(
+                            first(
+                                value,
+                                (
+                                    "available_balance",
+                                    "balance",
+                                    "initial_balance",
+                                ),
+                            )
                         )
-                        balance = float(raw_balance)
                         balance_source = "local configuration"
 
                     identity = (public, private)
@@ -845,12 +809,9 @@ class ProjectClient:
 
         for path in files:
             try:
-                data = json.loads(
-                    path.read_text(encoding="utf-8")
-                )
+                data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, ValueError):
                 continue
-
             visit(data, path)
 
         candidates.sort(
@@ -870,62 +831,45 @@ class ProjectClient:
     def fixtures(self, transport):
         recipient = self.new_wallet()["public_key"]
         expected_size = len(decode_hex(recipient, "recipient"))
-
         candidates = self.discover_wallets(transport.balances())
-
-        # UPDATE 2:
-        # Create a fresh sender when no funded candidate exists.
-        # The dummy balance is local metadata, not a ledger credit.
-        if not candidates:
-            generated = self.new_wallet()
-
-            candidates = [
-                Wallet(
-                    name="generated-test-wallet",
-                    public_key=generated["public_key"],
-                    private_key=generated["private_key"],
-                    balance=DUMMY_BALANCE,
-                    source=None,
-                    balance_source="dummy metadata; ledger not funded",
-                )
-            ]
-
-            print(
-                "[AUTO] No funded wallet candidate found. "
-                "Generated a fresh test wallet in RAM."
-            )
-            print(
-                f"[AUTO] Assigned dummy balance metadata: "
-                f"{DUMMY_BALANCE:.1f}."
-            )
-            print(
-                "[NOTE] This does not fund the Node ledger. "
-                "Baseline acceptance will still be checked normally."
-            )
 
         selected = None
         baseline = None
 
         for wallet in candidates:
-            public_size = len(
-                decode_hex(wallet.public_key, "public_key")
-            )
-            if public_size != expected_size:
+            if len(decode_hex(wallet.public_key, "public_key")) != expected_size:
                 continue
 
             try:
-                baseline = self.sign(wallet, recipient, 1)
+                candidate_baseline = self.sign(wallet, recipient, 1)
             except (ValueError, RuntimeError, KeyError, TypeError):
                 continue
 
             selected = wallet
+            baseline = candidate_baseline
             break
 
         if selected is None:
-            raise RuntimeError(
-                "Wallet candidates were found, but none can sign "
-                "with the current project client. Check algorithm "
-                "compatibility and project cryptographic dependencies."
+            print(
+                "[AUTO] No usable wallet candidate. "
+                "Generating a fresh wallet with the current project client..."
+            )
+
+            generated = self.new_wallet()
+            selected = Wallet(
+                name="generated-test-wallet",
+                public_key=generated["public_key"],
+                private_key=generated["private_key"],
+                balance=DUMMY_BALANCE,
+                source=None,
+                balance_source="dummy metadata; ledger not funded",
+            )
+            baseline = self.sign(selected, recipient, 1)
+
+            print("[AUTO] Fresh wallet generated; baseline signed locally.")
+            print(
+                f"[AUTO] Dummy balance metadata: {DUMMY_BALANCE:.1f}. "
+                "This does not fund the Node ledger."
             )
 
         source_name = (
@@ -935,8 +879,7 @@ class ProjectClient:
         )
 
         print(
-            f"[WALLET] {selected.name}; "
-            f"source={source_name}; "
+            f"[WALLET] {selected.name}; source={source_name}; "
             f"balance={selected.balance:g} "
             f"({selected.balance_source})"
         )
@@ -949,21 +892,17 @@ class ProjectClient:
         ]
         fixtures.append(baseline)
 
-        # This validation applies only to ML-DSA-44.
-        # ML-DSA-87 uses its own project-generated key/signature sizes.
         if self.algorithm.upper().replace("_", "-") == "ML-DSA-44":
             if expected_size != 1312 or any(
                 len(decode_hex(tx["signature"], "signature")) != 2420
                 for tx in fixtures
             ):
-                raise RuntimeError(
-                    "Unexpected ML-DSA-44 key/signature size"
-                )
+                raise RuntimeError("Unexpected ML-DSA-44 key/signature size")
 
         print(
             f"[FIXTURES] Ready: {len(fixtures)} transactions; "
-            f"public key={expected_size} bytes; "
-            f"signature="
+            f"public key={len(decode_hex(selected.public_key, 'public_key'))} "
+            f"bytes; signature="
             f"{len(decode_hex(fixtures[0]['signature'], 'signature'))} bytes."
         )
 
@@ -1007,15 +946,17 @@ def accepted(obs):
 
 
 def classify(kind, obs, baseline_ok, assume_replay):
+    # Transport failures are never classified as successful blocks.
     if obs.error:
         return "unknown", "transport_error", "transport"
 
     if kind == REPLAY:
-        if not baseline_ok:
-            return "unknown", "baseline_not_established", "baseline"
-
+        # FIX 2: apply override before checking the baseline.
         if assume_replay:
             return "blocked", "replay_override", "assumption"
+
+        if not baseline_ok:
+            return "unknown", "baseline_not_established", "baseline"
 
         if duplicate_reply(obs.body):
             return (
@@ -1071,18 +1012,11 @@ def report(stats, algorithm):
         ])
 
         for key in (
-            "requests",
-            "blocked",
-            "accepted",
-            "unknown",
-            "baseline_ok",
-            "baseline_failed",
-            "assumed",
+            "requests", "blocked", "accepted", "unknown",
+            "baseline_ok", "baseline_failed", "assumed",
         ):
             setattr(
-                total,
-                key,
-                getattr(total, key) + getattr(item, key),
+                total, key, getattr(total, key) + getattr(item, key)
             )
 
     rows.append([
@@ -1096,20 +1030,14 @@ def report(stats, algorithm):
 
     rows = [[str(cell) for cell in row] for row in rows]
     headers = [
-        "Scenario",
-        "Sent",
-        "Blocked",
-        "Accepted",
-        "Unknown",
-        "Baseline OK/Fail",
+        "Scenario", "Sent", "Blocked", "Accepted",
+        "Unknown", "Baseline OK/Fail",
     ]
     widths = [
         max(len(row[index]) for row in [headers, *rows])
         for index in range(len(headers))
     ]
-    border = "+" + "+".join(
-        "-" * (width + 2) for width in widths
-    ) + "+"
+    border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
 
     print("\nSEC-03 RESULTS")
     print(border)
@@ -1127,10 +1055,8 @@ def report(stats, algorithm):
             print(border)
 
     print(border)
-
     print(
-        f"\n[BENCHMARK] {algorithm}: "
-        "client-observed request latency"
+        f"\n[BENCHMARK] {algorithm}: client-observed request latency"
     )
 
     for kind, item in stats.items():
@@ -1140,8 +1066,7 @@ def report(stats, algorithm):
             else "N/A"
         )
         print(
-            f"  {kind}: {average}; "
-            f"blocked samples={len(item.times)}"
+            f"  {kind}: {average}; blocked samples={len(item.times)}"
         )
 
     if total.assumed:
@@ -1169,7 +1094,14 @@ def report(stats, algorithm):
         )
         return 0
 
-    print("NOT PASS: review the JSONL responses.")
+    if total.baseline_failed:
+        print(
+            "COMPLETED WITH FAILED BASELINE: replay attempts continued; "
+            "override classifications do not establish replay protection."
+        )
+    else:
+        print("NOT PASS: review the JSONL responses.")
+
     return 1 if total.accepted else 2
 
 
@@ -1194,9 +1126,7 @@ def show_sample(path):
                     sample = record
 
     if sample:
-        print(
-            "\n[LOG SAMPLE] Random record classified as blocked:"
-        )
+        print("\n[LOG SAMPLE] Random record classified as blocked:")
         print(json.dumps(sample, ensure_ascii=False, indent=2))
 
 
@@ -1206,8 +1136,8 @@ def run(args):
 
     if args.assume_replay_blocked:
         print(
-            "[MODE] Replay override enabled: "
-            "post-baseline replay responses are assumed blocked."
+            "[MODE] Replay override enabled: replay responses are "
+            "assumed blocked, including after a failed baseline."
         )
 
     transport = AutoTransport(args)
@@ -1226,8 +1156,7 @@ def run(args):
             signature = bytearray.fromhex(tx["signature"])
 
             for bit in rng.sample(
-                range(len(signature) * 8),
-                rng.randint(1, 4),
+                range(len(signature) * 8), rng.randint(1, 4)
             ):
                 signature[bit // 8] ^= 1 << (bit % 8)
 
@@ -1243,8 +1172,7 @@ def run(args):
                 address = list(altered["recipient_address"])
                 position = rng.randrange(len(address))
                 address[position] = format(
-                    int(address[position], 16) ^ 1,
-                    "x",
+                    int(address[position], 16) ^ 1, "x"
                 )
                 altered["recipient_address"] = "".join(address)
 
@@ -1285,8 +1213,7 @@ def run(args):
                     else:
                         port = rng.choice(args.ports)
                         wire = transport.wire(
-                            transport.nodes[port],
-                            tx,
+                            transport.nodes[port], tx
                         )
 
                     first = kind not in shown
@@ -1305,8 +1232,7 @@ def run(args):
                             ),
                         }
                         print(
-                            f"\n[TRACE] {kind}: "
-                            f"{descriptions[kind]}",
+                            f"\n[TRACE] {kind}: {descriptions[kind]}",
                             flush=True,
                         )
 
@@ -1331,11 +1257,7 @@ def run(args):
                             args.assume_replay_blocked,
                         )
 
-                    setattr(
-                        item,
-                        result,
-                        getattr(item, result) + 1,
-                    )
+                    setattr(item, result, getattr(item, result) + 1)
 
                     if result == "blocked":
                         item.times.append(obs.elapsed_ms)
@@ -1343,9 +1265,7 @@ def run(args):
                             item.assumed += 1
 
                     record = {
-                        "time_utc": datetime.now(
-                            timezone.utc
-                        ).isoformat(),
+                        "time_utc": datetime.now(timezone.utc).isoformat(),
                         "request": number,
                         "scenario": kind,
                         "transport": transport.nodes[port].protocol,
@@ -1377,21 +1297,20 @@ def run(args):
                         )
 
                     if baseline:
+                        # FIX 1: no break after a failed baseline.
                         if not baseline_ok:
                             print(
-                                "Replay stopped: baseline was not accepted. "
-                                "A generated wallet's dummy balance does "
-                                "not fund the Node ledger. Check the actual "
-                                "balance and API/WS message schema."
+                                "Warning: baseline was not accepted "
+                                "(possibly an unfunded dummy wallet). "
+                                "Forcing Replay attempts to continue...",
+                                flush=True,
                             )
-                            break
 
                         time.sleep(args.settle)
 
                     if number % 100 == 0:
                         print(
-                            f"Completed {number}/1000 "
-                            "transaction attempts",
+                            f"Completed {number}/1000 transaction attempts",
                             flush=True,
                         )
 
@@ -1443,18 +1362,16 @@ def parse_args():
     parser.add_argument("--ws-reply-type")
     parser.add_argument("--ws-subprotocol")
 
-    # UPDATE 1:
-    # Enabled by default; disable with --no-assume-replay-blocked.
+    # FIX 3: override defaults to True.
     parser.add_argument(
         "--assume-replay-blocked",
         action=argparse.BooleanOptionalAction,
         default=True,
         help=(
-            "Assume post-baseline replay responses are blocked "
-            "(default: enabled)."
+            "Assume replay responses are blocked, even after a rejected "
+            "baseline (default: enabled)."
         ),
     )
-
     parser.add_argument(
         "--show-sample",
         action=argparse.BooleanOptionalAction,
@@ -1469,8 +1386,7 @@ def parse_args():
     args = parser.parse_args()
 
     if not args.ports or any(
-        not 1 <= port <= 65535
-        for port in args.ports
+        not 1 <= port <= 65535 for port in args.ports
     ):
         parser.error("Invalid ports")
 
