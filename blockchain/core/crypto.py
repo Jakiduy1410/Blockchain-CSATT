@@ -15,7 +15,20 @@ import sys
 
 try:
     if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
-        for dll_dir in [os.path.abspath('.'), os.path.abspath('liboqs'), os.path.abspath('liboqs/build/bin')]:
+        dll_dirs = [
+            os.path.abspath('.'),
+            os.path.abspath('liboqs'),
+            os.path.abspath('liboqs/build/bin'),
+            os.path.abspath('liboqs/build/bin/Release'),
+            os.path.abspath('liboqs/build/bin/Debug'),
+            os.path.abspath('build/bin/Release'),
+            os.path.abspath('build/bin'),
+            os.path.expanduser('~/_oqs/bin')
+        ]
+        liboqs_env = os.environ.get('LIBOQS_DIR')
+        if liboqs_env:
+            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
+        for dll_dir in dll_dirs:
             if os.path.isdir(dll_dir):
                 try:
                     os.add_dll_directory(dll_dir)

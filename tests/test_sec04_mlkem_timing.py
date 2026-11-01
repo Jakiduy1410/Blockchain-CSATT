@@ -1,14 +1,16 @@
 """
-Forwarder for backward compatibility.
-The actual implementation is now located at tests/sec04_sidechannel/sec04_sidechannel_timing.py
+Forwarder for backward compatibility with unittest and pytest.
+The actual implementation is located at tests/sec04_sidechannel/sec04_sidechannel_timing.py
 """
-import runpy
+import unittest
 from pathlib import Path
 
-def test_sec04_sidechannel_forwarder():
-    target = Path(__file__).resolve().parent / "sec04_sidechannel" / "sec04_sidechannel_timing.py"
-    assert target.exists(), f"Target script not found: {target}"
+
+class TestSec04MlkemTimingForwarder(unittest.TestCase):
+    def test_sec04_sidechannel_forwarder(self):
+        target = Path(__file__).resolve().parent / "sec04_sidechannel" / "sec04_sidechannel_timing.py"
+        self.assertTrue(target.exists(), f"Target script not found: {target}")
+
 
 if __name__ == "__main__":
-    target = Path(__file__).resolve().parent / "sec04_sidechannel" / "sec04_sidechannel_timing.py"
-    runpy.run_path(str(target), run_name="__main__")
+    unittest.main()

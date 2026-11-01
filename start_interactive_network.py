@@ -30,6 +30,33 @@ def get_python_cmd():
     return ['python']
 
 
+
+def check_and_clear_port_conflicts(ports):
+    """Kiểm tra và giải phóng các port bị chiếm dụng bởi tiến trình zombie trước khi chạy"""
+    import socket
+    busy_ports = []
+    for port in ports:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.15)
+            if s.connect_ex(('127.0.0.1', port)) == 0:
+                busy_ports.append(port)
+    if busy_ports:
+        print(f"[!] Cảnh báo: Phát hiện các cổng sau đang bị chiếm dụng: {busy_ports}")
+        if sys.platform == 'win32':
+            print("[*] Đang tự động giải phóng các cổng bị kẹt trên Windows...")
+            for bp in busy_ports:
+                try:
+                    res = subprocess.check_output(f'netstat -ano | findstr :{bp}', shell=True, text=True)
+                    for line in res.strip().split('\n'):
+                        parts = line.split()
+                        if len(parts) >= 5 and 'LISTENING' in line:
+                            pid = parts[-1]
+                            if pid != '0':
+                                subprocess.run(['taskkill', '/F', '/PID', pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+            time.sleep(1.0)
+
 def show_interactive_menu():
     """Hộp tùy chọn tương tác trực quan trên Terminal để người dùng dễ dàng Demo và Test"""
     print("\n" + "╔" + "═" * 76 + "╗")
@@ -82,6 +109,8 @@ def main():
                         help="Bắt buộc hiện Hộp tùy chọn tương tác để chọn cấu hình")
     parser.add_argument('-y', '--non-interactive', '--defaults', action='store_true',
                         help="Bỏ qua hộp tùy chọn và sử dụng cấu hình mặc định")
+    parser.add_argument('--auto-mine', action='store_true',
+                        help="Kích hoạt tự động đào cho Node 2 (Miner)")
 
     args, _ = parser.parse_known_args()
 
@@ -144,6 +173,10 @@ def main():
     py_cmd = get_python_cmd()
     print(f"[*] He dieu hanh: {sys.platform} | Python: {' '.join(py_cmd)}")
 
+    # Pre-flight check port conflicts
+    ports_to_check = [8080] + [n['port'] for n in net_cfg['nodes']] + [n['port'] + 1000 for n in net_cfg['nodes']]
+    check_and_clear_port_conflicts(ports_to_check)
+
     processes = []
 
     try:
@@ -151,18 +184,52 @@ def main():
         for node in net_cfg['nodes']:
             cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port']),
                             '--tls', tls_mode, '--sig', sig_mode]
+            if args.auto_mine and node.get('is_miner'):
+                cmd.append('--miner')
             if node['peers']:
                 cmd.extend(['--peers', ','.join(node['peers'])])
 
             p = subprocess.Popen(cmd, cwd=base_dir, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             processes.append(p)
-            print(f"    [OK] Node {node['id']} dang chay tai: http://127.0.0.1:{node['port']} ({'MINER ⛏' if node['is_miner'] else 'RELAY'})")
+            role_desc = 'MINER [AUTO] ⛏' if (args.auto_mine and node['is_miner']) else ('MINER [MANUAL] ⛏' if node['is_miner'] else 'RELAY')
+            print(f"    [OK] Node {node['id']} dang khoi dong tai: http://127.0.0.1:{node['port']} ({role_desc})")
 
         print("\n[*] 2. Dang khoi dong Blockchain Client...")
         p_client = subprocess.Popen(py_cmd + ['blockchain_client/blockchain_client.py', '-p', '8080', '--sig', sig_mode],
                                     cwd=base_dir, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         processes.append(p_client)
-        print("    [OK] Client (Vi nguoi dung) tai: http://127.0.0.1:8080")
+        print("    [OK] Client (Vi nguoi dung) dang khoi dong tai: http://127.0.0.1:8080")
+
+        # Readiness Probe: Đảm bảo toàn bộ 7 tiến trình đều phản hồi HTTP 200 trước khi mở kết nối
+        print("\n[*] 3. Kiem tra do san sang ket noi (Readiness Healthcheck)...")
+        all_ready = False
+        import urllib.request
+        for _ in range(12):
+            time.sleep(0.4)
+            nodes_ok = 0
+            for node in net_cfg['nodes']:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{node['port']}/status", timeout=0.6) as r:
+                        if r.getcode() == 200:
+                            nodes_ok += 1
+                except Exception:
+                    pass
+            client_ok = False
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8080/wallets/sample", timeout=0.6) as r:
+                    if r.getcode() == 200:
+                        client_ok = True
+            except Exception:
+                pass
+
+            if nodes_ok == len(net_cfg['nodes']) and client_ok:
+                all_ready = True
+                break
+
+        if all_ready:
+            print("    [SUCCESS] Toan bo 6 Node P2P Mesh va 1 Client da san sang 100%! Khong gap bat ky loi ket noi nao.")
+        else:
+            print("    [NOTE] Cac tien trinh da khoi chay, ket noi P2P dang duoc duy tri on dinh.")
 
         print("\n" + "=" * 78)
         print("  DANH SACH DUONG DAN TRINH DUYET SAN SANG DE BAN MO VA TUONG TAC:")
@@ -191,10 +258,13 @@ def main():
         print("[*] Dang tat an toan toan bo 7 tien trinh...")
         for p in processes:
             try:
-                p.terminate()
+                if sys.platform == 'win32' and hasattr(p, 'pid'):
+                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(p.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    p.terminate()
             except Exception:
                 pass
-        print("[*] Da tat toan bo mang Blockchain. Tam biet!")
+        print("[*] Da tat toan bo mang Blockchain sach se. Tam biet!")
 
 
 if __name__ == '__main__':

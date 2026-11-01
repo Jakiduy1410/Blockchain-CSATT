@@ -324,7 +324,20 @@ class P2PNetwork:
 
         appended = self.ledger.append_block(block)
         if appended:
-            self.broadcast_block(block)
+            # Relay Block hop le toi toan bo cac Peers khac trong mang Mesh
+            payload = {
+                'type': 'BLOCK',
+                'data': block,
+                'origin': self.my_address
+            }
+            self.executor.submit(self._send_ws_payload, payload)
+            active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
+            self.audit.log(
+                category="P2P",
+                title=f"Block Relay ({self.tls_desc}): Chuyen tiep Block #{block['block_number']} toi {active_conn_count} ket noi {self.proto}://",
+                details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce'], 'tx_count': len(block.get('transactions', []))},
+                status="SUCCESS"
+            )
             return True
         else:
             self.resolve_conflicts()

@@ -9,6 +9,26 @@ from flask import Flask, jsonify, request, render_template
 import ecdsa
 
 try:
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        dll_dirs = [
+            os.path.abspath('.'),
+            os.path.abspath('liboqs'),
+            os.path.abspath('liboqs/build/bin'),
+            os.path.abspath('liboqs/build/bin/Release'),
+            os.path.abspath('liboqs/build/bin/Debug'),
+            os.path.abspath('build/bin/Release'),
+            os.path.abspath('build/bin'),
+            os.path.expanduser('~/_oqs/bin')
+        ]
+        liboqs_env = os.environ.get('LIBOQS_DIR')
+        if liboqs_env:
+            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
+        for d in dll_dirs:
+            if os.path.isdir(d):
+                try:
+                    os.add_dll_directory(d)
+                except Exception:
+                    pass
     import oqs
     OQS_AVAILABLE = True
 except (ImportError, Exception):
@@ -42,11 +62,12 @@ class Transaction:
     def sign_transaction(self):
         """Ký số giao dịch bằng ECDSA (secp256k1) hoặc ML-DSA nếu khóa dài"""
         try:
-            # Nếu khóa có độ dài lớn (> 1000) và oqs khả dụng -> ML-DSA
+            # Nếu khóa có độ dài lớn (> 1000) và oqs khả dụng -> ML-DSA (ML-DSA-44 hoặc ML-DSA-87)
             if len(self.sender_private_key) > 1000 and OQS_AVAILABLE:
                 private_key_bytes = bytes.fromhex(self.sender_private_key)
                 transaction_string = str(self.to_dict()).encode('utf8')
-                with oqs.Signature("ML-DSA-44", secret_key=private_key_bytes) as signer:
+                alg_name = "ML-DSA-87" if len(private_key_bytes) >= 4800 else "ML-DSA-44"
+                with oqs.Signature(alg_name, secret_key=private_key_bytes) as signer:
                     signature_bytes = signer.sign(transaction_string)
                 return signature_bytes.hex()
 

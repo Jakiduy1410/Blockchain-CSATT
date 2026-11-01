@@ -25,6 +25,26 @@ from cryptography.hazmat.primitives import hashes, serialization
 OQS_AVAILABLE = False
 oqs = None
 try:
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        dll_dirs = [
+            os.path.abspath('.'),
+            os.path.abspath('liboqs'),
+            os.path.abspath('liboqs/build/bin'),
+            os.path.abspath('liboqs/build/bin/Release'),
+            os.path.abspath('liboqs/build/bin/Debug'),
+            os.path.abspath('build/bin/Release'),
+            os.path.abspath('build/bin'),
+            os.path.expanduser('~/_oqs/bin')
+        ]
+        liboqs_env = os.environ.get('LIBOQS_DIR')
+        if liboqs_env:
+            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
+        for d in dll_dirs:
+            if os.path.isdir(d):
+                try:
+                    os.add_dll_directory(d)
+                except Exception:
+                    pass
     import oqs
     OQS_AVAILABLE = True
 except BaseException:
@@ -202,7 +222,7 @@ def run_mldsa_benchmark(iterations: int, message: bytes, alg_name: str = "ML-DSA
 
 def main():
     parser = argparse.ArgumentParser(description="Micro-Benchmark Suite: Blockchain Digital Signature Schemes")
-    parser.add_argument('-n', '--iterations', type=int, default=1000, help="Số lần lặp kiểm thử (mặc định: 1000)")
+    parser.add_argument('-n', '--iterations', type=int, default=0, help="Số lần lặp kiểm thử (mặc định: 1000 hoặc từ config)")
     parser.add_argument('-c', '--config', type=str, default="", help="Đường dẫn file cấu hình JSON")
     parser.add_argument('-o', '--output-dir', type=str, default="", help="Thư mục xuất kết quả")
     args = parser.parse_args()
@@ -210,9 +230,9 @@ def main():
     base_dir = Path(__file__).resolve().parent
     config_file = Path(args.config) if args.config else base_dir / "configs" / "benchmark_config.json"
 
-    iterations = args.iterations
     payload_bytes = 250
     block_txs = 1000
+    iterations = 1000
 
     if config_file.exists():
         try:
@@ -224,6 +244,10 @@ def main():
             block_txs = m_cfg.get('simulated_block_txs', block_txs)
         except Exception:
             pass
+
+    # CLI flag takes precedence over config file if explicitly provided
+    if args.iterations and args.iterations > 0:
+        iterations = args.iterations
 
     out_dir = Path(args.output_dir) if args.output_dir else base_dir / "results" / "crypto_micro"
     out_dir.mkdir(parents=True, exist_ok=True)

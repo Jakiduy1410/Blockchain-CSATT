@@ -54,7 +54,8 @@ def load_wallets(base_dir: Path) -> Dict[str, dict]:
 
     if wallets_path.exists():
         with open(wallets_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            raw = json.load(f)
+            return {k: v for k, v in raw.items() if v.get('private_key') and len(str(v.get('private_key')).strip()) > 0}
     return {}
 
 def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
@@ -83,8 +84,16 @@ def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount:
 
 
 def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
-    """Create and sign a post-quantum ML-DSA-44 transaction."""
+    """Create and sign a post-quantum ML-DSA (ML-DSA-44 or ML-DSA-87) transaction."""
     from collections import OrderedDict
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        for dll_dir in [os.path.abspath('.'), os.path.abspath('liboqs'), os.path.abspath('liboqs/build/bin'),
+                        os.path.abspath('liboqs/build/bin/Release'), os.path.expanduser('~/_oqs/bin')]:
+            if os.path.isdir(dll_dir):
+                try:
+                    os.add_dll_directory(dll_dir)
+                except Exception:
+                    pass
     import oqs
 
     tx_dict = OrderedDict([
@@ -95,7 +104,8 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
     ])
     tx_bytes = str(tx_dict).encode('utf-8')
     priv_bytes = bytes.fromhex(sender['private_key'])
-    with oqs.Signature('ML-DSA-44', secret_key=priv_bytes) as signer:
+    alg_name = "ML-DSA-87" if len(priv_bytes) >= 4800 else "ML-DSA-44"
+    with oqs.Signature(alg_name, secret_key=priv_bytes) as signer:
         sig_bytes = signer.sign(tx_bytes)
 
     return {
