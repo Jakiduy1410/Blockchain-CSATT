@@ -286,7 +286,7 @@ docker info
 ### Bước 2: Đóng gói Docker Image Tích hợp liboqs & FIPS 204
 Tại thư mục gốc dự án:
 ```powershell
-docker build -t blockchain-node:perf -f Dockerfile .
+docker build -t blockchain-node:perf -f perf/Dockerfile .
 ```
 
 ### Bước 3: Sinh Bộ Dữ Liệu Ký Số Chuẩn Xác (Không dư thừa)
@@ -294,7 +294,7 @@ Chạy script sinh dữ liệu chuẩn trong `perf/`:
 ```powershell
 python perf/generate_perf01_txs.py
 ```
-*Tạo đúng 5 bộ dữ liệu: `txs_500_ecdsa.json`, `txs_500_rsa.json`, `txs_500_mldsa87.json`, `txs_stress_ecdsa.json` (2000 txs), và `txs_stress_mldsa87.json` (2000 txs).*
+*Tạo đúng 7 bộ dữ liệu: `txs_500_ecdsa.json`, `txs_500_rsa.json`, `txs_500_mldsa44.json`, `txs_500_mldsa87.json`, `txs_stress_ecdsa.json (2000 txs)`, `txs_stress_mldsa44.json (2000 txs)`, `và txs_stress_mldsa87.json (2000 txs)`*
 
 ### Bước 4: Chạy Kịch bản Micro-Benchmark & Săn OOM-Killer
 ```powershell
@@ -335,9 +335,9 @@ Toàn bộ các tệp mã nguồn, dữ liệu thực nghiệm và hình ảnh b
 | 1 | **Dockerfile** | [`perf/Dockerfile`](file:///d:/assignment/btl/Blockchain-CSATT/perf/Dockerfile) | File Dockerfile đóng gói Node, biên dịch `liboqs` C engine FIPS 204. |
 | 2 | **docker-compose.yml** | [`perf/docker-compose.yml`](file:///d:/assignment/btl/Blockchain-CSATT/perf/docker-compose.yml) | File Docker Compose định nghĩa 3 profile phần cứng cô lập cgroups v2. |
 | 3 | **Dataset Generator** | [`perf/generate_perf01_txs.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/generate_perf01_txs.py) | Script sinh các tập dữ liệu giao dịch chuẩn (500 txs và stress txs). |
-| 4 | **Micro Test Driver** | [`perf/perf01_stress_test.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_stress_test.py) | Engine kiểm thử Micro 3x3 và săn tìm sự kiện OOM-Killed (Exit 137). |
+| 4 | **Micro Test Driver** | [`perf/perf01_stress_test.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_stress_test.py) | Engine kiểm thử Micro 3x4 và săn tìm sự kiện OOM-Killed (Exit 137). |
 | 5 | **Macro Test Driver** | [`perf/perf01_macro_stress.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_macro_stress.py) | Engine kiểm thử Macro trên mạng P2P đa node phân cấp (Server-Edge-IoT). |
-| 6 | **Ma trận Micro 3x3 (CSV)** | [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv) | Bảng dữ liệu thực nghiệm 9 đợt (TPS, RAM Peak, Avg CPU, Throttling). |
+| 6 | **Ma trận Micro 3x4 (CSV)** | [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv) | Bảng dữ liệu thực nghiệm 12 đợt (TPS, RAM Peak, Avg CPU, Throttling). |
 | 7 | **Biểu đồ OOM Risk Matrix (PNG)** | [`perf/results/perf01_oom_risk_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_oom_risk_chart.png) | Biểu đồ 3 panel so sánh Peak RAM, Ingestion TPS và CPU Saturation. |
 | 8 | **Số liệu Tải Cực hạn OOM (CSV)** | [`perf/results/perf01_extreme_oom_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv) | Dữ liệu quy đạo RAM và sự kiện OOM-Killed tại Tx #1050 trên node 60MB RAM. |
 | 9 | **Biểu đồ Extreme OOM Cliff (PNG)** | [`perf/results/perf01_extreme_oom_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png) | Biểu đồ trực quan hóa ranh giới sụp đổ OOM của ML-DSA-87 so với ECDSA. |

@@ -1,7 +1,7 @@
 """
 PERF-01: Resource Constrained Stress Test Suite (DevOps & Hardware Benchmark)
 Nang cap toan dien:
-1. Thi nghiem 1: Baseline Hardware Matrix 3x3 (Server, Edge, IoT x ECDSA, RSA-2048, ML-DSA-87 Level 5)
+1. Thi nghiem 1: Baseline Hardware Matrix 3x4 (Server, Edge, IoT x ECDSA, RSA-2048, ML-DSA-44, ML-DSA-87 Level 5)
 2. Thi nghiem 2: Extreme Stress Test & OOM Hunt (Phat hien nguong OOM-Killed Exit 137 tren chip IoT)
 3. Xuat bang ma tran CSV, JSON va bieu do truc quan hoa OOM Risk & Extreme OOM Cliff.
 """
@@ -691,7 +691,7 @@ def main():
 
     print("=" * 80)
     print("  KHOI CHAY PERF-01: RESOURCE CONSTRAINED STRESS TEST BENCHMARK")
-    print("  ML-DSA-87 (NIST Level 5) vs ECDSA vs RSA-2048 tren 3 Profile Docker")
+    print("  ML-DSA-87 & ML-DSA-44 (NIST FIPS 204) vs ECDSA vs RSA-2048 tren 3 Profile Docker")
     print("=" * 80)
 
     # 1. Doc datasets cho 500 txs
@@ -704,7 +704,7 @@ def main():
         with open(file_path, 'r', encoding='utf-8') as f:
             datasets[algo['id']] = json.load(f)
 
-    # 2. Chay ma tran 3x3: Server, Edge, IoT x ECDSA, RSA, ML-DSA-87
+    # 2. Chay ma tran 3x4: Server, Edge, IoT x ECDSA, RSA, ML-DSA-44, ML-DSA-87
     all_results = []
     for p_key in ["server", "edge", "iot"]:
         p_info = PROFILES[p_key]
@@ -738,7 +738,7 @@ def main():
     print("\n" + "=" * 80)
     print("  HOAN TAT TOAN BO BENCHMARK PERF-01 (ML-DSA-87 & OOM HUNT)!")
     print(f"  - Ket qua JSON:         {json_path}")
-    print(f"  - Bang CSV 3x3:         {csv_path}")
+    print(f"  - Bang CSV 3x4:         {csv_path}")
     print(f"  - Bieu do OOM Matrix:   {chart_path}")
     print(f"  - Bang CSV Extreme OOM: {extreme_csv}")
     print(f"  - Bieu do Extreme OOM:  {extreme_chart}")
