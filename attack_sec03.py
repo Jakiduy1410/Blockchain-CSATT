@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
 """
-SEC-03: HTTP / HTTPS / WebSocket fuzzing.
+SEC-03 automated transaction mutation testing.
 
-Examples:
-    python3 attack_sec03.py --transport http
-    python3 attack_sec03.py --transport http --assume-replay-blocked
-    python3 attack_sec03.py --transport https --insecure
-    python3 attack_sec03.py --transport wss --ws-path /ws --insecure
+Run:
+    python3 attack_sec03.py
 
-Normal completion:
-    334 bit-flipping + 333 payload mutation
-    + 1 replay baseline + 332 replay attempts = 1,000 transaction sends.
+Optional:
+    python3 attack_sec03.py --no-assume-replay-blocked
+    python3 attack_sec03.py --no-show-sample
 
-Pre-check traffic is additional diagnostic traffic:
-    HTTP:  TCP -> HTTP health GET
-    HTTPS: TCP -> TLS 1.3 -> HTTPS health GET
-    WSS:   TCP -> TLS 1.3 -> WebSocket handshake -> Ping/Pong
+Automatic behavior:
+    - Locate the project client.
+    - Detect HTTP, HTTPS, or WSS for each Node.
+    - Search project JSON files for funded wallet candidates.
+    - If candidates are empty, generate a fresh wallet with dummy balance
+      metadata of 10000.0. This DOES NOT fund the Node's ledger.
+    - Generate 668 signed transactions in RAM.
+    - Send 334 bit mutations, 333 payload mutations,
+      1 replay baseline, and 332 replay attempts.
+
+Replay override defaults to True:
+    Replay responses are classified as blocked by assumption after an
+    accepted baseline. Transport failures remain Unknown.
+
+The project client selects the signing algorithm, including ML-DSA-87.
+No ML-DSA-44 signature size is imposed on ML-DSA-87.
 
 Dependencies:
     requests
-    websockets>=15 only for WSS
-    The project's Flask and cryptographic dependencies.
-
---assume-replay-blocked:
-    Preserves the earlier assumption-based replay classification.
-    Connection failures remain Unknown.
+    Project Flask/cryptographic dependencies
+    websockets>=15 only if WSS is needed
 """
 
 from __future__ import annotations
@@ -32,11 +37,11 @@ from __future__ import annotations
 import argparse
 import copy
 import importlib.util
+import ipaddress
 import json
 import math
 import random
 import re
-import socket
 import ssl
 import sys
 import time
@@ -60,21 +65,17 @@ MUTATION = "Payload mutation"
 REPLAY = "Replay"
 KINDS = (BIT, MUTATION, REPLAY)
 
-HTTP_TRANSPORTS = {"http", "https"}
-TLS_TRANSPORTS = {"https", "wss"}
+HEALTH_PATHS = ("/status", "/health", "/healthz", "/")
+WS_PATHS = ("/ws", "/transactions/ws", "/p2p/ws", "/")
 
 ACCEPTED = {"accepted", "success", "created", "ok"}
 REJECTED = {"rejected", "invalid", "blocked", "denied"}
-DUPLICATE = {"duplicate", "ignored", "skipped", "already_processed"}
+DUPLICATES = {"duplicate", "ignored", "skipped", "already_processed"}
 
-NETWORK_ERRORS = (
-    OSError,
-    TimeoutError,
-    requests.exceptions.RequestException,
-)
+DUMMY_BALANCE = 10000.0
 
 
-def json_text(value: Any) -> str:
+def encode(value: Any) -> str:
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -83,7 +84,7 @@ def json_text(value: Any) -> str:
     )
 
 
-def valid_hex(value: Any, name: str) -> bytes:
+def decode_hex(value: Any, name: str) -> bytes:
     if (
         not isinstance(value, str)
         or not value
@@ -91,70 +92,66 @@ def valid_hex(value: Any, name: str) -> bytes:
         or not re.fullmatch(r"[0-9a-fA-F]+", value)
     ):
         raise ValueError(f"{name}: invalid hex")
-
     return bytes.fromhex(value)
 
 
-def exception_chain(exc: BaseException) -> str:
-    """Include wrapped urllib3, socket, and SSL causes."""
-    output = []
+def error_text(exc: BaseException) -> str:
+    messages = []
     visited = set()
 
-    def visit(error: BaseException) -> None:
-        if id(error) in visited:
+    def visit(error):
+        if not isinstance(error, BaseException) or id(error) in visited:
             return
-
         visited.add(id(error))
-        output.append(f"{type(error).__name__}: {error}")
-
-        cause = error.__cause__ or error.__context__
-        if isinstance(cause, BaseException):
-            visit(cause)
-
-        reason = getattr(error, "reason", None)
-        if isinstance(reason, BaseException):
-            visit(reason)
-
+        messages.append(f"{type(error).__name__}: {error}")
+        visit(error.__cause__ or error.__context__)
+        visit(getattr(error, "reason", None))
         for argument in error.args:
-            if isinstance(argument, BaseException):
-                visit(argument)
+            visit(argument)
 
     visit(exc)
-    return " -> ".join(output)
+    return " -> ".join(messages)
 
 
-def normalize(value: str) -> str:
-    value = value.casefold().replace("đ", "d").replace("_", " ")
+def loopback(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
+
+def normalized(text: str) -> str:
+    text = text.casefold().replace("đ", "d").replace("_", " ")
     return "".join(
         char
-        for char in unicodedata.normalize("NFD", value)
+        for char in unicodedata.normalize("NFD", text)
         if unicodedata.category(char) != "Mn"
     )
 
 
-def response_code(body: Any) -> int | None:
+def app_code(body: Any) -> int | None:
     if not isinstance(body, dict):
         return None
 
     for key in ("status_code", "http_status", "code"):
         value = body.get(key)
-
         if isinstance(value, bool):
             continue
-
         if isinstance(value, int) and 100 <= value <= 599:
             return value
-
         if isinstance(value, str) and re.fullmatch(r"[1-5]\d\d", value):
             return int(value)
-
     return None
 
 
-def has_duplicate_evidence(body: Any) -> bool:
+def duplicate_reply(body: Any) -> bool:
     if not isinstance(body, dict):
         return False
+
+    if str(body.get("status", "")).lower() in DUPLICATES:
+        return True
 
     if any(
         body.get(key) is True
@@ -162,16 +159,12 @@ def has_duplicate_evidence(body: Any) -> bool:
     ):
         return True
 
-    if str(body.get("status", "")).lower() in DUPLICATE:
-        return True
-
     for key in ("code", "error_code", "message", "reason"):
         value = body.get(key)
         if not isinstance(value, str):
             continue
 
-        text = normalize(value)
-
+        text = normalized(value)
         if re.search(
             r"\b(no duplicate|not a duplicate|not duplicate|"
             r"khong trung|khong ton tai|chua su dung)\b",
@@ -190,188 +183,22 @@ def has_duplicate_evidence(body: Any) -> bool:
     return False
 
 
-def has_application_reply(body: Any) -> bool:
+def application_reply(body: Any) -> bool:
     if not isinstance(body, dict):
         return False
 
     return (
-        response_code(body) is not None
+        app_code(body) is not None
         or isinstance(body.get("accepted"), bool)
         or isinstance(body.get("success"), bool)
         or str(body.get("status", "")).lower()
-        in ACCEPTED | REJECTED | DUPLICATE
-        or has_duplicate_evidence(body)
+        in ACCEPTED | REJECTED | DUPLICATES
+        or duplicate_reply(body)
     )
 
 
-class ProjectClient:
-    """Call project signing endpoints in RAM, without network requests."""
-
-    def __init__(self, root: Path, client_file: Path | None):
-        self.root = root
-
-        paths = (
-            [client_file.resolve()]
-            if client_file
-            else [
-                root / "blockchain_client" / "blockchain_client.py",
-                root / "blockchain_client.py",
-            ]
-        )
-
-        source = next((path for path in paths if path.is_file()), None)
-        if source is None:
-            raise RuntimeError("Cannot find blockchain_client.py")
-
-        sys.path.insert(0, str(root))
-        sys.path.insert(0, str(source.parent))
-
-        spec = importlib.util.spec_from_file_location("sec03_client", source)
-        if spec is None or spec.loader is None:
-            raise RuntimeError("Cannot import project client")
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-
-        app = getattr(module, "app", None)
-        if not callable(getattr(app, "test_client", None)):
-            raise RuntimeError("Client must expose a Flask app")
-
-        self.client = app.test_client()
-        self.algorithm = str(getattr(module, "SIG_ALG", "project-defined"))
-
-    def wallet(self) -> dict:
-        response = self.client.get("/wallet/new")
-        data = response.get_json(silent=True)
-
-        if response.status_code != 200 or not isinstance(data, dict):
-            raise RuntimeError("Project /wallet/new failed")
-
-        valid_hex(data.get("public_key"), "public_key")
-        valid_hex(data.get("private_key"), "private_key")
-        return data
-
-    def sign(self, wallet: dict, recipient: str, amount: int) -> dict:
-        nonce = str(uuid.uuid4())
-
-        response = self.client.post(
-            "/generate/transaction",
-            data={
-                "sender_address": wallet["public_key"],
-                "sender_private_key": wallet["private_key"],
-                "recipient_address": recipient,
-                "amount": str(amount),
-                "nonce": nonce,
-            },
-        )
-        body = response.get_json(silent=True)
-
-        if response.status_code != 200 or not isinstance(body, dict):
-            raise RuntimeError("Project signing endpoint failed")
-
-        original = body.get("transaction")
-        if not isinstance(original, dict):
-            raise RuntimeError("Signer returned no transaction object")
-
-        tx = copy.deepcopy(original)
-        tx.pop("private_key", None)
-        tx.pop("sender_private_key", None)
-
-        signature = body.get("signature", tx.get("signature"))
-        valid_hex(signature, "signature")
-
-        if tx.get("sender_address") != wallet["public_key"]:
-            raise RuntimeError("Unexpected signed sender")
-
-        if tx.get("recipient_address") != recipient:
-            raise RuntimeError("Unexpected signed recipient")
-
-        if str(tx.get("amount", tx.get("value"))) != str(amount):
-            raise RuntimeError("Unexpected signed amount")
-
-        tx.pop("value", None)
-        tx["amount"] = amount
-        tx["signature"] = signature
-        tx.setdefault("nonce", nonce)
-
-        json_text(tx)
-        return tx
-
-    def fixtures(self, name: str | None) -> list[dict]:
-        recipient = self.wallet()["public_key"]
-        wallets = {}
-
-        for path in (
-            self.root / "configs" / "wallets.json",
-            self.root / "wallets.json",
-        ):
-            if path.is_file():
-                wallets = json.loads(path.read_text(encoding="utf-8"))
-                break
-
-        if not isinstance(wallets, dict):
-            raise ValueError("wallets.json must contain an object")
-
-        if name and name not in wallets:
-            raise ValueError(f"Wallet {name!r} not found")
-
-        sender = None
-        baseline = None
-        selected = None
-
-        for candidate in ([name] if name else list(wallets)):
-            wallet = wallets[candidate]
-
-            try:
-                balance = float(wallet.get("initial_balance", 0))
-
-                if not math.isfinite(balance) or balance < 1:
-                    continue
-
-                if len(valid_hex(wallet["public_key"], "public_key")) != len(
-                    valid_hex(recipient, "recipient")
-                ):
-                    continue
-
-                signed = self.sign(wallet, recipient, 1)
-
-            except (
-                ValueError,
-                KeyError,
-                TypeError,
-                AttributeError,
-                RuntimeError,
-            ):
-                continue
-
-            sender = wallet
-            baseline = signed
-            selected = candidate
-            break
-
-        if sender is None:
-            raise RuntimeError(
-                "No compatible funded sample wallet. Configure a funded test "
-                "wallet in configs/wallets.json, or select one with --wallet."
-            )
-
-        print(f"[SIGNER] {self.algorithm}; wallet={selected}")
-        print("[FIXTURES] Generating 668 signed transactions...")
-
-        fixtures = [
-            self.sign(sender, recipient, amount)
-            for amount in range(2, 669)
-        ]
-        fixtures.append(baseline)
-
-        return fixtures
-
-
 class TLSAdapter(HTTPAdapter):
-    """Used only for HTTPS, never for plain HTTP."""
-
-    def __init__(self, context: ssl.SSLContext):
+    def __init__(self, context):
         self.context = context
         super().__init__(max_retries=0)
 
@@ -385,6 +212,50 @@ class TLSAdapter(HTTPAdapter):
         )
 
 
+def make_tls_context(args, insecure=False):
+    context = ssl.create_default_context(cafile=args.ca_file)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+
+    if insecure:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    if args.client_cert:
+        context.load_cert_chain(args.client_cert, args.client_key)
+
+    return context
+
+
+def make_session(args, context=None, insecure=False):
+    session = requests.Session()
+    session.trust_env = False
+    session.mount("http://", HTTPAdapter(max_retries=0))
+
+    if context is not None:
+        session.mount("https://", TLSAdapter(context))
+        session.verify = False if insecure else args.ca_file or True
+
+        if args.client_cert:
+            session.cert = (
+                (args.client_cert, args.client_key)
+                if args.client_key
+                else args.client_cert
+            )
+
+    return session
+
+
+@dataclass
+class Node:
+    port: int
+    protocol: str
+    path: str
+    session: Any = None
+    context: Any = None
+    certificate_verified: bool | None = None
+
+
 @dataclass
 class Observation:
     http_status: int | None
@@ -394,78 +265,33 @@ class Observation:
     elapsed_ms: float
 
 
-class Transport:
+class AutoTransport:
     def __init__(self, args):
         self.args = args
-        self.context = None
-        self.ws_connect = None
-        self.ws_errors = ()
+        self.nodes: dict[int, Node] = {}
+        self.connect_ws = None
 
-        # FIX: plain HTTP requires no SSL context or TLS handshake.
-        if args.transport in TLS_TRANSPORTS:
-            self.context = ssl.create_default_context(cafile=args.ca_file)
-            self.context.minimum_version = ssl.TLSVersion.TLSv1_3
-            self.context.maximum_version = ssl.TLSVersion.TLSv1_3
+        try:
+            from websockets.sync.client import connect
+            self.connect_ws = connect
+        except ImportError:
+            pass
 
-            if args.insecure:
-                self.context.check_hostname = False
-                self.context.verify_mode = ssl.CERT_NONE
-                print("[TLS] Certificate verification disabled (--insecure).")
+    def url(self, protocol, port, path):
+        host = self.args.host
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"{protocol}://{host}:{port}{path}"
 
-            if args.client_cert:
-                self.context.load_cert_chain(
-                    args.client_cert,
-                    keyfile=args.client_key,
-                )
-        else:
-            print("[TRANSPORT] Plain HTTP; TLS is disabled.")
-
-            if (
-                args.insecure
-                or args.ca_file
-                or args.client_cert
-                or args.client_key
-            ):
-                print("[INFO] TLS options are ignored for --transport http.")
-
-        self.session = requests.Session()
-        self.session.trust_env = False
-
-        # FIX: explicitly configure a standard adapter for HTTP.
-        self.session.mount("http://", HTTPAdapter(max_retries=0))
-
-        if args.transport == "https":
-            self.session.mount("https://", TLSAdapter(self.context))
-            self.session.verify = (
-                False if args.insecure else args.ca_file or True
+    def open_ws(self, node):
+        if self.connect_ws is None:
+            raise RuntimeError(
+                'Install WSS support: pip install "websockets>=15"'
             )
 
-            if args.client_cert:
-                self.session.cert = (
-                    (args.client_cert, args.client_key)
-                    if args.client_key
-                    else args.client_cert
-                )
-
-        if args.transport == "wss":
-            try:
-                from websockets.sync.client import connect
-                from websockets.exceptions import WebSocketException
-            except ImportError as exc:
-                raise RuntimeError(
-                    'Install WebSocket support: pip install "websockets>=15"'
-                ) from exc
-
-            self.ws_connect = connect
-            self.ws_errors = (WebSocketException,)
-
-    def url(self, port: int, path: str) -> str:
-        return f"{self.args.transport}://{self.args.host}:{port}{path}"
-
-    def open_ws(self, port: int):
-        return self.ws_connect(
-            self.url(port, self.args.ws_path),
-            ssl=self.context,
+        return self.connect_ws(
+            self.url("wss", node.port, node.path),
+            ssl=node.context,
             proxy=None,
             open_timeout=self.args.timeout,
             close_timeout=min(self.args.timeout, 2),
@@ -477,140 +303,250 @@ class Transport:
             ),
         )
 
-    def precheck(self) -> None:
-        failures = []
+    def probe_rest(self, protocol, port, context, insecure, errors):
+        session = make_session(self.args, context, insecure)
+        found = False
 
-        if self.args.transport == "http":
-            print("\n[PRE-CHECK] TCP -> HTTP health endpoint")
-        else:
-            print("\n[PRE-CHECK] TCP -> TLS 1.3 -> application transport")
-
-        for port in self.args.ports:
-            stage = "TCP"
-            connection_detail = "plain HTTP; no TLS"
-
-            try:
-                with socket.create_connection(
-                    (self.args.host, port),
-                    timeout=self.args.timeout,
-                ) as raw:
-
-                    # FIX: TLS wrapping happens only for HTTPS/WSS.
-                    if self.args.transport in TLS_TRANSPORTS:
-                        stage = "TLS"
-
-                        with self.context.wrap_socket(
-                            raw,
-                            server_hostname=self.args.host,
-                        ) as tls:
-                            version = tls.version()
-                            cipher = tls.cipher()[0]
-                            connection_detail = f"{version} | {cipher}"
-
-                stage = self.args.transport.upper()
-
-                # FIX: HTTP and HTTPS share the REST health-check branch.
-                if self.args.transport in HTTP_TRANSPORTS:
-                    response = self.session.get(
-                        self.url(port, self.args.health_path),
-                        timeout=self.args.timeout,
+        try:
+            for path in HEALTH_PATHS:
+                try:
+                    response = session.get(
+                        self.url(protocol, port, path),
+                        timeout=self.args.probe_timeout,
                         allow_redirects=False,
                     )
 
-                    if not 200 <= response.status_code < 300:
-                        raise RuntimeError(
-                            f"Health endpoint returned HTTP "
-                            f"{response.status_code}; check --health-path"
+                    if 200 <= response.status_code < 300:
+                        found = True
+                        return Node(
+                            port=port,
+                            protocol=protocol,
+                            path=path,
+                            session=session,
+                            context=context,
+                            certificate_verified=(
+                                not insecure
+                                if protocol == "https"
+                                else None
+                            ),
                         )
 
-                    detail = f"health HTTP {response.status_code}"
+                    errors.append(
+                        f"{protocol} {path}: HTTP {response.status_code}"
+                    )
 
-                else:
-                    with self.open_ws(port) as ws:
-                        pong = ws.ping()
+                except requests.RequestException as exc:
+                    errors.append(f"{protocol}: {error_text(exc)}")
+                    break
 
-                        if not pong.wait(self.args.timeout):
-                            raise TimeoutError("WebSocket Pong timeout")
+            return None
 
-                    detail = "WebSocket handshake + Pong OK"
+        finally:
+            if not found:
+                session.close()
 
-                print(
-                    f"[OK] {self.args.host}:{port} | "
-                    f"{connection_detail} | {detail}",
-                    flush=True,
+    def discover_node(self, port):
+        errors = []
+
+        node = self.probe_rest("http", port, None, False, errors)
+        if node:
+            return node
+
+        tls_modes = [False]
+        if loopback(self.args.host) and not self.args.strict_tls:
+            tls_modes.append(True)
+
+        for insecure in tls_modes:
+            context = make_tls_context(self.args, insecure)
+
+            node = self.probe_rest(
+                "https", port, context, insecure, errors
+            )
+            if node:
+                return node
+
+            if self.connect_ws is None:
+                continue
+
+            paths = (
+                [self.args.ws_path]
+                if self.args.ws_path
+                else WS_PATHS
+            )
+
+            for path in paths:
+                candidate = Node(
+                    port=port,
+                    protocol="wss",
+                    path=path,
+                    context=context,
+                    certificate_verified=not insecure,
                 )
 
-            except Exception as exc:
-                error = exception_chain(exc)
-                failures.append((port, stage, error))
+                try:
+                    with self.open_ws(candidate) as ws:
+                        if not ws.ping().wait(self.args.probe_timeout):
+                            raise TimeoutError("WebSocket Pong timeout")
+                    return candidate
 
+                except Exception as exc:
+                    errors.append(
+                        f"wss {path}: {error_text(exc)}"
+                    )
+
+        print(
+            f"\n[FAIL] Cannot detect transport at "
+            f"{self.args.host}:{port}"
+        )
+        for message in errors:
+            print(f"  {message}")
+
+        if self.connect_ws is None:
+            print('  WSS unavailable: install "websockets>=15".')
+
+        return None
+
+    def discover(self):
+        print("[AUTO] Detecting transport on every node...")
+        failures = []
+
+        for port in self.args.ports:
+            node = self.discover_node(port)
+
+            if node is None:
+                failures.append(port)
+                continue
+
+            self.nodes[port] = node
+            print(
+                f"[OK] {self.url(node.protocol, port, node.path)}",
+                flush=True,
+            )
+
+            if node.certificate_verified is False:
                 print(
-                    f"[FAIL] {self.args.host}:{port} | "
-                    f"stage={stage} | {error}",
+                    "     Loopback self-signed fallback: "
+                    "certificate verification is DISABLED.",
                     flush=True,
                 )
 
         if failures:
-            print(
-                "\nKiểm tra trên máy chạy Node:\n"
-                "  ss -ltnp | grep -E ':(5000|5001|5002|5003|5004|5005)\\b'\n"
-                "  - Xác nhận đúng port API; port P2P có thể khác port API.\n"
-                "  - ConnectionRefusedError: kiểm tra Node, listener và port mapping.\n"
-                "  - HTTP 404: kiểm tra --health-path; mặc định là /status.\n"
-                "  - Nếu chạy trong container/VM, 127.0.0.1 là chính container/VM đó."
-            )
-
-            if self.args.transport == "http":
-                print(
-                    "  - Server HTTP thường: dùng --transport http.\n"
-                    f"  curl -v http://{self.args.host}:"
-                    f"{self.args.ports[0]}{self.args.health_path}"
-                )
-            else:
-                print(
-                    "  - Kiểm tra Node đã bật TLS 1.3.\n"
-                    "  - Kiểm tra CA/SAN của chứng chỉ.\n"
-                    "  - Nếu dùng mTLS: cung cấp --client-cert và --client-key.\n"
-                    "  - WRONG_VERSION_NUMBER: port có thể đang phục vụ HTTP thường.\n"
-                    "  - InvalidHandshake/HTTP 404: kiểm tra --ws-path."
-                )
-
             raise RuntimeError(
-                "Pre-check failed; no transaction tests were sent"
+                f"Pre-check failed on ports {failures}. "
+                "Check running nodes, listeners, health endpoints, "
+                "container port mappings, certificates, and WS paths. "
+                "No transaction tests were sent."
             )
 
-    def wire(self, transaction: dict) -> str:
-        payload: Any = transaction
+    def balances(self) -> dict[str, float]:
+        """Use the minimum balance reported by successful REST responses."""
+        balances = {}
 
-        if (
-            self.args.transport == "wss"
-            and self.args.ws_payload_key
-        ):
-            payload = {
-                self.args.ws_payload_key: transaction,
-            }
+        for node in self.nodes.values():
+            if node.protocol not in {"http", "https"}:
+                continue
 
+            try:
+                response = node.session.get(
+                    self.url(
+                        node.protocol,
+                        node.port,
+                        "/accounts/balance",
+                    ),
+                    timeout=self.args.probe_timeout,
+                    allow_redirects=False,
+                )
+
+                if response.status_code != 200:
+                    continue
+
+                body = response.json()
+                records = (
+                    body.get("balances", [])
+                    if isinstance(body, dict)
+                    else []
+                )
+
+                if isinstance(records, dict):
+                    records = [
+                        (
+                            {
+                                "address": address,
+                                "available_balance": value,
+                            }
+                            if not isinstance(value, dict)
+                            else {"address": address, **value}
+                        )
+                        for address, value in records.items()
+                    ]
+
+                if not isinstance(records, list):
+                    continue
+
+                for record in records:
+                    if not isinstance(record, dict):
+                        continue
+
+                    address = record.get(
+                        "address", record.get("public_key")
+                    )
+                    value = record.get(
+                        "available_balance",
+                        record.get(
+                            "balance",
+                            record.get("confirmed_balance"),
+                        ),
+                    )
+
+                    if not isinstance(address, str):
+                        continue
+
+                    try:
+                        value = float(value)
+                    except (ValueError, TypeError):
+                        continue
+
+                    if math.isfinite(value):
+                        balances[address] = min(
+                            balances.get(address, value),
+                            value,
+                        )
+
+            except (requests.RequestException, ValueError):
+                continue
+
+        return balances
+
+    def wire(self, node, tx):
+        if node.protocol == "wss" and self.args.ws_payload_key:
+            envelope = {self.args.ws_payload_key: tx}
             if self.args.ws_type:
-                payload["type"] = self.args.ws_type
+                envelope["type"] = self.args.ws_type
+            return encode(envelope)
 
-        return json_text(payload)
+        return encode(tx)
 
-    def send(self, port: int, wire: str) -> Observation:
+    def send(self, port, wire):
+        node = self.nodes[port]
         started = time.monotonic()
         http_status = None
         body = None
         error = None
 
         try:
-            # FIX: plain HTTP uses requests.post with an http:// URL.
-            if self.args.transport in HTTP_TRANSPORTS:
-                response = self.session.post(
-                    self.url(port, self.args.tx_path),
+            if node.protocol in {"http", "https"}:
+                response = node.session.post(
+                    self.url(
+                        node.protocol,
+                        port,
+                        "/transactions/new",
+                    ),
                     data=wire.encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     timeout=self.args.timeout,
                     allow_redirects=False,
                 )
+
                 http_status = response.status_code
 
                 try:
@@ -621,51 +557,46 @@ class Transport:
                     }
 
             else:
-                # One transaction per connection. No automatic resend.
-                with self.open_ws(port) as ws:
+                with self.open_ws(node) as ws:
                     ws.send(wire)
                     deadline = time.monotonic() + self.args.timeout
 
                     while True:
                         remaining = deadline - time.monotonic()
-
                         if remaining <= 0:
                             raise TimeoutError(
-                                "No matching transaction JSON acknowledgement"
+                                "No matching transaction "
+                                "JSON acknowledgement"
                             )
 
-                        raw_reply = ws.recv(timeout=remaining)
+                        raw = ws.recv(timeout=remaining)
 
                         try:
-                            candidate = json.loads(raw_reply)
+                            candidate = json.loads(raw)
                         except (ValueError, UnicodeError):
                             continue
 
-                        if (
-                            self.args.ws_reply_type
-                            and (
-                                not isinstance(candidate, dict)
-                                or candidate.get("type")
-                                != self.args.ws_reply_type
-                            )
+                        if self.args.ws_reply_type and (
+                            not isinstance(candidate, dict)
+                            or candidate.get("type")
+                            != self.args.ws_reply_type
                         ):
                             continue
 
-                        if has_application_reply(candidate):
+                        if application_reply(candidate):
                             body = candidate
                             break
 
-        except NETWORK_ERRORS + self.ws_errors as exc:
-            error = exception_chain(exc)
-
+        except Exception as exc:
+            error = error_text(exc)
             print(
-                f"[NETWORK ERROR] {self.args.host}:{port} | {error}",
+                f"[SEND ERROR] port={port} | {error}",
                 flush=True,
             )
 
         return Observation(
             http_status=http_status,
-            application_code=response_code(body),
+            application_code=app_code(body),
             body=body,
             error=error,
             elapsed_ms=round(
@@ -675,10 +606,371 @@ class Transport:
         )
 
     def close(self):
-        self.session.close()
+        for node in self.nodes.values():
+            if node.session is not None:
+                node.session.close()
 
 
-def accepted(obs: Observation) -> bool:
+def locate_project(explicit_root=None):
+    roots = (
+        [explicit_root.resolve()]
+        if explicit_root
+        else [
+            Path.cwd().resolve(),
+            Path(__file__).resolve().parent,
+        ]
+    )
+
+    for root in dict.fromkeys(roots):
+        for candidate_root in (root, root.parent):
+            for client_path in (
+                candidate_root
+                / "blockchain_client"
+                / "blockchain_client.py",
+                candidate_root / "blockchain_client.py",
+            ):
+                if client_path.is_file():
+                    return candidate_root, client_path
+
+    raise RuntimeError(
+        "Cannot find blockchain_client.py. Place this script "
+        "in the project root or run it from the project directory."
+    )
+
+
+@dataclass
+class Wallet:
+    name: str
+    public_key: str
+    private_key: str
+    balance: float
+    source: Path | None
+    balance_source: str
+
+
+class ProjectClient:
+    def __init__(self, root, source):
+        self.root = root
+        self.source = source
+
+        sys.path.insert(0, str(root))
+        sys.path.insert(0, str(source.parent))
+
+        spec = importlib.util.spec_from_file_location(
+            "sec03_client", source
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Cannot import project client")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+
+        app = getattr(module, "app", None)
+        if not callable(getattr(app, "test_client", None)):
+            raise RuntimeError(
+                "Project client must expose Flask app"
+            )
+
+        self.client = app.test_client()
+        self.algorithm = str(
+            getattr(module, "SIG_ALG", "project-defined")
+        )
+
+    def new_wallet(self):
+        response = self.client.get("/wallet/new")
+        body = response.get_json(silent=True)
+
+        if response.status_code != 200 or not isinstance(body, dict):
+            raise RuntimeError("Project /wallet/new failed")
+
+        decode_hex(body.get("public_key"), "public_key")
+        decode_hex(body.get("private_key"), "private_key")
+        return body
+
+    def sign(self, wallet, recipient, amount):
+        nonce = str(uuid.uuid4())
+
+        response = self.client.post(
+            "/generate/transaction",
+            data={
+                "sender_address": wallet.public_key,
+                "sender_private_key": wallet.private_key,
+                "recipient_address": recipient,
+                "amount": str(amount),
+                "nonce": nonce,
+            },
+        )
+        body = response.get_json(silent=True)
+
+        if response.status_code != 200 or not isinstance(body, dict):
+            raise RuntimeError("Project signing endpoint failed")
+
+        original = body.get("transaction")
+        if not isinstance(original, dict):
+            raise RuntimeError(
+                "Signer returned no transaction object"
+            )
+
+        tx = copy.deepcopy(original)
+        tx.pop("value", None) if False else None
+        tx.pop("private_key", None)
+        tx.pop("sender_private_key", None)
+
+        signature = body.get("signature", tx.get("signature"))
+        decode_hex(signature, "signature")
+
+        if tx.get("sender_address") != wallet.public_key:
+            raise RuntimeError("Unexpected signed sender")
+
+        if tx.get("recipient_address") != recipient:
+            raise RuntimeError("Unexpected signed recipient")
+
+        if str(tx.get("amount", tx.get("value"))) != str(amount):
+            raise RuntimeError("Unexpected signed amount")
+
+        # Existing project API converts amount to string value.
+        tx.pop("value", None)
+        tx["amount"] = amount
+        tx["signature"] = signature
+        tx.setdefault("nonce", nonce)
+
+        encode(tx)
+        return tx
+
+    def wallet_files(self):
+        paths = set()
+
+        for directory in (
+            self.root / "configs",
+            self.root / "config",
+            self.root / "wallets",
+        ):
+            if directory.is_dir():
+                paths.update(directory.rglob("*.json"))
+
+        for directory in (self.root, self.source.parent):
+            paths.update(directory.glob("*.json"))
+
+        return [
+            path
+            for path in sorted(paths)
+            if path.is_file()
+            and path.stat().st_size <= 10 * 1024 * 1024
+        ]
+
+    def discover_wallets(self, live_balances):
+        candidates = []
+        seen = set()
+
+        def first(record, keys):
+            return next(
+                (record[key] for key in keys if key in record),
+                None,
+            )
+
+        def visit(value, path, label="wallet", depth=0):
+            if depth > 12:
+                return
+
+            if isinstance(value, list):
+                for index, entry in enumerate(value):
+                    visit(
+                        entry,
+                        path,
+                        f"{label}[{index}]",
+                        depth + 1,
+                    )
+                return
+
+            if not isinstance(value, dict):
+                return
+
+            public = first(
+                value,
+                ("public_key", "sender_address", "publicKey"),
+            )
+            private = first(
+                value,
+                ("private_key", "sender_private_key", "privateKey"),
+            )
+
+            if isinstance(public, str) and isinstance(private, str):
+                try:
+                    decode_hex(public, "public_key")
+                    decode_hex(private, "private_key")
+
+                    if public in live_balances:
+                        balance = live_balances[public]
+                        balance_source = "live API"
+                    else:
+                        raw_balance = first(
+                            value,
+                            (
+                                "available_balance",
+                                "balance",
+                                "initial_balance",
+                            ),
+                        )
+                        balance = float(raw_balance)
+                        balance_source = "local configuration"
+
+                    identity = (public, private)
+
+                    if (
+                        math.isfinite(balance)
+                        and balance >= 1
+                        and identity not in seen
+                    ):
+                        seen.add(identity)
+                        candidates.append(
+                            Wallet(
+                                name=str(value.get("name", label)),
+                                public_key=public,
+                                private_key=private,
+                                balance=balance,
+                                source=path,
+                                balance_source=balance_source,
+                            )
+                        )
+
+                except (ValueError, TypeError):
+                    pass
+
+            for key, entry in value.items():
+                if isinstance(entry, (dict, list)):
+                    visit(entry, path, str(key), depth + 1)
+
+        files = self.wallet_files()
+
+        for path in files:
+            try:
+                data = json.loads(
+                    path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, ValueError):
+                continue
+
+            visit(data, path)
+
+        candidates.sort(
+            key=lambda wallet: (
+                wallet.balance_source == "live API",
+                wallet.balance,
+            ),
+            reverse=True,
+        )
+
+        print(
+            f"[AUTO] Scanned {len(files)} JSON files; "
+            f"found {len(candidates)} funded wallet candidates."
+        )
+        return candidates
+
+    def fixtures(self, transport):
+        recipient = self.new_wallet()["public_key"]
+        expected_size = len(decode_hex(recipient, "recipient"))
+
+        candidates = self.discover_wallets(transport.balances())
+
+        # UPDATE 2:
+        # Create a fresh sender when no funded candidate exists.
+        # The dummy balance is local metadata, not a ledger credit.
+        if not candidates:
+            generated = self.new_wallet()
+
+            candidates = [
+                Wallet(
+                    name="generated-test-wallet",
+                    public_key=generated["public_key"],
+                    private_key=generated["private_key"],
+                    balance=DUMMY_BALANCE,
+                    source=None,
+                    balance_source="dummy metadata; ledger not funded",
+                )
+            ]
+
+            print(
+                "[AUTO] No funded wallet candidate found. "
+                "Generated a fresh test wallet in RAM."
+            )
+            print(
+                f"[AUTO] Assigned dummy balance metadata: "
+                f"{DUMMY_BALANCE:.1f}."
+            )
+            print(
+                "[NOTE] This does not fund the Node ledger. "
+                "Baseline acceptance will still be checked normally."
+            )
+
+        selected = None
+        baseline = None
+
+        for wallet in candidates:
+            public_size = len(
+                decode_hex(wallet.public_key, "public_key")
+            )
+            if public_size != expected_size:
+                continue
+
+            try:
+                baseline = self.sign(wallet, recipient, 1)
+            except (ValueError, RuntimeError, KeyError, TypeError):
+                continue
+
+            selected = wallet
+            break
+
+        if selected is None:
+            raise RuntimeError(
+                "Wallet candidates were found, but none can sign "
+                "with the current project client. Check algorithm "
+                "compatibility and project cryptographic dependencies."
+            )
+
+        source_name = (
+            selected.source.name
+            if selected.source is not None
+            else "generated in RAM"
+        )
+
+        print(
+            f"[WALLET] {selected.name}; "
+            f"source={source_name}; "
+            f"balance={selected.balance:g} "
+            f"({selected.balance_source})"
+        )
+        print(f"[SIGNER] {self.algorithm}")
+        print("[FIXTURES] Generating 668 signed transactions...")
+
+        fixtures = [
+            self.sign(selected, recipient, amount)
+            for amount in range(2, 669)
+        ]
+        fixtures.append(baseline)
+
+        # This validation applies only to ML-DSA-44.
+        # ML-DSA-87 uses its own project-generated key/signature sizes.
+        if self.algorithm.upper().replace("_", "-") == "ML-DSA-44":
+            if expected_size != 1312 or any(
+                len(decode_hex(tx["signature"], "signature")) != 2420
+                for tx in fixtures
+            ):
+                raise RuntimeError(
+                    "Unexpected ML-DSA-44 key/signature size"
+                )
+
+        print(
+            f"[FIXTURES] Ready: {len(fixtures)} transactions; "
+            f"public key={expected_size} bytes; "
+            f"signature="
+            f"{len(decode_hex(fixtures[0]['signature'], 'signature'))} bytes."
+        )
+
+        return fixtures
+
+
+def accepted(obs):
     if obs.error:
         return False
 
@@ -689,8 +981,8 @@ def accepted(obs: Observation) -> bool:
         body.get("accepted") is False
         or body.get("success") is False
         or bool(body.get("error"))
-        or status in REJECTED | DUPLICATE
-        or has_duplicate_evidence(body)
+        or status in REJECTED | DUPLICATES
+        or duplicate_reply(body)
     ):
         return False
 
@@ -725,21 +1017,23 @@ def classify(kind, obs, baseline_ok, assume_replay):
         if assume_replay:
             return "blocked", "replay_override", "assumption"
 
-        if has_duplicate_evidence(obs.body):
-            return "blocked", "explicit_duplicate_response", "application"
+        if duplicate_reply(obs.body):
+            return (
+                "blocked",
+                "explicit_duplicate_response",
+                "application",
+            )
 
     code = (
         obs.http_status
         if obs.http_status is not None
         else obs.application_code
     )
-
     body = obs.body if isinstance(obs.body, dict) else {}
-    status = str(body.get("status", "")).lower()
 
     if kind != REPLAY and (
         code == 406
-        or status in REJECTED
+        or str(body.get("status", "")).lower() in REJECTED
         or body.get("accepted") is False
     ):
         return "blocked", "transaction_rejected", "response"
@@ -763,8 +1057,8 @@ class Stats:
 
 
 def report(stats, algorithm):
-    rows = []
     total = Stats()
+    rows = []
 
     for name, item in stats.items():
         rows.append([
@@ -801,7 +1095,6 @@ def report(stats, algorithm):
     ])
 
     rows = [[str(cell) for cell in row] for row in rows]
-
     headers = [
         "Scenario",
         "Sent",
@@ -810,13 +1103,13 @@ def report(stats, algorithm):
         "Unknown",
         "Baseline OK/Fail",
     ]
-
     widths = [
         max(len(row[index]) for row in [headers, *rows])
         for index in range(len(headers))
     ]
-
-    border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
+    border = "+" + "+".join(
+        "-" * (width + 2) for width in widths
+    ) + "+"
 
     print("\nSEC-03 RESULTS")
     print(border)
@@ -830,47 +1123,45 @@ def report(stats, algorithm):
             )
             + " |"
         )
-
         if index == 0:
             print(border)
 
     print(border)
 
-    print(f"\n[BENCHMARK] {algorithm}: client-observed transport latency")
     print(
-        "Includes connection establishment where needed "
-        "and application response time."
+        f"\n[BENCHMARK] {algorithm}: "
+        "client-observed request latency"
     )
 
-    for name, item in stats.items():
+    for kind, item in stats.items():
         average = (
             f"{math.fsum(item.times) / len(item.times):.2f} ms"
             if item.times
             else "N/A"
         )
         print(
-            f"  {name}: {average}; "
+            f"  {kind}: {average}; "
             f"blocked samples={len(item.times)}"
         )
 
     if total.assumed:
         print(
-            f"ASSUMED replay blocks: {total.assumed}; "
-            "ledger was not verified."
+            f"Assumed replay blocks: {total.assumed}; "
+            "ledger not verified."
         )
 
     passed = (
         total.requests == 1000
         and total.blocked == 999
         and total.baseline_ok == 1
-        and total.unknown == 0
         and total.accepted == 0
+        and total.unknown == 0
         and total.baseline_failed == 0
     )
 
     if passed:
         if total.assumed:
-            print("PASS under configured replay assumption:")
+            print("PASS under the configured replay assumption:")
 
         print(
             "PASS: 999/999 attack attempts blocked (100%); "
@@ -878,7 +1169,7 @@ def report(stats, algorithm):
         )
         return 0
 
-    print("NOT PASS: review transport/application responses in JSONL.")
+    print("NOT PASS: review the JSONL responses.")
     return 1 if total.accepted else 2
 
 
@@ -890,35 +1181,42 @@ def show_sample(path):
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             try:
-                item = json.loads(line)
+                record = json.loads(line)
             except ValueError:
                 continue
 
-            if not isinstance(item, dict):
-                continue
-
-            if item.get("result") == "blocked":
+            if (
+                isinstance(record, dict)
+                and record.get("result") == "blocked"
+            ):
                 count += 1
                 if rng.randrange(count) == 0:
-                    sample = item
+                    sample = record
 
     if sample:
-        print("\n[LOG SAMPLE] Random record classified as blocked:")
+        print(
+            "\n[LOG SAMPLE] Random record classified as blocked:"
+        )
         print(json.dumps(sample, ensure_ascii=False, indent=2))
 
 
 def run(args):
-    transport = Transport(args)
+    root, client_file = locate_project(args.project_root)
+    print(f"[PROJECT] {root}")
+
+    if args.assume_replay_blocked:
+        print(
+            "[MODE] Replay override enabled: "
+            "post-baseline replay responses are assumed blocked."
+        )
+
+    transport = AutoTransport(args)
 
     try:
-        # Fail before signing or sending any transaction.
-        transport.precheck()
+        transport.discover()
 
-        project = ProjectClient(
-            args.project_root.resolve(),
-            args.client_file,
-        )
-        fixtures = project.fixtures(args.wallet)
+        project = ProjectClient(root, client_file)
+        fixtures = project.fixtures(transport)
 
         rng = random.Random(args.seed)
         cases = []
@@ -934,7 +1232,7 @@ def run(args):
                 signature[bit // 8] ^= 1 << (bit % 8)
 
             altered["signature"] = signature.hex()
-            cases.append((BIT, transport.wire(altered), False))
+            cases.append((BIT, altered, False))
 
         for index, tx in enumerate(fixtures[334:667]):
             altered = copy.deepcopy(tx)
@@ -950,43 +1248,65 @@ def run(args):
                 )
                 altered["recipient_address"] = "".join(address)
 
-            cases.append((MUTATION, transport.wire(altered), False))
+            cases.append((MUTATION, altered, False))
 
         rng.shuffle(cases)
 
-        replay_wire = transport.wire(fixtures[-1])
-        cases.append((REPLAY, replay_wire, True))
+        baseline_tx = fixtures[-1]
+        cases.append((REPLAY, baseline_tx, True))
         cases.extend(
-            (REPLAY, replay_wire, False)
+            (REPLAY, baseline_tx, False)
             for _ in range(332)
         )
-
         assert len(cases) == 1000
 
-        stats = {name: Stats() for name in KINDS}
-        seen = set()
-        baseline_ok = False
+        replay_wires = {
+            port: transport.wire(node, baseline_tx)
+            for port, node in transport.nodes.items()
+        }
+
+        stats = {kind: Stats() for kind in KINDS}
+        shown = set()
         replay_index = 0
+        baseline_ok = False
         interrupted = False
 
         args.log.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             with args.log.open("x", encoding="utf-8") as log:
-                for number, (kind, wire, baseline) in enumerate(cases, 1):
+                for number, (kind, tx, baseline) in enumerate(cases, 1):
                     if kind == REPLAY:
                         port = args.ports[
                             replay_index % len(args.ports)
                         ]
                         replay_index += 1
+                        wire = replay_wires[port]
                     else:
                         port = rng.choice(args.ports)
+                        wire = transport.wire(
+                            transport.nodes[port],
+                            tx,
+                        )
 
-                    if kind not in seen:
-                        seen.add(kind)
+                    first = kind not in shown
+
+                    if first:
+                        shown.add(kind)
+                        descriptions = {
+                            BIT: "Flipping 1–4 signature bits.",
+                            MUTATION: (
+                                "Changing amount/recipient; "
+                                "preserving signature."
+                            ),
+                            REPLAY: (
+                                "Sending baseline, then "
+                                "332 identical transactions."
+                            ),
+                        }
                         print(
-                            f"\n[TRACE] {kind} -> "
-                            f"{args.transport}://{args.host}:{port}",
+                            f"\n[TRACE] {kind}: "
+                            f"{descriptions[kind]}",
                             flush=True,
                         )
 
@@ -1019,21 +1339,25 @@ def run(args):
 
                     if result == "blocked":
                         item.times.append(obs.elapsed_ms)
-
                         if evidence == "assumption":
                             item.assumed += 1
 
                     record = {
-                        "time_utc": datetime.now(timezone.utc).isoformat(),
+                        "time_utc": datetime.now(
+                            timezone.utc
+                        ).isoformat(),
                         "request": number,
                         "scenario": kind,
-                        "transport": args.transport,
+                        "transport": transport.nodes[port].protocol,
                         "port": port,
                         "baseline": baseline,
                         "result": result,
                         "reason": reason,
                         "evidence_type": evidence,
                         "ledger_verified": False,
+                        "certificate_verified": (
+                            transport.nodes[port].certificate_verified
+                        ),
                         "http_status": obs.http_status,
                         "application_code": obs.application_code,
                         "elapsed_ms": obs.elapsed_ms,
@@ -1041,16 +1365,24 @@ def run(args):
                         "network_error": obs.error,
                     }
 
-                    log.write(json_text(record) + "\n")
+                    log.write(encode(record) + "\n")
                     log.flush()
 
-                    if baseline:
-                        print(f"[BASELINE] {result}", flush=True)
+                    if first or baseline:
+                        print(
+                            f"[RESULT] {result}; port={port}; "
+                            f"HTTP={obs.http_status}; "
+                            f"{obs.elapsed_ms:.2f} ms",
+                            flush=True,
+                        )
 
+                    if baseline:
                         if not baseline_ok:
                             print(
-                                "Stopping replay: baseline was not acknowledged. "
-                                "Check the API response or sender balance."
+                                "Replay stopped: baseline was not accepted. "
+                                "A generated wallet's dummy balance does "
+                                "not fund the Node ledger. Check the actual "
+                                "balance and API/WS message schema."
                             )
                             break
 
@@ -1058,7 +1390,8 @@ def run(args):
 
                     if number % 100 == 0:
                         print(
-                            f"Completed {number}/1000 transaction attempts",
+                            f"Completed {number}/1000 "
+                            "transaction attempts",
                             flush=True,
                         )
 
@@ -1069,13 +1402,13 @@ def run(args):
             interrupted = True
             print("\nInterrupted; reporting partial results.")
 
-        code = report(stats, project.algorithm)
+        result = report(stats, project.algorithm)
 
         if args.show_sample:
             show_sample(args.log)
 
         print(f"Log: {args.log.resolve()}")
-        return 130 if interrupted else code
+        return 130 if interrupted else result
 
     finally:
         transport.close()
@@ -1084,13 +1417,6 @@ def run(args):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
 
-    # FIX: add plain HTTP as a valid transport.
-    parser.add_argument(
-        "--transport",
-        choices=("http", "https", "wss"),
-        required=True,
-    )
-
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(
         "--ports",
@@ -1098,38 +1424,37 @@ def parse_args():
         type=int,
         default=list(range(5000, 5006)),
     )
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path.cwd(),
-    )
-    parser.add_argument("--client-file", type=Path)
-    parser.add_argument("--wallet")
+    parser.add_argument("--project-root", type=Path)
 
-    parser.add_argument("--tx-path", default="/transactions/new")
-    parser.add_argument("--health-path", default="/status")
-    parser.add_argument("--ws-path", default="/")
+    parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--probe-timeout", type=float, default=1.5)
+    parser.add_argument("--settle", type=float, default=2.0)
+    parser.add_argument("--delay", type=float, default=0.0)
+    parser.add_argument("--seed", type=int, default=3)
+
+    parser.add_argument("--strict-tls", action="store_true")
+    parser.add_argument("--ca-file")
+    parser.add_argument("--client-cert")
+    parser.add_argument("--client-key")
+
+    parser.add_argument("--ws-path")
     parser.add_argument("--ws-type")
     parser.add_argument("--ws-payload-key")
     parser.add_argument("--ws-reply-type")
     parser.add_argument("--ws-subprotocol")
 
-    tls = parser.add_mutually_exclusive_group()
-    tls.add_argument("--insecure", action="store_true")
-    tls.add_argument("--ca-file")
-
-    parser.add_argument("--client-cert")
-    parser.add_argument("--client-key")
-
-    parser.add_argument("--timeout", type=float, default=5.0)
-    parser.add_argument("--settle", type=float, default=2.0)
-    parser.add_argument("--delay", type=float, default=0.0)
-    parser.add_argument("--seed", type=int, default=3)
-
+    # UPDATE 1:
+    # Enabled by default; disable with --no-assume-replay-blocked.
     parser.add_argument(
         "--assume-replay-blocked",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Assume post-baseline replay responses are blocked "
+            "(default: enabled)."
+        ),
     )
+
     parser.add_argument(
         "--show-sample",
         action=argparse.BooleanOptionalAction,
@@ -1144,39 +1469,40 @@ def parse_args():
     args = parser.parse_args()
 
     if not args.ports or any(
-        not 1 <= port <= 65535 for port in args.ports
+        not 1 <= port <= 65535
+        for port in args.ports
     ):
-        parser.error("Invalid port")
+        parser.error("Invalid ports")
 
     if len(set(args.ports)) != len(args.ports):
         parser.error("Duplicate ports")
 
-    for name in ("timeout", "settle", "delay"):
+    for name in ("timeout", "probe_timeout", "settle", "delay"):
         if not math.isfinite(getattr(args, name)):
-            parser.error(f"--{name} must be finite")
-
-    if args.timeout <= 0 or args.settle < 0 or args.delay < 0:
-        parser.error("timeout > 0; settle/delay >= 0")
-
-    for name in ("tx_path", "health_path", "ws_path"):
-        if not getattr(args, name).startswith("/"):
-            parser.error(
-                f"--{name.replace('_', '-')} must start with /"
-            )
+            parser.error(f"{name} must be finite")
 
     if (
-        args.transport in TLS_TRANSPORTS
-        and args.client_key
-        and not args.client_cert
+        args.timeout <= 0
+        or args.probe_timeout <= 0
+        or args.settle < 0
+        or args.delay < 0
     ):
+        parser.error(
+            "timeouts must be > 0; settle/delay must be >= 0"
+        )
+
+    if args.client_key and not args.client_cert:
         parser.error("--client-key requires --client-cert")
+
+    if args.ws_path and not args.ws_path.startswith("/"):
+        parser.error("--ws-path must start with /")
 
     if args.ws_type and not args.ws_payload_key:
         parser.error("--ws-type requires --ws-payload-key")
 
     if args.ws_payload_key == "type" and args.ws_type:
         parser.error(
-            "--ws-payload-key cannot be 'type' when --ws-type is set"
+            "--ws-payload-key cannot be 'type' with --ws-type"
         )
 
     return args
@@ -1189,7 +1515,7 @@ if __name__ == "__main__":
         sys.exit(130)
     except Exception as exc:
         print(
-            f"\n[FATAL] {exception_chain(exc)}",
+            f"\n[FATAL] {error_text(exc)}",
             file=sys.stderr,
         )
         sys.exit(2)
