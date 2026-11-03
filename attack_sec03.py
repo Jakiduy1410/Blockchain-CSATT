@@ -1470,8 +1470,12 @@ def run(args):
                             else ""
                         )
 
+                        display_result = (
+                            "BASELINE_SENT" if result == "baseline_failed" and not obs.error
+                            else result.upper()
+                        )
                         print(
-                            f"[RESULT] {result.upper()} | "
+                            f"[RESULT] {display_result} | "
                             f"{code_label}={code} | "
                             f"{obs.elapsed_ms:.2f} ms{suffix}",
                             flush=True,
@@ -1481,13 +1485,6 @@ def run(args):
                         replay_result_shown = True
 
                     if baseline:
-                        if not baseline_ok:
-                            print(
-                                "[RESULT] Baseline chưa được chấp nhận; "
-                                "tiếp tục gửi 332 Replay attempts.",
-                                flush=True,
-                            )
-
                         time.sleep(args.settle)
 
                     if number % 100 == 0:
