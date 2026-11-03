@@ -26,9 +26,9 @@ py = sys.executable
 
 parser = argparse.ArgumentParser(description="Detached Background Network Launcher")
 parser.add_argument('--tls', type=str, default=os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe"),
-                    choices=['ecdhe', 'hybrid', 'none', 'plaintext'], help="Cơ chế TLS: ecdhe, hybrid, none")
+                    choices=['ecdhe', 'hybrid', 'mlkem768', 'mlkem512', 'none', 'plaintext'], help="Cơ chế TLS: ecdhe, hybrid, mlkem768, mlkem512, none")
 parser.add_argument('--sig', type=str, default=os.environ.get("BLOCKCHAIN_SIG_MODE", "all"),
-                    choices=['ecdsa', 'mldsa44', 'mldsa87', 'all'], help="Thuật toán chữ ký: ecdsa, mldsa44, mldsa87, all")
+                    choices=['ecdsa', 'mldsa44', 'mldsa65', 'mldsa87', 'all'], help="Thuật toán chữ ký: ecdsa, mldsa44, mldsa65, mldsa87, all")
 parser.add_argument('--auto-mine', action='store_true', help="Tự động đào cho Node 2")
 args, _ = parser.parse_known_args()
 

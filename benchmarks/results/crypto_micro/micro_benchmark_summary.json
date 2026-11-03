@@ -1,128 +1,357 @@
-[
-  {
-    "algorithm": "RSA-2048",
-    "keygen_ms": {
-      "mean": 66.4808,
-      "median": 55.3459,
-      "std": 43.9668,
-      "ci_95_low": 63.77,
-      "ci_95_high": 69.1879
+{
+  "timestamp": "2026-11-03 15:19:20",
+  "iterations": 100,
+  "warmup_cycles": 20,
+  "signatures": [
+    {
+      "algorithm": "ECDSA (secp256k1)",
+      "type": "signature",
+      "security_level": "Classical 128-bit",
+      "keygen_ms": {
+        "mean": 0.7711,
+        "median": 0.693,
+        "std": 0.2982,
+        "ci_95_low": 0.7219,
+        "ci_95_high": 0.8376
+      },
+      "sign_ms": {
+        "mean": 0.879,
+        "median": 0.7449,
+        "std": 0.3421,
+        "ci_95_low": 0.8167,
+        "ci_95_high": 0.9491
+      },
+      "verify_ms": {
+        "mean": 0.7102,
+        "median": 0.6405,
+        "std": 0.2131,
+        "ci_95_low": 0.6733,
+        "ci_95_high": 0.756
+      },
+      "pk_bytes": {
+        "mean": 33.0,
+        "median": 33.0,
+        "std": 0.0,
+        "ci_95_low": 33.0,
+        "ci_95_high": 33.0
+      },
+      "sig_bytes": {
+        "mean": 64.0,
+        "median": 64.0,
+        "std": 0.0,
+        "ci_95_low": 64.0,
+        "ci_95_high": 64.0
+      }
     },
-    "sign_ms": {
-      "mean": 1.5609,
-      "median": 1.3862,
-      "std": 0.4813,
-      "ci_95_low": 1.5327,
-      "ci_95_high": 1.5911
+    {
+      "algorithm": "ML-DSA-44",
+      "type": "signature",
+      "security_level": "NIST Category 2 (AES-128 / SHA-256 equivalent)",
+      "keygen_ms": {
+        "mean": 0.2866,
+        "median": 0.221,
+        "std": 0.1727,
+        "ci_95_low": 0.2551,
+        "ci_95_high": 0.323
+      },
+      "sign_ms": {
+        "mean": 0.6204,
+        "median": 0.5217,
+        "std": 0.3341,
+        "ci_95_low": 0.5612,
+        "ci_95_high": 0.6893
+      },
+      "verify_ms": {
+        "mean": 0.1377,
+        "median": 0.1165,
+        "std": 0.0508,
+        "ci_95_low": 0.1283,
+        "ci_95_high": 0.1481
+      },
+      "pk_bytes": {
+        "mean": 1312.0,
+        "median": 1312.0,
+        "std": 0.0,
+        "ci_95_low": 1312.0,
+        "ci_95_high": 1312.0
+      },
+      "sig_bytes": {
+        "mean": 2420.0,
+        "median": 2420.0,
+        "std": 0.0,
+        "ci_95_low": 2420.0,
+        "ci_95_high": 2420.0
+      }
     },
-    "verify_ms": {
-      "mean": 0.0851,
-      "median": 0.0653,
-      "std": 0.0603,
-      "ci_95_low": 0.0816,
-      "ci_95_high": 0.0891
+    {
+      "algorithm": "ML-DSA-65",
+      "type": "signature",
+      "security_level": "NIST Category 3 (AES-192 equivalent)",
+      "keygen_ms": {
+        "mean": 0.3711,
+        "median": 0.3065,
+        "std": 0.1517,
+        "ci_95_low": 0.3435,
+        "ci_95_high": 0.4016
+      },
+      "sign_ms": {
+        "mean": 0.8099,
+        "median": 0.6742,
+        "std": 0.4187,
+        "ci_95_low": 0.7344,
+        "ci_95_high": 0.8981
+      },
+      "verify_ms": {
+        "mean": 0.2136,
+        "median": 0.1835,
+        "std": 0.0856,
+        "ci_95_low": 0.1989,
+        "ci_95_high": 0.2328
+      },
+      "pk_bytes": {
+        "mean": 1952.0,
+        "median": 1952.0,
+        "std": 0.0,
+        "ci_95_low": 1952.0,
+        "ci_95_high": 1952.0
+      },
+      "sig_bytes": {
+        "mean": 3309.0,
+        "median": 3309.0,
+        "std": 0.0,
+        "ci_95_low": 3309.0,
+        "ci_95_high": 3309.0
+      }
     },
-    "pk_bytes": {
-      "mean": 270.0,
-      "median": 270.0,
-      "std": 0.0,
-      "ci_95_low": 270.0,
-      "ci_95_high": 270.0
-    },
-    "sig_bytes": {
-      "mean": 256.0,
-      "median": 256.0,
-      "std": 0.0,
-      "ci_95_low": 256.0,
-      "ci_95_high": 256.0
-    },
-    "blockchain_extrapolation": {
-      "simulated_block_kb": 757.81,
-      "theoretical_crypto_tps": 11750.88
+    {
+      "algorithm": "ML-DSA-87",
+      "type": "signature",
+      "security_level": "NIST Category 5 (AES-256 equivalent)",
+      "keygen_ms": {
+        "mean": 0.4681,
+        "median": 0.4042,
+        "std": 0.2243,
+        "ci_95_low": 0.4301,
+        "ci_95_high": 0.5159
+      },
+      "sign_ms": {
+        "mean": 1.0953,
+        "median": 0.8505,
+        "std": 0.7981,
+        "ci_95_low": 0.958,
+        "ci_95_high": 1.2588
+      },
+      "verify_ms": {
+        "mean": 0.3209,
+        "median": 0.2965,
+        "std": 0.0739,
+        "ci_95_low": 0.3075,
+        "ci_95_high": 0.3361
+      },
+      "pk_bytes": {
+        "mean": 2592.0,
+        "median": 2592.0,
+        "std": 0.0,
+        "ci_95_low": 2592.0,
+        "ci_95_high": 2592.0
+      },
+      "sig_bytes": {
+        "mean": 4627.0,
+        "median": 4627.0,
+        "std": 0.0,
+        "ci_95_low": 4627.0,
+        "ci_95_high": 4627.0
+      }
     }
-  },
-  {
-    "algorithm": "ECDSA (secp256k1)",
-    "keygen_ms": {
-      "mean": 0.7182,
-      "median": 0.692,
-      "std": 0.1145,
-      "ci_95_low": 0.7113,
-      "ci_95_high": 0.7257
+  ],
+  "kems": [
+    {
+      "algorithm": "Classical ECDHE (X25519)",
+      "type": "kem",
+      "security_level": "Classical 128-bit (RFC 7748)",
+      "keygen_ms": {
+        "mean": 0.0776,
+        "median": 0.0562,
+        "std": 0.0663,
+        "ci_95_low": 0.0666,
+        "ci_95_high": 0.0918
+      },
+      "encap_ms": {
+        "mean": 0.1477,
+        "median": 0.1032,
+        "std": 0.1309,
+        "ci_95_low": 0.1252,
+        "ci_95_high": 0.1771
+      },
+      "decap_ms": {
+        "mean": 0.0618,
+        "median": 0.0468,
+        "std": 0.0521,
+        "ci_95_low": 0.0536,
+        "ci_95_high": 0.0731
+      },
+      "pk_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      },
+      "ct_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      },
+      "ss_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      }
     },
-    "sign_ms": {
-      "mean": 0.7772,
-      "median": 0.7363,
-      "std": 0.4934,
-      "ci_95_low": 0.7568,
-      "ci_95_high": 0.812
+    {
+      "algorithm": "Pure ML-KEM-512",
+      "type": "kem",
+      "security_level": "NIST Category 1 (AES-128 equivalent)",
+      "keygen_ms": {
+        "mean": 0.1699,
+        "median": 0.1418,
+        "std": 0.0909,
+        "ci_95_low": 0.1551,
+        "ci_95_high": 0.1883
+      },
+      "encap_ms": {
+        "mean": 0.1788,
+        "median": 0.1487,
+        "std": 0.1166,
+        "ci_95_low": 0.1601,
+        "ci_95_high": 0.2051
+      },
+      "decap_ms": {
+        "mean": 0.0564,
+        "median": 0.0482,
+        "std": 0.0259,
+        "ci_95_low": 0.0522,
+        "ci_95_high": 0.0623
+      },
+      "pk_bytes": {
+        "mean": 800.0,
+        "median": 800.0,
+        "std": 0.0,
+        "ci_95_low": 800.0,
+        "ci_95_high": 800.0
+      },
+      "ct_bytes": {
+        "mean": 768.0,
+        "median": 768.0,
+        "std": 0.0,
+        "ci_95_low": 768.0,
+        "ci_95_high": 768.0
+      },
+      "ss_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      }
     },
-    "verify_ms": {
-      "mean": 0.6592,
-      "median": 0.6377,
-      "std": 0.0989,
-      "ci_95_low": 0.6532,
-      "ci_95_high": 0.6659
+    {
+      "algorithm": "Pure ML-KEM-768",
+      "type": "kem",
+      "security_level": "NIST Category 3 (AES-192 equivalent)",
+      "keygen_ms": {
+        "mean": 0.1977,
+        "median": 0.1649,
+        "std": 0.1261,
+        "ci_95_low": 0.1769,
+        "ci_95_high": 0.2265
+      },
+      "encap_ms": {
+        "mean": 0.2015,
+        "median": 0.1713,
+        "std": 0.0994,
+        "ci_95_low": 0.184,
+        "ci_95_high": 0.2223
+      },
+      "decap_ms": {
+        "mean": 0.0844,
+        "median": 0.0702,
+        "std": 0.0576,
+        "ci_95_low": 0.0751,
+        "ci_95_high": 0.0975
+      },
+      "pk_bytes": {
+        "mean": 1184.0,
+        "median": 1184.0,
+        "std": 0.0,
+        "ci_95_low": 1184.0,
+        "ci_95_high": 1184.0
+      },
+      "ct_bytes": {
+        "mean": 1088.0,
+        "median": 1088.0,
+        "std": 0.0,
+        "ci_95_low": 1088.0,
+        "ci_95_high": 1088.0
+      },
+      "ss_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      }
     },
-    "pk_bytes": {
-      "mean": 33.0,
-      "median": 33.0,
-      "std": 0.0,
-      "ci_95_low": 33.0,
-      "ci_95_high": 33.0
-    },
-    "sig_bytes": {
-      "mean": 64.0,
-      "median": 64.0,
-      "std": 0.0,
-      "ci_95_low": 64.0,
-      "ci_95_high": 64.0
-    },
-    "blockchain_extrapolation": {
-      "simulated_block_kb": 338.87,
-      "theoretical_crypto_tps": 1516.99
+    {
+      "algorithm": "Hybrid (X25519 + ML-KEM-768)",
+      "type": "kem",
+      "security_level": "Hybrid Dual-Defense (RFC 7748 + FIPS 203 Level 3)",
+      "keygen_ms": {
+        "mean": 0.2793,
+        "median": 0.2411,
+        "std": 0.1295,
+        "ci_95_low": 0.2574,
+        "ci_95_high": 0.306
+      },
+      "encap_ms": {
+        "mean": 0.3519,
+        "median": 0.3054,
+        "std": 0.1364,
+        "ci_95_low": 0.3291,
+        "ci_95_high": 0.3804
+      },
+      "decap_ms": {
+        "mean": 0.1521,
+        "median": 0.1324,
+        "std": 0.0555,
+        "ci_95_low": 0.1424,
+        "ci_95_high": 0.164
+      },
+      "pk_bytes": {
+        "mean": 1216.0,
+        "median": 1216.0,
+        "std": 0.0,
+        "ci_95_low": 1216.0,
+        "ci_95_high": 1216.0
+      },
+      "ct_bytes": {
+        "mean": 1120.0,
+        "median": 1120.0,
+        "std": 0.0,
+        "ci_95_low": 1120.0,
+        "ci_95_high": 1120.0
+      },
+      "ss_bytes": {
+        "mean": 32.0,
+        "median": 32.0,
+        "std": 0.0,
+        "ci_95_low": 32.0,
+        "ci_95_high": 32.0
+      }
     }
-  },
-  {
-    "algorithm": "PQC: ML-DSA-44",
-    "keygen_ms": {
-      "mean": 0.2871,
-      "median": 0.2248,
-      "std": 0.1103,
-      "ci_95_low": 0.2805,
-      "ci_95_high": 0.2939
-    },
-    "sign_ms": {
-      "mean": 0.693,
-      "median": 0.5673,
-      "std": 0.4302,
-      "ci_95_low": 0.6676,
-      "ci_95_high": 0.7203
-    },
-    "verify_ms": {
-      "mean": 0.1547,
-      "median": 0.1203,
-      "std": 0.0661,
-      "ci_95_low": 0.1507,
-      "ci_95_high": 0.1588
-    },
-    "pk_bytes": {
-      "mean": 1312.0,
-      "median": 1312.0,
-      "std": 0.0,
-      "ci_95_low": 1312.0,
-      "ci_95_high": 1312.0
-    },
-    "sig_bytes": {
-      "mean": 2420.0,
-      "median": 2420.0,
-      "std": 0.0,
-      "ci_95_low": 2420.0,
-      "ci_95_high": 2420.0
-    },
-    "blockchain_extrapolation": {
-      "simulated_block_kb": 3888.67,
-      "theoretical_crypto_tps": 6464.12
-    }
-  }
-]
+  ]
+}

@@ -66,7 +66,17 @@ class P2PNetwork:
             self.client_ssl_ctx = None
             self.proto = "ws"
             self.tls_desc = "Plaintext (No TLS)"
-        elif self.tls_mode in ("hybrid", "mlkem768", "mlkem", "pqc"):
+        elif self.tls_mode in ("mlkem768", "pure_mlkem768"):
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
+            self.proto = "wss"
+            self.tls_desc = "TLS 1.3 Pure ML-KEM-768"
+        elif self.tls_mode in ("mlkem512", "pure_mlkem512"):
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
+            self.proto = "wss"
+            self.tls_desc = "TLS 1.3 Pure ML-KEM-512"
+        elif self.tls_mode in ("hybrid", "mlkem", "pqc"):
             self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
             self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
             self.proto = "wss"

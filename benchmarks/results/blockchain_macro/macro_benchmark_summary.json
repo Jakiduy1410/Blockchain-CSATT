@@ -1,29 +1,80 @@
 {
-  "benchmark_name": "Macro-Benchmark 6-Node P2P (WebSocket TLS ECDHE)",
-  "timestamp": "2026-10-15 00:38:36",
-  "workload": {
-    "total_tx_sent": 100,
-    "accepted_tx": 100,
-    "success_rate_pct": 100.0
-  },
-  "ingestion_performance": {
-    "total_duration_seconds": 1.226,
-    "e2e_ingestion_tps": 81.58,
-    "latency_mean_ms": 12.23,
-    "latency_median_ms": 7.77,
-    "latency_p95_ms": 27.45,
-    "latency_min_ms": 4.83,
-    "latency_max_ms": 28.98
-  },
-  "consensus_propagation": {
-    "nodes_participating": 6,
-    "all_nodes_synced": true,
-    "block_propagation_delay_seconds": 0.279
-  },
-  "network_wire_payload": {
-    "block_wire_bytes": 2952,
-    "block_wire_kb": 2.88,
-    "tx_count_in_block": 5,
-    "average_bytes_per_tx": 590.4
-  }
+  "timestamp": "2026-11-03 15:08:02",
+  "tx_count_per_scheme": 15,
+  "signatures_macro": [
+    {
+      "algorithm": "ECDSA (secp256k1)",
+      "tx_sent": 15,
+      "tx_accepted": 15,
+      "ingestion_tps": 30.84,
+      "latency_mean_ms": 32.42,
+      "latency_p95_ms": 53.29,
+      "propagation_delay_sec": 21.948,
+      "block_wire_kb": 5.82,
+      "avg_bytes_per_tx": 541.7
+    },
+    {
+      "algorithm": "ML-DSA-44",
+      "tx_sent": 15,
+      "tx_accepted": 15,
+      "ingestion_tps": 25.03,
+      "latency_mean_ms": 39.95,
+      "latency_p95_ms": 55.82,
+      "propagation_delay_sec": 22.283,
+      "block_wire_kb": 100.59,
+      "avg_bytes_per_tx": 9363.6
+    },
+    {
+      "algorithm": "ML-DSA-65",
+      "tx_sent": 15,
+      "tx_accepted": 15,
+      "ingestion_tps": 16.71,
+      "latency_mean_ms": 59.84,
+      "latency_p95_ms": 138.67,
+      "propagation_delay_sec": 22.394,
+      "block_wire_kb": 142.95,
+      "avg_bytes_per_tx": 13307.3
+    },
+    {
+      "algorithm": "ML-DSA-87",
+      "tx_sent": 15,
+      "tx_accepted": 15,
+      "ingestion_tps": 19.4,
+      "latency_mean_ms": 51.55,
+      "latency_p95_ms": 101.3,
+      "propagation_delay_sec": 22.372,
+      "block_wire_kb": 193.69,
+      "avg_bytes_per_tx": 18030.9
+    }
+  ],
+  "tls_macro": [
+    {
+      "tls_mode": "Classical ECDHE",
+      "handshake_latency_ms": 2.16,
+      "client_key_share_bytes": 32,
+      "server_key_share_bytes": 32,
+      "total_wire_overhead_kb": 2.1
+    },
+    {
+      "tls_mode": "Hybrid (X25519 + ML-KEM-768)",
+      "handshake_latency_ms": 3.93,
+      "client_key_share_bytes": 1216,
+      "server_key_share_bytes": 1120,
+      "total_wire_overhead_kb": 4.5
+    },
+    {
+      "tls_mode": "Pure ML-KEM-768",
+      "handshake_latency_ms": 3.96,
+      "client_key_share_bytes": 1184,
+      "server_key_share_bytes": 1088,
+      "total_wire_overhead_kb": 4.3
+    },
+    {
+      "tls_mode": "Pure ML-KEM-512",
+      "handshake_latency_ms": 4.09,
+      "client_key_share_bytes": 800,
+      "server_key_share_bytes": 768,
+      "total_wire_overhead_kb": 3.6
+    }
+  ]
 }

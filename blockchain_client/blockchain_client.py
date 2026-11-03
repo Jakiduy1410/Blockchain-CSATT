@@ -66,7 +66,12 @@ class Transaction:
             if len(self.sender_private_key) > 1000 and OQS_AVAILABLE:
                 private_key_bytes = bytes.fromhex(self.sender_private_key)
                 transaction_string = str(self.to_dict()).encode('utf8')
-                alg_name = "ML-DSA-87" if len(private_key_bytes) >= 4800 else "ML-DSA-44"
+                if len(private_key_bytes) >= 4800:
+                    alg_name = "ML-DSA-87"
+                elif len(private_key_bytes) >= 3500:
+                    alg_name = "ML-DSA-65"
+                else:
+                    alg_name = "ML-DSA-44"
                 with oqs.Signature(alg_name, secret_key=private_key_bytes) as signer:
                     signature_bytes = signer.sign(transaction_string)
                 return signature_bytes.hex()
