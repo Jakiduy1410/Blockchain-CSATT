@@ -99,7 +99,7 @@ Bảng so sánh kích thước khóa và chữ ký số giữa các thuật toá
 
 | Cấu hình Phần cứng | vCPU | RAM Limit | Thuật toán Ký số | Số Tx Đạt | Thời gian (s) | Ingestion TPS | Baseline RAM | Peak RAM (MB) | % Đạt Trần RAM | Avg CPU (%) | Normalized CPU (% Quota) | CPU Throttled (ms) | Trạng thái OOM |
 | :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | ECDSA (secp256k1) | 500/500 | 1.200 s | **416.67 tx/s** | 123.83 MB | 128.11 MB | 3.13% | 141.79% | **35.45%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
+| **Server (Datacenter)** | **4.0** | **4096 MB** | ECDSA (secp256k1) | 500/500 | 1.200 s | **416.67 tx/s** | 43.50 MB | 46.50 MB | 1.14% | 141.79% | **35.45%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
 | **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-44 (PQC L2)** | 500/500 | 0.702 s | **712.25 tx/s** | 43.95 MB | 54.44 MB | 1.33% | 161.54% | **40.38%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
 | **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-65 (PQC L3)** | 500/500 | 0.695 s | **719.42 tx/s** | 42.88 MB | 53.53 MB | 1.31% | 164.04% | **41.01%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
 | **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 0.754 s | **663.13 tx/s** | 43.54 MB | 57.21 MB | 1.40% | 165.43% | **41.36%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |

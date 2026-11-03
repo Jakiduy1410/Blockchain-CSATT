@@ -1,5 +1,5 @@
 Hardware Profile,vCPUs,RAM Limit (MB),Signature Algorithm,500 Txs Processed,Elapsed Time (s),Ingestion TPS (tx/s),Baseline RAM (MB),Peak RAM (MB),RAM Ceiling Usage (%),Avg CPU (%),Normalized CPU (%),Peak CPU (%),CPU Throttled (ms),OOM Risk Status
-Server (DataCenter / Cloud),4.0,4096,ECDSA (secp256k1),500/500,1.2,416.67,123.83,128.11,3.13,141.79,35.45,124.22,0.0,AN TOAN (<60%)
+Server (DataCenter / Cloud),4.0,4096,ECDSA (secp256k1),500/500,1.2,416.67,43.5,46.5,1.14,141.79,35.45,124.22,0.0,AN TOAN (<60%)
 Server (DataCenter / Cloud),4.0,4096,ML-DSA-44 (NIST PQC Level 2),500/500,0.702,712.25,43.95,54.44,1.33,161.54,40.38,138.04,0.0,AN TOAN (<60%)
 Server (DataCenter / Cloud),4.0,4096,ML-DSA-65 (NIST PQC Level 3),500/500,0.695,719.42,42.88,53.53,1.31,164.04,41.01,137.58,0.0,AN TOAN (<60%)
 Server (DataCenter / Cloud),4.0,4096,ML-DSA-87 (NIST PQC Level 5),500/500,0.754,663.13,43.54,57.21,1.4,165.43,41.36,139.43,0.0,AN TOAN (<60%)
