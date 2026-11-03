@@ -5,22 +5,30 @@ SEC-03 automated transaction mutation testing.
 Run:
     python3 attack_sec03.py
 
-Optional:
-    python3 attack_sec03.py --no-assume-replay-blocked
-    python3 attack_sec03.py --no-show-sample
+Terminal output:
+    [SIGNER]
+    [TRACE]
+    [RESULT]
+    Completed X/1000
+    SEC-03 RESULTS
+    [BENCHMARK]
+
+Detailed records are still written to JSONL.
 
 Normal completion:
-    334 bit-flipping + 333 payload mutation
-    + 1 replay baseline + 332 replay attempts = 1,000 transaction attempts.
+    334 bit-flipping
+    333 payload mutation
+    1 replay baseline
+    332 replay attempts
 
-Changes:
-    - Continue replay attempts even if baseline is rejected.
-    - Apply replay override BEFORE checking baseline acceptance.
-    - Replay override defaults to True.
+Replay override defaults to True.
+Override results are assumptions, not verified ledger rejection.
+A dummy wallet balance is local metadata only; it does not fund the ledger.
 
-Generated wallet balances are local dummy metadata, not ledger funds.
-Replay override results are assumptions, not verified ledger rejection.
-Transport failures remain Unknown.
+Dependencies:
+    requests
+    Project Flask / cryptographic dependencies
+    websockets>=15 only when WSS is needed
 """
 
 from __future__ import annotations
@@ -65,6 +73,13 @@ DUPLICATES = {"duplicate", "ignored", "skipped", "already_processed"}
 
 DUMMY_BALANCE = 10000.0
 
+# Public-key bytes and signature bytes for standardized ML-DSA variants.
+ML_DSA_SIZES = {
+    "ML-DSA-44": (1312, 2420),
+    "ML-DSA-65": (1952, 3309),
+    "ML-DSA-87": (2592, 4627),
+}
+
 
 def encode(value: Any) -> str:
     return json.dumps(
@@ -96,6 +111,7 @@ def error_text(exc: BaseException) -> str:
 
         visited.add(id(error))
         messages.append(f"{type(error).__name__}: {error}")
+
         visit(error.__cause__ or error.__context__)
         visit(getattr(error, "reason", None))
 
@@ -196,6 +212,176 @@ def application_reply(body: Any) -> bool:
     )
 
 
+# ==================== ALGORITHM IDENTIFICATION ====================
+
+def canonical_algorithm(value: Any) -> str | None:
+    """Convert recognizable algorithm names to one of the five labels."""
+    if not isinstance(value, str):
+        return None
+
+    compact = re.sub(r"[^A-Z0-9]", "", value.upper())
+
+    for parameter in ("44", "65", "87"):
+        if f"MLDSA{parameter}" in compact:
+            return f"ML-DSA-{parameter}"
+
+    # Test ECDSA before RSA.
+    if "ECDSA" in compact:
+        return "ECDSA"
+
+    if "RSA" in compact:
+        return "RSA"
+
+    return None
+
+
+def inspect_public_key(public_key: bytes) -> str | None:
+    """Prefer actual RSA/ECC key parsing over length-only heuristics."""
+    try:
+        from Crypto.PublicKey import RSA
+    except ImportError:
+        RSA = None
+
+    if RSA is not None:
+        try:
+            RSA.import_key(public_key)
+            return "RSA"
+        except (ValueError, TypeError, IndexError):
+            pass
+
+    try:
+        from Crypto.PublicKey import ECC
+    except ImportError:
+        ECC = None
+
+    if ECC is not None:
+        try:
+            key = ECC.import_key(public_key)
+            curve = str(getattr(key, "curve", "")).lower()
+
+            # Don't label EdDSA/Montgomery keys as ECDSA.
+            if "ed25519" not in curve and "ed448" not in curve:
+                if "curve25519" not in curve and "curve448" not in curve:
+                    return "ECDSA"
+        except (ValueError, TypeError, IndexError, NotImplementedError):
+            pass
+
+    # Optional second parser, useful for DER-encoded EC keys.
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, rsa
+    except ImportError:
+        return None
+
+    try:
+        if public_key.startswith(b"-----BEGIN"):
+            key = serialization.load_pem_public_key(public_key)
+        else:
+            key = serialization.load_der_public_key(public_key)
+
+        if isinstance(key, rsa.RSAPublicKey):
+            return "RSA"
+
+        if isinstance(key, ec.EllipticCurvePublicKey):
+            return "ECDSA"
+
+    except (ValueError, TypeError):
+        pass
+
+    return None
+
+
+def detect_algorithm(
+    declared_names: list[str],
+    root: Path,
+    source: Path,
+    public_key_hex: str,
+    signature_hex: str,
+) -> str:
+    public_key = decode_hex(public_key_hex, "public_key")
+    signature = decode_hex(signature_hex, "signature")
+
+    public_size = len(public_key)
+    signature_size = len(signature)
+
+    # Exact ML-DSA key/signature size pairs.
+    size_algorithm = next(
+        (
+            algorithm
+            for algorithm, sizes in ML_DSA_SIZES.items()
+            if sizes == (public_size, signature_size)
+        ),
+        None,
+    )
+
+    # Parse classical key formats when possible.
+    parsed_algorithm = inspect_public_key(public_key)
+
+    # Only unambiguous declarations are used.
+    declared = {
+        algorithm
+        for name in declared_names
+        if (algorithm := canonical_algorithm(name)) is not None
+    }
+    declared_algorithm = next(iter(declared)) if len(declared) == 1 else None
+
+    evidence_algorithm = size_algorithm or parsed_algorithm
+
+    if (
+        declared_algorithm
+        and evidence_algorithm
+        and declared_algorithm != evidence_algorithm
+    ):
+        raise RuntimeError(
+            "Algorithm mismatch: project declares "
+            f"{declared_algorithm}, but key/signature indicate "
+            f"{evidence_algorithm}."
+        )
+
+    if evidence_algorithm:
+        return evidence_algorithm
+
+    if declared_algorithm:
+        if declared_algorithm in ML_DSA_SIZES:
+            expected = ML_DSA_SIZES[declared_algorithm]
+            if expected != (public_size, signature_size):
+                raise RuntimeError(
+                    f"{declared_algorithm} size mismatch: "
+                    f"public_key={public_size}, signature={signature_size}; "
+                    f"expected {expected}."
+                )
+        return declared_algorithm
+
+    # Common formats in the RSA/ECDSA project variants.
+    if public_size == 64:
+        return "ECDSA"
+
+    # 162 bytes is a common DER public-key encoding for RSA-1024.
+    # Require the matching 128-byte signature as additional evidence.
+    if public_size == 162 and signature_size == 128:
+        return "RSA"
+
+    # Last resort: project directory name, not unrelated ancestor folders.
+    for directory_name in (root.name, source.parent.name):
+        algorithm = canonical_algorithm(directory_name)
+        if algorithm is None:
+            continue
+
+        if algorithm in ML_DSA_SIZES:
+            if ML_DSA_SIZES[algorithm] != (public_size, signature_size):
+                continue
+
+        return algorithm
+
+    raise RuntimeError(
+        "Cannot identify RSA/ECDSA/ML-DSA-44/ML-DSA-65/ML-DSA-87 "
+        f"from the project configuration or key format "
+        f"(public_key={public_size} bytes, signature={signature_size} bytes)."
+    )
+
+
+# ==================== TRANSPORT ====================
+
 class TLSAdapter(HTTPAdapter):
     def __init__(self, context):
         self.context = context
@@ -266,6 +452,7 @@ class AutoTransport:
         self.args = args
         self.nodes: dict[int, Node] = {}
         self.connect_ws = None
+        self.discovery_errors: dict[int, list[str]] = {}
 
         try:
             from websockets.sync.client import connect
@@ -386,20 +573,16 @@ class AutoTransport:
                 except Exception as exc:
                     errors.append(f"wss {path}: {error_text(exc)}")
 
-        print(
-            f"\n[FAIL] Cannot detect transport at "
-            f"{self.args.host}:{port}"
-        )
-        for message in errors:
-            print(f"  {message}")
-
         if self.connect_ws is None:
-            print('  WSS unavailable: install "websockets>=15".')
+            errors.append(
+                'WSS unavailable: install "websockets>=15".'
+            )
 
+        self.discovery_errors[port] = errors
         return None
 
     def discover(self):
-        print("[AUTO] Detecting transport on every node...")
+        # Quiet discovery: no successful probe messages.
         failures = []
 
         for port in self.args.ports:
@@ -407,26 +590,21 @@ class AutoTransport:
 
             if node is None:
                 failures.append(port)
-                continue
-
-            self.nodes[port] = node
-            print(
-                f"[OK] {self.url(node.protocol, port, node.path)}",
-                flush=True,
-            )
-
-            if node.certificate_verified is False:
-                print(
-                    "     Loopback self-signed fallback: "
-                    "certificate verification is DISABLED.",
-                    flush=True,
-                )
+            else:
+                self.nodes[port] = node
 
         if failures:
+            details = []
+            for port in failures:
+                errors = self.discovery_errors.get(port, [])
+                details.append(
+                    f"port {port}: "
+                    + (" | ".join(errors) or "no supported transport")
+                )
+
             raise RuntimeError(
-                f"Pre-check failed on ports {failures}. "
-                "Check nodes, listeners, health endpoints, port mappings, "
-                "certificates, and WS paths. No transaction tests were sent."
+                "Pre-check failed; no transaction tests were sent.\n"
+                + "\n".join(details)
             )
 
     def balances(self) -> dict[str, float]:
@@ -567,8 +745,11 @@ class AutoTransport:
 
         except Exception as exc:
             error = error_text(exc)
+
+            # Actual errors remain visible; routine connection logs are removed.
             print(
-                f"[SEND ERROR] port={port} | {error}",
+                f"[RESULT] NETWORK ERROR port={port}: {error}",
+                file=sys.stderr,
                 flush=True,
             )
 
@@ -587,6 +768,8 @@ class AutoTransport:
             if node.session is not None:
                 node.session.close()
 
+
+# ==================== PROJECT CLIENT / FIXTURES ====================
 
 def locate_project(explicit_root=None):
     roots = (
@@ -627,6 +810,7 @@ class ProjectClient:
     def __init__(self, root, source):
         self.root = root
         self.source = source
+        self.algorithm = None
 
         sys.path.insert(0, str(root))
         sys.path.insert(0, str(source.parent))
@@ -646,9 +830,18 @@ class ProjectClient:
             raise RuntimeError("Project client must expose Flask app")
 
         self.client = app.test_client()
-        self.algorithm = str(
-            getattr(module, "SIG_ALG", "project-defined")
-        )
+
+        self.declared_algorithms = [
+            value
+            for attribute in (
+                "SIG_ALG",
+                "SIGNATURE_ALGORITHM",
+                "SIGNATURE_SCHEME",
+                "ALGORITHM",
+                "SIG_ALGORITHM",
+            )
+            if isinstance(value := getattr(module, attribute, None), str)
+        ]
 
     def new_wallet(self):
         response = self.client.get("/wallet/new")
@@ -805,13 +998,12 @@ class ProjectClient:
                 if isinstance(entry, (dict, list)):
                     visit(entry, path, str(key), depth + 1)
 
-        files = self.wallet_files()
-
-        for path in files:
+        for path in self.wallet_files():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, ValueError):
                 continue
+
             visit(data, path)
 
         candidates.sort(
@@ -822,10 +1014,6 @@ class ProjectClient:
             reverse=True,
         )
 
-        print(
-            f"[AUTO] Scanned {len(files)} JSON files; "
-            f"found {len(candidates)} funded wallet candidates."
-        )
         return candidates
 
     def fixtures(self, transport):
@@ -850,12 +1038,8 @@ class ProjectClient:
             break
 
         if selected is None:
-            print(
-                "[AUTO] No usable wallet candidate. "
-                "Generating a fresh wallet with the current project client..."
-            )
-
             generated = self.new_wallet()
+
             selected = Wallet(
                 name="generated-test-wallet",
                 public_key=generated["public_key"],
@@ -866,25 +1050,15 @@ class ProjectClient:
             )
             baseline = self.sign(selected, recipient, 1)
 
-            print("[AUTO] Fresh wallet generated; baseline signed locally.")
-            print(
-                f"[AUTO] Dummy balance metadata: {DUMMY_BALANCE:.1f}. "
-                "This does not fund the Node ledger."
-            )
-
-        source_name = (
-            selected.source.name
-            if selected.source is not None
-            else "generated in RAM"
+        self.algorithm = detect_algorithm(
+            declared_names=self.declared_algorithms,
+            root=self.root,
+            source=self.source,
+            public_key_hex=selected.public_key,
+            signature_hex=baseline["signature"],
         )
 
-        print(
-            f"[WALLET] {selected.name}; source={source_name}; "
-            f"balance={selected.balance:g} "
-            f"({selected.balance_source})"
-        )
-        print(f"[SIGNER] {self.algorithm}")
-        print("[FIXTURES] Generating 668 signed transactions...")
+        print(f"[SIGNER] {self.algorithm}", flush=True)
 
         fixtures = [
             self.sign(selected, recipient, amount)
@@ -892,22 +1066,27 @@ class ProjectClient:
         ]
         fixtures.append(baseline)
 
-        if self.algorithm.upper().replace("_", "-") == "ML-DSA-44":
-            if expected_size != 1312 or any(
-                len(decode_hex(tx["signature"], "signature")) != 2420
+        if self.algorithm in ML_DSA_SIZES:
+            expected_public, expected_signature = ML_DSA_SIZES[self.algorithm]
+
+            if len(decode_hex(selected.public_key, "public_key")) != expected_public:
+                raise RuntimeError(
+                    f"Unexpected {self.algorithm} public-key size"
+                )
+
+            if any(
+                len(decode_hex(tx["signature"], "signature"))
+                != expected_signature
                 for tx in fixtures
             ):
-                raise RuntimeError("Unexpected ML-DSA-44 key/signature size")
-
-        print(
-            f"[FIXTURES] Ready: {len(fixtures)} transactions; "
-            f"public key={len(decode_hex(selected.public_key, 'public_key'))} "
-            f"bytes; signature="
-            f"{len(decode_hex(fixtures[0]['signature'], 'signature'))} bytes."
-        )
+                raise RuntimeError(
+                    f"Unexpected {self.algorithm} signature size"
+                )
 
         return fixtures
 
+
+# ==================== CLASSIFICATION ====================
 
 def accepted(obs):
     if obs.error:
@@ -946,12 +1125,11 @@ def accepted(obs):
 
 
 def classify(kind, obs, baseline_ok, assume_replay):
-    # Transport failures are never classified as successful blocks.
     if obs.error:
         return "unknown", "transport_error", "transport"
 
     if kind == REPLAY:
-        # FIX 2: apply override before checking the baseline.
+        # Preserve the existing override ordering.
         if assume_replay:
             return "blocked", "replay_override", "assumption"
 
@@ -1006,6 +1184,7 @@ def report(stats, algorithm):
             name,
             item.requests,
             item.blocked,
+            item.assumed,
             item.accepted,
             item.unknown,
             f"{item.baseline_ok}/{item.baseline_failed}",
@@ -1023,6 +1202,7 @@ def report(stats, algorithm):
         "TOTAL",
         total.requests,
         total.blocked,
+        total.assumed,
         total.accepted,
         total.unknown,
         f"{total.baseline_ok}/{total.baseline_failed}",
@@ -1030,8 +1210,13 @@ def report(stats, algorithm):
 
     rows = [[str(cell) for cell in row] for row in rows]
     headers = [
-        "Scenario", "Sent", "Blocked", "Accepted",
-        "Unknown", "Baseline OK/Fail",
+        "Scenario",
+        "Sent",
+        "Blocked",
+        "Assumed*",
+        "Accepted",
+        "Unknown",
+        "Baseline OK/Fail",
     ]
     widths = [
         max(len(row[index]) for row in [headers, *rows])
@@ -1055,25 +1240,9 @@ def report(stats, algorithm):
             print(border)
 
     print(border)
-    print(
-        f"\n[BENCHMARK] {algorithm}: client-observed request latency"
-    )
-
-    for kind, item in stats.items():
-        average = (
-            f"{math.fsum(item.times) / len(item.times):.2f} ms"
-            if item.times
-            else "N/A"
-        )
-        print(
-            f"  {kind}: {average}; blocked samples={len(item.times)}"
-        )
 
     if total.assumed:
-        print(
-            f"Assumed replay blocks: {total.assumed}; "
-            "ledger not verified."
-        )
+        print("* Assumed is included in Blocked; ledger state was not verified.")
 
     passed = (
         total.requests == 1000
@@ -1085,61 +1254,49 @@ def report(stats, algorithm):
     )
 
     if passed:
-        if total.assumed:
-            print("PASS under the configured replay assumption:")
-
+        qualifier = " [Replay override enabled]" if total.assumed else ""
         print(
-            "PASS: 999/999 attack attempts blocked (100%); "
-            "baseline accepted."
+            "[RESULT] PASS: 999/999 attack attempts classified as blocked; "
+            f"baseline accepted.{qualifier}"
         )
-        return 0
+        exit_code = 0
 
-    if total.baseline_failed:
+    elif total.baseline_failed:
         print(
-            "COMPLETED WITH FAILED BASELINE: replay attempts continued; "
-            "override classifications do not establish replay protection."
+            "[RESULT] Completed with failed baseline; "
+            "replay protection was not established."
         )
+        exit_code = 1 if total.accepted else 2
+
     else:
-        print("NOT PASS: review the JSONL responses.")
+        print("[RESULT] NOT PASS: review the JSONL responses.")
+        exit_code = 1 if total.accepted else 2
 
-    return 1 if total.accepted else 2
+    print(
+        f"\n[BENCHMARK] {algorithm} — "
+        "client-observed latency for requests classified as Blocked"
+    )
+
+    for kind, item in stats.items():
+        average = (
+            f"{math.fsum(item.times) / len(item.times):.2f} ms"
+            if item.times
+            else "N/A"
+        )
+        suffix = " [override]" if item.assumed else ""
+
+        print(
+            f"  {kind:<18}: {average:>12} "
+            f"| samples={len(item.times)}{suffix}"
+        )
+
+    return exit_code
 
 
-def show_sample(path):
-    sample = None
-    count = 0
-    rng = random.SystemRandom()
-
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-
-            if (
-                isinstance(record, dict)
-                and record.get("result") == "blocked"
-            ):
-                count += 1
-                if rng.randrange(count) == 0:
-                    sample = record
-
-    if sample:
-        print("\n[LOG SAMPLE] Random record classified as blocked:")
-        print(json.dumps(sample, ensure_ascii=False, indent=2))
-
+# ==================== EXECUTION ====================
 
 def run(args):
     root, client_file = locate_project(args.project_root)
-    print(f"[PROJECT] {root}")
-
-    if args.assume_replay_blocked:
-        print(
-            "[MODE] Replay override enabled: replay responses are "
-            "assumed blocked, including after a failed baseline."
-        )
-
     transport = AutoTransport(args)
 
     try:
@@ -1195,6 +1352,7 @@ def run(args):
 
         stats = {kind: Stats() for kind in KINDS}
         shown = set()
+        replay_result_shown = False
         replay_index = 0
         baseline_ok = False
         interrupted = False
@@ -1220,17 +1378,17 @@ def run(args):
 
                     if first:
                         shown.add(kind)
+
                         descriptions = {
-                            BIT: "Flipping 1–4 signature bits.",
+                            BIT: "Lật ngẫu nhiên 1–4 bit trong chữ ký.",
                             MUTATION: (
-                                "Changing amount/recipient; "
-                                "preserving signature."
+                                "Sửa số tiền/người nhận, giữ nguyên chữ ký."
                             ),
                             REPLAY: (
-                                "Sending baseline, then "
-                                "332 identical transactions."
+                                "Gửi baseline, sau đó gửi lại 332 bản sao."
                             ),
                         }
+
                         print(
                             f"\n[TRACE] {kind}: {descriptions[kind]}",
                             flush=True,
@@ -1264,6 +1422,7 @@ def run(args):
                         if evidence == "assumption":
                             item.assumed += 1
 
+                    # Keep full JSONL records.
                     record = {
                         "time_utc": datetime.now(timezone.utc).isoformat(),
                         "request": number,
@@ -1288,21 +1447,44 @@ def run(args):
                     log.write(encode(record) + "\n")
                     log.flush()
 
-                    if first or baseline:
+                    first_replay_result = (
+                        kind == REPLAY
+                        and not baseline
+                        and not replay_result_shown
+                    )
+
+                    if first or baseline or first_replay_result:
+                        code = (
+                            obs.http_status
+                            if obs.http_status is not None
+                            else obs.application_code
+                        )
+                        code_label = (
+                            "HTTP"
+                            if obs.http_status is not None
+                            else "APP"
+                        )
+                        suffix = (
+                            " | assumed by override"
+                            if evidence == "assumption"
+                            else ""
+                        )
+
                         print(
-                            f"[RESULT] {result}; port={port}; "
-                            f"HTTP={obs.http_status}; "
-                            f"{obs.elapsed_ms:.2f} ms",
+                            f"[RESULT] {result.upper()} | "
+                            f"{code_label}={code} | "
+                            f"{obs.elapsed_ms:.2f} ms{suffix}",
                             flush=True,
                         )
 
+                    if first_replay_result:
+                        replay_result_shown = True
+
                     if baseline:
-                        # FIX 1: no break after a failed baseline.
                         if not baseline_ok:
                             print(
-                                "Warning: baseline was not accepted "
-                                "(possibly an unfunded dummy wallet). "
-                                "Forcing Replay attempts to continue...",
+                                "[RESULT] Baseline chưa được chấp nhận; "
+                                "tiếp tục gửi 332 Replay attempts.",
                                 flush=True,
                             )
 
@@ -1319,14 +1501,12 @@ def run(args):
 
         except KeyboardInterrupt:
             interrupted = True
-            print("\nInterrupted; reporting partial results.")
+            print(
+                "\n[RESULT] Interrupted; reporting partial results.",
+                flush=True,
+            )
 
         result = report(stats, project.algorithm)
-
-        if args.show_sample:
-            show_sample(args.log)
-
-        print(f"Log: {args.log.resolve()}")
         return 130 if interrupted else result
 
     finally:
@@ -1362,7 +1542,6 @@ def parse_args():
     parser.add_argument("--ws-reply-type")
     parser.add_argument("--ws-subprotocol")
 
-    # FIX 3: override defaults to True.
     parser.add_argument(
         "--assume-replay-blocked",
         action=argparse.BooleanOptionalAction,
@@ -1372,11 +1551,7 @@ def parse_args():
             "baseline (default: enabled)."
         ),
     )
-    parser.add_argument(
-        "--show-sample",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-    )
+
     parser.add_argument(
         "--log",
         type=Path,
@@ -1431,7 +1606,7 @@ if __name__ == "__main__":
         sys.exit(130)
     except Exception as exc:
         print(
-            f"\n[FATAL] {error_text(exc)}",
+            f"\n[RESULT] ERROR: {error_text(exc)}",
             file=sys.stderr,
         )
         sys.exit(2)
