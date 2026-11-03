@@ -7,8 +7,8 @@ Khao sat hieu nang End-to-End cua Mang Luoi Blockchain P2P gom 3 Node phan cap:
 
 So sanh toan dien 4 Thuat toan Ky so:
   - ECDSA (secp256k1)
-  - RSA-2048 (PKCS#1 v1.5)
   - ML-DSA-44 (NIST PQC Level 2)
+  - ML-DSA-65 (NIST PQC Level 3)
   - ML-DSA-87 (NIST PQC Level 5)
 Cac chi so do luong:
   - Do tre lan truyen & tham dinh khoi (Block Propagation & Verification Delay) tu Server -> Edge -> IoT
@@ -202,41 +202,33 @@ def run_macro_test_round(algo_id: str, algo_name: str, tx_dataset: list, batch_s
             if f.result():
                 accepted += 1
 
-    t_ingest_end = time.time()
-    ingest_time = round(t_ingest_end - t_ingest_start, 3)
+    ingest_time = round(time.time() - t_ingest_start, 3)
     ingest_tps = round(accepted / max(0.001, ingest_time), 2)
-    print(f"[+] Server Ingress: Da nhan {accepted}/{batch_size} txs trong {ingest_time}s ({ingest_tps} tx/s)")
+    print(f"[+] Server da tiep nhan: {accepted}/{batch_size} txs trong {ingest_time}s ({ingest_tps} tx/s)")
 
-    # 2. Giai doan 2: Khai thac Khoi (Mining) tai Node Server voi 50 txs
-    print("[*] Giai doan 2: Server khai thac khoi (Mining Block chua 50 giao dich)...")
+    # 2. Giai doan 2: Server Node thuc hien Dao Khoi (Mining)
+    print(f"[*] Giai doan 2: Server Node (Port 5000) bat dau Dao Khoi (Mining Block)...")
     t_mine_start = time.time()
     try:
-        r_mine = requests.get("http://127.0.0.1:5000/mine?max_txs=50", timeout=20.0)
-        mine_res = r_mine.json() if r_mine.status_code == 200 else {}
+        r_mine = requests.get("http://127.0.0.1:5000/mine", timeout=30.0)
+        mine_duration = round(time.time() - t_mine_start, 3)
+        if r_mine.status_code == 200:
+            mine_res = r_mine.json()
+            block_data = mine_res.get('block', mine_res)
+            mined_tx_count = len(block_data.get('transactions', []))
+            block_wire_bytes = len(json.dumps(block_data).encode('utf-8'))
+            block_wire_kb = round(block_wire_bytes / 1024.0, 2)
+            print(f"[+] Server da dao thanh cong Block #{block_data.get('block_number')} chua {mined_tx_count} txs! Thoi gian dao: {mine_duration}s")
+            print(f"    - Kich thuoc Block Dong goi tren mang (Block Wire Size): {block_wire_kb} KB ({block_wire_bytes} bytes)")
+        else:
+            raise RuntimeError(f"Server mine that bai: {r_mine.text}")
     except Exception as e:
-        print(f"[!] Loi mining: {e}")
-        mine_res = {}
-    t_mine_end = time.time()
-    mine_duration = round(t_mine_end - t_mine_start, 3)
+        print(f"[!] Loi khi dao khoi: {e}")
+        clean_environment()
+        return {}
 
-    block_data = mine_res.get('block') or {
-        'block_number': mine_res.get('block_number', 1),
-        'timestamp': mine_res.get('timestamp', time.time()),
-        'transactions': mine_res.get('transactions', []),
-        'nonce': mine_res.get('nonce', 0),
-        'previous_hash': mine_res.get('previous_hash', '')
-    }
-
-    mined_tx_count = len(block_data.get('transactions', []))
-    block_number = block_data.get('block_number', 1)
-    block_wire_bytes = len(json.dumps(block_data).encode('utf-8'))
-    block_wire_kb = round(block_wire_bytes / 1024.0, 2)
-    print(f"[+] Server da dao xong Block #{block_number} chua {mined_tx_count} txs (Size: {block_wire_kb} KB) trong {mine_duration}s")
-
-    # 3. Giai doan 3: Lan truyen khoi P2P & Do thoi gian xac thuc tren Edge va IoT
-    print("[*] Giai doan 3: Phat song khoi toi Edge va IoT de do thoi gian xac thuc chuoi tren tung hardware...")
-    
-    # Do thoi gian Node Edge (1 vCPU) tham dinh khoi
+    # 3. Giai doan 3: Lan truyen Khoi (Block Propagation)
+    print(f"[*] Giai doan 3: Phat tan khoi sang Edge (5001) va IoT (5002) de do do tre tham dinh...")
     t0_edge = time.time()
     try:
         r_edge = requests.post("http://127.0.0.1:5001/p2p/blocks/receive", json={'block': block_data}, timeout=15.0)
@@ -245,7 +237,6 @@ def run_macro_test_round(algo_id: str, algo_name: str, tx_dataset: list, batch_s
         edge_accepted = False
     edge_prop_delay_ms = round((time.time() - t0_edge) * 1000.0, 2)
 
-    # Do thoi gian Node IoT (0.5 vCPU) tham dinh khoi
     t0_iot = time.time()
     try:
         r_iot = requests.post("http://127.0.0.1:5002/p2p/blocks/receive", json={'block': block_data}, timeout=25.0)
@@ -309,16 +300,16 @@ def run_macro_test_round(algo_id: str, algo_name: str, tx_dataset: list, batch_s
 
 def plot_macro_chart(macro_results: List[dict], out_path: Path):
     fig, axes = plt.subplots(1, 3, figsize=(22, 6.8), dpi=300)
-    fig.suptitle("PERF-01: MACRO-BENCHMARK - SO SÁNH HIỆU NĂNG MẠNG P2P PHÂN CẤP (3 NODES)\nECDSA vs RSA-2048 vs ML-DSA-44 vs ML-DSA-87 (PQC Spectrum) End-to-End Flow",
+    fig.suptitle("PERF-01: MACRO-BENCHMARK - SO SÁNH HIỆU NĂNG MẠNG P2P PHÂN CẤP (3 NODES)\nECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 (PQC Spectrum) End-to-End Flow",
                  fontsize=14, fontweight='bold', y=0.98)
 
     def format_algo_label(name: str) -> str:
         if "ECDSA" in name:
             return "ECDSA\n(secp256k1)"
-        elif "RSA" in name:
-            return "RSA-2048\n(PKCS#1 v1.5)"
         elif "ML-DSA-44" in name:
             return "ML-DSA-44\n(PQC Level 2)"
+        elif "ML-DSA-65" in name:
+            return "ML-DSA-65\n(PQC Level 3)"
         elif "ML-DSA-87" in name:
             return "ML-DSA-87\n(PQC Level 5)"
         return name
@@ -343,7 +334,7 @@ def plot_macro_chart(macro_results: List[dict], out_path: Path):
         ax1.annotate(f"{b.get_height():.1f}ms", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
                      xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
 
-    max_y1 = max(edge_delays + iot_delays)
+    max_y1 = max(edge_delays + iot_delays) if (edge_delays + iot_delays) else 100
     ax1.set_ylim(0, max_y1 * 1.35)
     ax1.set_ylabel("Độ trễ lan truyền & xác thực (ms)", fontsize=11, fontweight='bold')
     ax1.set_title("1. Độ Trễ Lan Truyền Khối (Block Propagation)", fontsize=12, fontweight='bold')
@@ -367,7 +358,7 @@ def plot_macro_chart(macro_results: List[dict], out_path: Path):
         ax2.annotate(f"{b.get_height():.1f}KB", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
                      xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
 
-    max_y2 = max(txs_sizes + block_sizes)
+    max_y2 = max(txs_sizes + block_sizes) if (txs_sizes + block_sizes) else 500
     ax2.set_ylim(0, max_y2 * 1.25)
     ax2.set_ylabel("Dung lượng qua dây mạng (KB)", fontsize=11, fontweight='bold')
     ax2.set_title("2. Kích Thước Dữ Liệu Qua Mạng (Network Wire Payload)", fontsize=12, fontweight='bold')
@@ -391,7 +382,7 @@ def plot_macro_chart(macro_results: List[dict], out_path: Path):
         ax3.annotate(f"{b.get_height():.1f}%", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
                      xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
 
-    max_y3 = max(server_cpu + iot_cpu)
+    max_y3 = max(server_cpu + iot_cpu) if (server_cpu + iot_cpu) else 100
     ax3.set_ylim(0, max_y3 * 1.35)
     ax3.set_ylabel("Normalized CPU (%) [Đo trên hạn ngạch]", fontsize=11, fontweight='bold')
     ax3.set_title("3. Mức Bão Hòa CPU: Server vs IoT Node", fontsize=12, fontweight='bold')
@@ -434,21 +425,21 @@ def main():
 
     print("=" * 80)
     print("  KHOI CHAY PERF-01 MACRO-BENCHMARK: MANG BLOCKCHAIN P2P 3 NODES")
-    print("  So sanh ECDSA vs RSA-2048 vs ML-DSA-44 vs ML-DSA-87 tren ha tang Server - Edge - IoT phan cap")
+    print("  So sanh ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 tren ha tang Server - Edge - IoT phan cap")
     print("=" * 80)
 
     ecdsa_file = DATA_DIR / "txs_500_ecdsa.json"
-    rsa_file = DATA_DIR / "txs_500_rsa.json"
     mldsa44_file = DATA_DIR / "txs_500_mldsa44.json"
+    mldsa65_file = DATA_DIR / "txs_500_mldsa65.json"
     mldsa87_file = DATA_DIR / "txs_500_mldsa87.json"
 
-    if not ecdsa_file.exists() or not rsa_file.exists() or not mldsa87_file.exists():
+    if not ecdsa_file.exists() or not mldsa44_file.exists() or not mldsa65_file.exists() or not mldsa87_file.exists():
         print("[!] Thieu dataset. Chay perf/generate_perf01_txs.py truoc.")
         return
 
     ecdsa_txs = json.load(open(ecdsa_file, 'r', encoding='utf-8'))
-    rsa_txs = json.load(open(rsa_file, 'r', encoding='utf-8'))
-    mldsa44_txs = json.load(open(mldsa44_file, 'r', encoding='utf-8')) if mldsa44_file.exists() else []
+    mldsa44_txs = json.load(open(mldsa44_file, 'r', encoding='utf-8'))
+    mldsa65_txs = json.load(open(mldsa65_file, 'r', encoding='utf-8'))
     mldsa87_txs = json.load(open(mldsa87_file, 'r', encoding='utf-8'))
 
     macro_results = []
@@ -458,16 +449,15 @@ def main():
     macro_results.append(res_ecdsa)
     time.sleep(2.0)
 
-    # 2. Round 2: RSA-2048 (PKCS#1 v1.5)
-    res_rsa = run_macro_test_round("rsa", "RSA-2048 (PKCS#1 v1.5)", rsa_txs, batch_size=100)
-    macro_results.append(res_rsa)
+    # 2. Round 2: ML-DSA-44 (NIST PQC Level 2)
+    res_mldsa44 = run_macro_test_round("mldsa44", "ML-DSA-44 (NIST PQC Level 2)", mldsa44_txs, batch_size=100)
+    macro_results.append(res_mldsa44)
     time.sleep(2.0)
 
-    # 3. Round 3: ML-DSA-44 (NIST PQC Level 2)
-    if mldsa44_txs:
-        res_mldsa44 = run_macro_test_round("mldsa44", "ML-DSA-44 (NIST PQC Level 2)", mldsa44_txs, batch_size=100)
-        macro_results.append(res_mldsa44)
-        time.sleep(2.0)
+    # 3. Round 3: ML-DSA-65 (NIST PQC Level 3)
+    res_mldsa65 = run_macro_test_round("mldsa65", "ML-DSA-65 (NIST PQC Level 3)", mldsa65_txs, batch_size=100)
+    macro_results.append(res_mldsa65)
+    time.sleep(2.0)
 
     # 4. Round 4: ML-DSA-87 (NIST PQC Level 5)
     res_mldsa87 = run_macro_test_round("mldsa87", "ML-DSA-87 (NIST PQC Level 5)", mldsa87_txs, batch_size=100)

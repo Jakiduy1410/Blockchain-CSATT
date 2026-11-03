@@ -1,7 +1,7 @@
 """
 Crypto Module
 Trách nhiệm:
-- Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
+- Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
 - Tính toán hàm băm mật mã SHA-256 chuẩn cho khối (block) và giao dịch (transaction)
 """
 
@@ -27,7 +27,7 @@ from Crypto.Signature import PKCS1_v1_5
 
 def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
-    Xác thực chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204).
+    Xác thực chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204).
     Zero-Trust: nếu public key, signature hoặc định dạng dữ liệu sai -> từ chối ngay.
     """
     if oqs is None:

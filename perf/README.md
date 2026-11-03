@@ -8,19 +8,21 @@ Thư mục này chứa toàn bộ cấu hình **Docker**, bộ dữ liệu tải
 
 ```text
 perf/
-├── Dockerfile                  # Đóng gói Node Python 3.11 + liboqs C engine (FIPS 204 ML-DSA-44 & 87)
+├── Dockerfile                  # Đóng gói Node Python 3.11 + liboqs C engine (FIPS 204 ML-DSA-44, 65 & 87)
 ├── docker-compose.yml          # Định nghĩa 3 profile phần cứng: Server, Edge, IoT
 ├── generate_perf01_txs.py      # Sinh dữ liệu tải 500 txs (chuẩn) & 2,000 txs (cực hạn)
 ├── perf01_stress_test.py       # Engine kiểm thử vi mô ma trận 3x4 & Extreme OOM Hunt (60MB RAM)
 ├── perf01_macro_stress.py      # Engine kiểm thử vĩ mô mạng P2P 3 node phân cấp (Server -> Edge -> IoT)
 ├── PERF01_BENCHMARK_REPORT.md  # Báo cáo kỹ thuật chi tiết theo chuẩn học thuật
+├── PERF_FILES_EXPLANATION.md   # Hướng dẫn chi tiết từng file dữ liệu, bảng số liệu và biểu đồ (JSON/CSV/PNG)
 ├── data/                       # Chứa các bộ dataset giao dịch chuẩn hóa (.json)
 │   ├── txs_500_ecdsa.json
-│   ├── txs_500_rsa.json
 │   ├── txs_500_mldsa44.json
+│   ├── txs_500_mldsa65.json
 │   ├── txs_500_mldsa87.json
 │   ├── txs_stress_ecdsa.json
 │   ├── txs_stress_mldsa44.json
+│   ├── txs_stress_mldsa65.json
 │   └── txs_stress_mldsa87.json
 └── results/                    # Kết quả đo đạc thực nghiệm (CSV, JSON, PNG)
     ├── perf01_matrix.csv
@@ -32,6 +34,8 @@ perf/
     ├── perf01_macro_results.json
     └── perf01_macro_chart.png
 ```
+
+> 📄 **Bản báo cáo trực tuyến trên Google Docs:** [Báo Cáo Kỹ Thuật PERF-01 (Google Docs)](https://docs.google.com/document/d/1YHpdUAUFGrS151Kh72IDlp3UYkOmPeqvztNUNy0YSmE/edit)
 
 ---
 
@@ -49,7 +53,7 @@ docker compose build
 
 ### Bước 2: Sinh Dữ Liệu Giao Dịch (Nếu cần tạo mới)
 ```powershell
-# Chạy qua Docker container (để dùng thư viện liboqs cho ML-DSA-44 & ML-DSA-87):
+# Chạy qua Docker container (để dùng thư viện liboqs cho ML-DSA-44, ML-DSA-65 & ML-DSA-87):
 docker run --rm -v "${PWD}:/app" blockchain-node:perf python perf/generate_perf01_txs.py
 ```
 
@@ -57,13 +61,13 @@ docker run --rm -v "${PWD}:/app" blockchain-node:perf python perf/generate_perf0
 ```powershell
 python perf/perf01_stress_test.py
 ```
-*Script sẽ tự động khởi động các container theo từng profile phần cứng (Server / Edge / IoT), bắn tải 500 giao dịch (ECDSA / RSA / ML-DSA-44 / ML-DSA-87), giám sát RAM / CPU qua cgroups v2 và kích hoạt Extreme OOM Hunt (60MB RAM).*
+*Script sẽ tự động khởi động các container theo từng profile phần cứng (Server / Edge / IoT), bắn tải 500 giao dịch (ECDSA / ML-DSA-44 / ML-DSA-65 / ML-DSA-87), giám sát RAM / CPU qua cgroups v2 và kích hoạt Extreme OOM Hunt (60MB RAM).*
 
 ### Bước 4: Chạy Kịch Bản Macro-Benchmark P2P 3 Nodes
 ```powershell
 python perf/perf01_macro_stress.py
 ```
-*Script sẽ khởi chạy cụm 3 node mạng phân cấp Server (4 vCPU/4GB) -> Edge (1 vCPU/512MB) -> IoT (0.5 vCPU/128MB) kết nối WebSocket TLS 1.3, đo độ trễ lan truyền khối, wire payload và bão hòa CPU.*
+*Script sẽ khởi chạy cụm 3 node mạng phân cấp Server (4 vCPU/4GB) -> Edge (1 vCPU/512MB) -> IoT (0.5 vCPU/128MB), đo độ trễ lan truyền khối, wire payload và bão hòa CPU.*
 
 ### Bước 5: Chạy Độc Lập 1 Profile Cụ Thể (Tùy Chọn)
 Nếu muốn tự tay bật 1 node với cấu hình bị ép để tương tác:

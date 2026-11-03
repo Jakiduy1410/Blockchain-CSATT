@@ -8,80 +8,37 @@
     "wire_tx_bytes": 499,
     "total_wire_txs_kb": 48.73,
     "block_wire_kb": 27.3,
-    "server_ingest_time_s": 0.24,
-    "server_ingest_tps": 416.67,
-    "mine_duration_s": 0.084,
-    "edge_prop_delay_ms": 65.87,
-    "iot_prop_delay_ms": 105.52,
-    "e2e_total_time_s": 0.495,
-    "e2e_tps": 202.02,
+    "server_ingest_time_s": 0.244,
+    "server_ingest_tps": 409.84,
+    "mine_duration_s": 0.098,
+    "edge_prop_delay_ms": 65.6,
+    "iot_prop_delay_ms": 77.56,
+    "e2e_total_time_s": 0.485,
+    "e2e_tps": 206.19,
     "nodes": {
       "server": {
-        "baseline_ram_mb": 42.88,
-        "peak_ram_mb": 45.54,
+        "baseline_ram_mb": 42.86,
+        "peak_ram_mb": 44.46,
         "ram_limit_mb": 4096,
-        "ram_utilization_pct": 1.11,
-        "avg_cpu_pct": 66.61,
-        "normalized_cpu_pct": 16.65
+        "ram_utilization_pct": 1.09,
+        "avg_cpu_pct": 69.8,
+        "normalized_cpu_pct": 17.45
       },
       "edge": {
-        "baseline_ram_mb": 42.88,
-        "peak_ram_mb": 46.62,
+        "baseline_ram_mb": 44.11,
+        "peak_ram_mb": 44.11,
         "ram_limit_mb": 512,
-        "ram_utilization_pct": 9.11,
-        "avg_cpu_pct": 16.44,
-        "normalized_cpu_pct": 16.44
+        "ram_utilization_pct": 8.61,
+        "avg_cpu_pct": 16.96,
+        "normalized_cpu_pct": 16.96
       },
       "iot": {
-        "baseline_ram_mb": 43.26,
-        "peak_ram_mb": 44.07,
+        "baseline_ram_mb": 42.48,
+        "peak_ram_mb": 43.27,
         "ram_limit_mb": 128,
-        "ram_utilization_pct": 34.43,
-        "avg_cpu_pct": 16.26,
-        "normalized_cpu_pct": 32.52
-      }
-    }
-  },
-  {
-    "algorithm_id": "rsa",
-    "algorithm_name": "RSA-2048 (PKCS#1 v1.5)",
-    "batch_size": 100,
-    "accepted_txs": 100,
-    "mined_block_txs": 2,
-    "wire_tx_bytes": 1346,
-    "total_wire_txs_kb": 131.45,
-    "block_wire_kb": 1.74,
-    "server_ingest_time_s": 0.181,
-    "server_ingest_tps": 552.49,
-    "mine_duration_s": 0.017,
-    "edge_prop_delay_ms": 48.41,
-    "iot_prop_delay_ms": 47.39,
-    "e2e_total_time_s": 0.294,
-    "e2e_tps": 340.14,
-    "nodes": {
-      "server": {
-        "baseline_ram_mb": 42.92,
-        "peak_ram_mb": 45.18,
-        "ram_limit_mb": 4096,
-        "ram_utilization_pct": 1.1,
-        "avg_cpu_pct": 71.08,
-        "normalized_cpu_pct": 17.77
-      },
-      "edge": {
-        "baseline_ram_mb": 43.36,
-        "peak_ram_mb": 44.03,
-        "ram_limit_mb": 512,
-        "ram_utilization_pct": 8.6,
-        "avg_cpu_pct": 13.58,
-        "normalized_cpu_pct": 13.58
-      },
-      "iot": {
-        "baseline_ram_mb": 43.45,
-        "peak_ram_mb": 43.97,
-        "ram_limit_mb": 128,
-        "ram_utilization_pct": 34.35,
-        "avg_cpu_pct": 13.45,
-        "normalized_cpu_pct": 26.9
+        "ram_utilization_pct": 33.8,
+        "avg_cpu_pct": 16.42,
+        "normalized_cpu_pct": 32.84
       }
     }
   },
@@ -94,37 +51,80 @@
     "wire_tx_bytes": 7711,
     "total_wire_txs_kb": 753.03,
     "block_wire_kb": 379.26,
-    "server_ingest_time_s": 0.137,
-    "server_ingest_tps": 729.93,
-    "mine_duration_s": 0.065,
-    "edge_prop_delay_ms": 11.36,
-    "iot_prop_delay_ms": 31.26,
-    "e2e_total_time_s": 0.245,
-    "e2e_tps": 408.16,
+    "server_ingest_time_s": 0.308,
+    "server_ingest_tps": 324.68,
+    "mine_duration_s": 0.057,
+    "edge_prop_delay_ms": 19.95,
+    "iot_prop_delay_ms": 32.72,
+    "e2e_total_time_s": 0.418,
+    "e2e_tps": 239.23,
     "nodes": {
       "server": {
-        "baseline_ram_mb": 43.28,
-        "peak_ram_mb": 48.85,
+        "baseline_ram_mb": 42.85,
+        "peak_ram_mb": 49.19,
         "ram_limit_mb": 4096,
-        "ram_utilization_pct": 1.19,
-        "avg_cpu_pct": 92.04,
-        "normalized_cpu_pct": 23.01
+        "ram_utilization_pct": 1.2,
+        "avg_cpu_pct": 43.19,
+        "normalized_cpu_pct": 10.8
       },
       "edge": {
-        "baseline_ram_mb": 42.63,
-        "peak_ram_mb": 47.37,
+        "baseline_ram_mb": 42.53,
+        "peak_ram_mb": 45.57,
         "ram_limit_mb": 512,
-        "ram_utilization_pct": 9.25,
-        "avg_cpu_pct": 10.78,
-        "normalized_cpu_pct": 10.78
+        "ram_utilization_pct": 8.9,
+        "avg_cpu_pct": 9.48,
+        "normalized_cpu_pct": 9.48
       },
       "iot": {
-        "baseline_ram_mb": 42.82,
-        "peak_ram_mb": 45.78,
+        "baseline_ram_mb": 42.68,
+        "peak_ram_mb": 48.81,
         "ram_limit_mb": 128,
-        "ram_utilization_pct": 35.76,
-        "avg_cpu_pct": 9.9,
-        "normalized_cpu_pct": 19.8
+        "ram_utilization_pct": 38.13,
+        "avg_cpu_pct": 5.94,
+        "normalized_cpu_pct": 11.88
+      }
+    }
+  },
+  {
+    "algorithm_id": "mldsa65",
+    "algorithm_name": "ML-DSA-65 (NIST PQC Level 3)",
+    "batch_size": 100,
+    "accepted_txs": 100,
+    "mined_block_txs": 50,
+    "wire_tx_bytes": 10769,
+    "total_wire_txs_kb": 1051.66,
+    "block_wire_kb": 528.57,
+    "server_ingest_time_s": 0.15,
+    "server_ingest_tps": 666.67,
+    "mine_duration_s": 0.134,
+    "edge_prop_delay_ms": 11.51,
+    "iot_prop_delay_ms": 11.18,
+    "e2e_total_time_s": 0.307,
+    "e2e_tps": 325.73,
+    "nodes": {
+      "server": {
+        "baseline_ram_mb": 42.91,
+        "peak_ram_mb": 52.9,
+        "ram_limit_mb": 4096,
+        "ram_utilization_pct": 1.29,
+        "avg_cpu_pct": 98.94,
+        "normalized_cpu_pct": 24.73
+      },
+      "edge": {
+        "baseline_ram_mb": 42.84,
+        "peak_ram_mb": 49.49,
+        "ram_limit_mb": 512,
+        "ram_utilization_pct": 9.67,
+        "avg_cpu_pct": 8.63,
+        "normalized_cpu_pct": 8.63
+      },
+      "iot": {
+        "baseline_ram_mb": 42.81,
+        "peak_ram_mb": 46.51,
+        "ram_limit_mb": 128,
+        "ram_utilization_pct": 36.34,
+        "avg_cpu_pct": 8.63,
+        "normalized_cpu_pct": 17.26
       }
     }
   },
@@ -136,38 +136,38 @@
     "mined_block_txs": 50,
     "wire_tx_bytes": 14685,
     "total_wire_txs_kb": 1434.08,
-    "block_wire_kb": 719.79,
-    "server_ingest_time_s": 0.175,
-    "server_ingest_tps": 571.43,
-    "mine_duration_s": 0.125,
-    "edge_prop_delay_ms": 36.77,
-    "iot_prop_delay_ms": 45.09,
-    "e2e_total_time_s": 0.382,
-    "e2e_tps": 261.78,
+    "block_wire_kb": 719.78,
+    "server_ingest_time_s": 0.138,
+    "server_ingest_tps": 724.64,
+    "mine_duration_s": 0.284,
+    "edge_prop_delay_ms": 15.8,
+    "iot_prop_delay_ms": 57.72,
+    "e2e_total_time_s": 0.496,
+    "e2e_tps": 201.61,
     "nodes": {
       "server": {
-        "baseline_ram_mb": 42.89,
-        "peak_ram_mb": 52.41,
+        "baseline_ram_mb": 42.27,
+        "peak_ram_mb": 53.68,
         "ram_limit_mb": 4096,
-        "ram_utilization_pct": 1.28,
-        "avg_cpu_pct": 82.94,
-        "normalized_cpu_pct": 20.73
+        "ram_utilization_pct": 1.31,
+        "avg_cpu_pct": 87.65,
+        "normalized_cpu_pct": 21.91
       },
       "edge": {
-        "baseline_ram_mb": 43.15,
-        "peak_ram_mb": 46.54,
+        "baseline_ram_mb": 42.83,
+        "peak_ram_mb": 47.89,
         "ram_limit_mb": 512,
-        "ram_utilization_pct": 9.09,
-        "avg_cpu_pct": 7.75,
-        "normalized_cpu_pct": 7.75
+        "ram_utilization_pct": 9.35,
+        "avg_cpu_pct": 6.06,
+        "normalized_cpu_pct": 6.06
       },
       "iot": {
-        "baseline_ram_mb": 42.79,
-        "peak_ram_mb": 48.54,
+        "baseline_ram_mb": 42.81,
+        "peak_ram_mb": 48.77,
         "ram_limit_mb": 128,
-        "ram_utilization_pct": 37.92,
-        "avg_cpu_pct": 7.93,
-        "normalized_cpu_pct": 15.86
+        "ram_utilization_pct": 38.1,
+        "avg_cpu_pct": 5.91,
+        "normalized_cpu_pct": 11.82
       }
     }
   }
