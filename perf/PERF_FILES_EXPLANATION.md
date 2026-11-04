@@ -58,7 +58,7 @@ perf/
 
 ## 2. CHI TIẾT NHÓM DỮ LIỆU ĐẦU VÀO (`perf/data/*.json`)
 
-Toàn bộ các tệp trong thư mục `perf/data/` được sinh tự động bởi script [`perf/generate_perf01_txs.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/generate_perf01_txs.py). Mỗi tệp chứa một mảng JSON các giao dịch đã được ký số hợp lệ bằng các thuật toán tương ứng.
+Toàn bộ các tệp trong thư mục `perf/data/` được sinh tự động bởi script [`perf/generate_perf01_txs.py`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/generate_perf01_txs.py). Mỗi tệp chứa một mảng JSON các giao dịch đã được ký số hợp lệ bằng các thuật toán tương ứng.
 
 ### 2.1. Cấu Trúc Chuẩn Của Một Giao Dịch Đã Ký
 
@@ -88,14 +88,14 @@ Toàn bộ các tệp trong thư mục `perf/data/` được sinh tự động b
 
 ### 2.2. Nhóm Dataset Baseline (500 Giao Dịch)
 
-Dùng cho bài kiểm thử vi mô ma trận 3x4 trong [`perf/perf01_stress_test.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_stress_test.py):
+Dùng cho bài kiểm thử vi mô ma trận 3x4 trong [`perf/perf01_stress_test.py`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/perf01_stress_test.py):
 
 | Tên Tệp | Dung Lượng | Số Tx | Thuật Toán & Chuẩn Ký | Kích Thước Chữ Ký | Mục Đích Sử Dụng |
 | :--- | :---: | :---: | :--- | :---: | :--- |
-| [`txs_500_ecdsa.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_500_ecdsa.json) | 266 KB | 500 | ECDSA (đường cong `secp256k1`) | 64 bytes | Mốc đối chứng cổ điển (Baseline truyền thống, giống Bitcoin/Ethereum). |
-| [`txs_500_mldsa44.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_500_mldsa44.json) | 3.87 MB | 500 | ML-DSA-44 (NIST FIPS 204 Level 2) | 2,420 bytes | Đo đạc hiệu năng chuẩn PQC nhẹ nhất, sống sót qua trần 60MB RAM. |
-| [`txs_500_mldsa65.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_500_mldsa65.json) | 5.40 MB | 500 | ML-DSA-65 (NIST FIPS 204 Level 3) | 3,309 bytes | **Chuẩn khuyến nghị mặc định của NIST (Sweet Spot)**. |
-| [`txs_500_mldsa87.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_500_mldsa87.json) | 7.36 MB | 500 | ML-DSA-87 (NIST FIPS 204 Level 5) | 4,627 bytes | Đánh giá mức tiêu thụ tài nguyên tối đa của chuẩn PQC an toàn nhất. |
+| [`txs_500_ecdsa.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_500_ecdsa.json) | 266 KB | 500 | ECDSA (đường cong `secp256k1`) | 64 bytes | Mốc đối chứng cổ điển (Baseline truyền thống, giống Bitcoin/Ethereum). |
+| [`txs_500_mldsa44.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_500_mldsa44.json) | 3.87 MB | 500 | ML-DSA-44 (NIST FIPS 204 Level 2) | 2,420 bytes | Đo đạc hiệu năng chuẩn PQC nhẹ nhất, sống sót qua trần 60MB RAM. |
+| [`txs_500_mldsa65.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_500_mldsa65.json) | 5.40 MB | 500 | ML-DSA-65 (NIST FIPS 204 Level 3) | 3,309 bytes | **Chuẩn khuyến nghị mặc định của NIST (Sweet Spot)**. |
+| [`txs_500_mldsa87.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_500_mldsa87.json) | 7.36 MB | 500 | ML-DSA-87 (NIST FIPS 204 Level 5) | 4,627 bytes | Đánh giá mức tiêu thụ tài nguyên tối đa của chuẩn PQC an toàn nhất. |
 
 ---
 
@@ -105,10 +105,10 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 
 | Tên Tệp | Dung Lượng | Số Tx | Thuật Toán | Điểm Đặc Biệt Trong Thực Nghiệm |
 | :--- | :---: | :---: | :--- | :--- |
-| [`txs_stress_ecdsa.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_ecdsa.json) | 1.07 MB | 2,000 | ECDSA | Dung lượng cực nhỏ, 2,000 txs chỉ chiếm 1MB bộ nhớ. Đối chứng an toàn trong bài test 60MB RAM. |
-| [`txs_stress_mldsa44.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa44.json) | 15.49 MB | 2,000 | ML-DSA-44 | 2,000 giao dịch chiếm ~15.5 MB. Sống sót trọn vẹn 1,500 txs trên node IoT 60MB RAM. |
-| [`txs_stress_mldsa65.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa65.json) | 21.61 MB | 2,000 | ML-DSA-65 | Chiếm ~21.6 MB. Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1300** trên node 60MB RAM. |
-| [`txs_stress_mldsa87.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa87.json) | 29.44 MB | 2,000 | ML-DSA-87 | Dung lượng khổng lồ (~29.5 MB). Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1050** trên node 60MB RAM. |
+| [`txs_stress_ecdsa.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_stress_ecdsa.json) | 1.07 MB | 2,000 | ECDSA | Dung lượng cực nhỏ, 2,000 txs chỉ chiếm 1MB bộ nhớ. Đối chứng an toàn trong bài test 60MB RAM. |
+| [`txs_stress_mldsa44.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa44.json) | 15.49 MB | 2,000 | ML-DSA-44 | 2,000 giao dịch chiếm ~15.5 MB. Sống sót trọn vẹn 1,500 txs trên node IoT 60MB RAM. |
+| [`txs_stress_mldsa65.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa65.json) | 21.61 MB | 2,000 | ML-DSA-65 | Chiếm ~21.6 MB. Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1300** trên node 60MB RAM. |
+| [`txs_stress_mldsa87.json`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa87.json) | 29.44 MB | 2,000 | ML-DSA-87 | Dung lượng khổng lồ (~29.5 MB). Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #900** trên node 60MB RAM. |
 
 ---
 
@@ -126,7 +126,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ## 3. CHI TIẾT NHÓM BẢNG SỐ LIỆU THỰC NGHIỆM (`perf/results/*.csv`)
 
 ### 3.1. Tệp `perf01_matrix.csv` (Ma Trận Vi Mô 3x4)
-* **Đường dẫn:** [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv)
+* **Đường dẫn:** [`perf/results/perf01_matrix.csv`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv)
 * **Quy mô dữ liệu:** 13 dòng (1 tiêu đề + 12 dòng tương ứng với 3 Hardware Profiles $\times$ 4 Thuật toán).
 * **Mục đích:** Lưu trữ kết quả đo lường vi mô khi nạp 500 giao dịch qua cổng HTTP REST API `/transactions/new`.
 
@@ -150,7 +150,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ---
 
 ### 3.2. Tệp `perf01_extreme_oom_matrix.csv` (Săn OOM-Killer Kép 60MB RAM)
-* **Đường dẫn:** [`perf/results/perf01_extreme_oom_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv)
+* **Đường dẫn:** [`perf/results/perf01_extreme_oom_matrix.csv`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv)
 * **Quy mô dữ liệu:** Theo dõi quỹ đạo tiêu thụ RAM của cả 4 thuật toán trên node IoT bị ép trần RAM xuống đúng **60 MB**.
 
 #### Ý Nghĩa Từng Cột:
@@ -168,7 +168,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ---
 
 ### 3.3. Tệp `perf01_macro_matrix.csv` (Mạng P2P 3 Node Phân Cấp)
-* **Đường dẫn:** [`perf/results/perf01_macro_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_matrix.csv)
+* **Đường dẫn:** [`perf/results/perf01_macro_matrix.csv`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_macro_matrix.csv)
 * **Quy mô dữ liệu:** 5 dòng (1 header + 4 dòng kết quả cho ECDSA, ML-DSA-44, ML-DSA-65, ML-DSA-87).
 * **Mục đích:** Lưu trữ kết quả đo đạc kiểm thử toàn diện vĩ mô (Macro End-to-End) trên cụm mạng P2P gồm 3 Node phân cấp (Server 5000 $\rightarrow$ Edge 5001 $\rightarrow$ IoT 5002).
 
@@ -184,7 +184,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ## 5. CHI TIẾT NHÓM BIỂU ĐỒ TRỰC QUAN HÓA (`perf/results/*.png`)
 
 ### 5.1. Tệp `perf01_oom_risk_chart.png` (Ma Trận Vi Mô 3 Panel)
-* **Đường dẫn:** [`perf/results/perf01_oom_risk_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_oom_risk_chart.png)
+* **Đường dẫn:** [`perf/results/perf01_oom_risk_chart.png`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_oom_risk_chart.png)
 * **Panel 1 (Peak RAM):** Trực quan hóa đỉnh RAM của 4 thuật toán trên 3 môi trường phần cứng so với trần 128MB (IoT) và 512MB (Edge).
 * **Panel 2 (Ingestion TPS):** Tốc độ nạp mempool vượt trội của các thuật toán ML-DSA (đạt tới 719 tx/s trên Server) so với ECDSA (416 tx/s).
 * **Panel 3 (CPU Saturation):** Mức tải CPU và hiện tượng ngắt xung nhịp CFS Throttling trên Edge và IoT.
@@ -192,7 +192,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ---
 
 ### 5.2. Tệp `perf01_extreme_oom_chart.png` (Biểu Đồ Vách Đá OOM-Killer Kép)
-* **Đường dẫn:** [`perf/results/perf01_extreme_oom_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png)
+* **Đường dẫn:** [`perf/results/perf01_extreme_oom_chart.png`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png)
 * **Ý nghĩa:** Trực quan hóa ranh giới sinh tử trên Node IoT 60MB RAM:
   * **Đường đỏ (ML-DSA-87 Level 5):** Chạm trần 60MB và bị Linux OOM-Killer gửi `SIGKILL (Exit 137)` tại **Tx #1050**.
   * **Đường cam (ML-DSA-65 Level 3):** Chạm trần 60MB và bị Linux OOM-Killer gửi `SIGKILL (Exit 137)` tại **Tx #1300**.
@@ -202,7 +202,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 ---
 
 ### 5.3. Tệp `perf01_macro_chart.png` (Biểu Đồ Vĩ Mô Mạng P2P 3 Node)
-* **Đường dẫn:** [`perf/results/perf01_macro_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_chart.png)
+* **Đường dẫn:** [`perf/results/perf01_macro_chart.png`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/results/perf01_macro_chart.png)
 * **Panel 1 (Block Propagation Delay):** Độ trễ lan truyền và thẩm định khối sang Edge và IoT. **ML-DSA-65 đạt độ trễ thấp nhất toàn tuyến (~11 ms)**.
 * **Panel 2 (Network Wire Payload):** So sánh dung lượng 100 txs và dung lượng khối đã đào đóng gói.
 * **Panel 3 (Normalized CPU):** Phân tích mức bão hòa CPU giữa Server và IoT.

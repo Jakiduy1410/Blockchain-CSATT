@@ -36,7 +36,8 @@ perf/
     └── perf01_macro_chart.png
 ```
 
-> 📄 **Bản báo cáo trực tuyến trên Google Docs:** [Báo Cáo Kỹ Thuật PERF-01 (Google Docs)](https://docs.google.com/document/d/1YHpdUAUFGrS151Kh72IDlp3UYkOmPeqvztNUNy0YSmE/edit)
+> 📄 **Bản báo cáo trực tuyến trên Google Docs:** [Báo Cáo Kỹ Thuật PERF-01 (Google Docs)](https://docs.google.com/document/d/11TLElp3ceeBPXwJGntcr8gvw5fgNlUeG/edit#heading=h.m3dzhewaqa7b)  
+> 📋 **Bản xuất Markdown sẵn sàng dán vào Google Docs:** [`perf/PERF01_GOOGLE_DOCS_EXPORT.md`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/PERF01_GOOGLE_DOCS_EXPORT.md)  
 
 ---
 

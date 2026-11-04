@@ -51,7 +51,7 @@ flowchart TD
    * Nhờ thuật toán biến đổi số học **NTT (*Number Theoretic Transform*)**, phép nhân đa thức bậc $n=256$ được chuyển đổi từ độ phức tạp $\mathcal{O}(n^2)$ về chỉ còn $\mathcal{O}(n \log n)$ với toàn các phép toán cộng/nhân số nguyên cơ bản. Do đó, về mặt lý thuyết thuần túy, thẩm định chữ ký ML-DSA tốn ít chu kỳ CPU hơn nhiều so với phép nhân điểm elliptic.
 
 2. **Về mặt kiến trúc thực thi mã nguồn (Native C vs Pure-Python & GIL):**
-   * Trong mã nguồn [`blockchain/core/crypto.py`](file:///d:/assignment/btl/Blockchain-CSATT/blockchain/core/crypto.py#L13-L22):
+   * Trong mã nguồn [`blockchain/core/crypto.py`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/blockchain/core/crypto.py#L13-L22):
      * **ML-DSA** được thẩm định thông qua thư viện `oqs` (`liboqs`). Đây là **thư viện C biên dịch bản địa (Compiled Native C Extension)** có kích hoạt tập lệnh vector hóa vi xử lý (AVX2/NEON). Khi gọi hàm xác thực C, Python **nhả khóa toàn cục GIL (Global Interpreter Lock)**, cho phép 8 luồng HTTP worker chạy song song thực sự trên các nhân CPU.
      * **ECDSA** được thẩm định bằng thư viện `python-ecdsa` (`from ecdsa import VerifyingKey`). Đây là thư viện **thuần Python (Pure-Python)**. Mọi phép nhân đường cong elliptic đều được thông dịch bằng Python Bytecode và **giữ chặt khóa GIL**. Dù máy chủ Flask có mở 8 worker threads, các worker vẫn phải xếp hàng tuần tự để tranh giành GIL, tạo thành điểm nghẽn nghiêm trọng (Thread Contention).
 
@@ -81,7 +81,7 @@ flowchart TD
 ### 3. HIỆN TƯỢNG OOM-KILLER KÉP: CƠ CHẾ NHÂN LINUX SIGKILL (EXIT 137) HOẠT ĐỘNG NHƯ THẾ NÀO?
 
 #### Câu hỏi của Giảng viên:
-> *"Bài test ép trần 60MB RAM (Extreme OOM Hunt) nhằm chứng minh điều gì? Tại sao ML-DSA-87 bị OOM ở giao dịch #1050, ML-DSA-65 bị OOM ở #1300, còn ML-DSA-44 và ECDSA lại sống sót qua 1,500 giao dịch?"*
+> *"Bài test ép trần 60MB RAM (Extreme OOM Hunt) nhằm chứng minh điều gì? Tại sao ML-DSA-87 bị OOM ở giao dịch #900, ML-DSA-65 bị OOM ở #1300, còn ML-DSA-44 và ECDSA lại sống sót qua 1,500 giao dịch?"*
 
 #### Bản chất kỹ thuật & Phân tích cơ chế:
 
@@ -94,7 +94,7 @@ stateDiagram-v2
         ECDSA: ECDSA (+0.5 KB/tx) -> Đỉnh 46 MB (Bình an)
         MLDSA44: ML-DSA-44 (+8.5 KB/tx) -> Đỉnh 59.86 MB (Sống sót)
         MLDSA65: ML-DSA-65 (+12 KB/tx) -> Chạm 60.0 MB tại Tx #1300
-        MLDSA87: ML-DSA-87 (+16 KB/tx) -> Chạm 60.0 MB tại Tx #1050
+        MLDSA87: ML-DSA-87 (+16 KB/tx) -> Chạm 60.0 MB tại Tx #900
     }
 
     MLDSA65 --> SIGKILL_137: Vượt cgroup memory.max (60MB)
@@ -113,7 +113,7 @@ stateDiagram-v2
    * **ECDSA:** $\approx 0.5\text{ KB/tx}$ $\rightarrow$ 1,500 giao dịch chỉ tốn thêm $\approx 0.75\text{ MB}$ RAM $\rightarrow$ RAM đỉnh chỉ đạt $46.4\text{ MB}$ (còn dư hơn 13 MB an toàn).
    * **ML-DSA-44:** $\approx 8.5\text{ KB/tx}$ in-memory $\rightarrow$ 1,500 giao dịch tốn thêm $\approx 12.8\text{ MB}$ RAM $\rightarrow$ RAM đỉnh chạm $59.86\text{ MB}$ ($99.8\%$ trần), lượn sát mép vực nhưng **chưa chạm đỉnh 60MB**, do đó sống sót an toàn!
    * **ML-DSA-65:** $\approx 12\text{ KB/tx}$ in-memory $\rightarrow$ Tại mốc **Tx #1300**, tổng RAM giao dịch vượt quá 17 MB headroom $\rightarrow$ RAM chạm $60.0\text{ MB}$ $\rightarrow$ **Kích hoạt OOM-Killer thứ nhất**.
-   * **ML-DSA-87:** $\approx 16.5\text{ KB/tx}$ in-memory $\rightarrow$ Tại mốc **Tx #1050**, RAM chạm $60.0\text{ MB}$ $\rightarrow$ **Kích hoạt OOM-Killer sớm nhất**.
+   * **ML-DSA-87:** $\approx 16.5\text{ KB/tx}$ in-memory $\rightarrow$ Tại mốc **Tx #900**, RAM chạm $60.0\text{ MB}$ $\rightarrow$ **Kích hoạt OOM-Killer sớm nhất**.
 
 3. **Vì sao mã lỗi thoát là `137`?**
    * Theo chuẩn Linux POSIX, khi một tiến trình bị nhân Linux hủy diệt bằng tín hiệu (*Signal*), mã thoát của tiến trình sẽ bằng:
