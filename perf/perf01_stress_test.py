@@ -204,6 +204,7 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,
+        "-v", f"{BASE_DIR}:/app",
         f"--cpus={cpus}",
         f"-m={memory}",
         f"--memory-swap={memory}",
@@ -356,6 +357,7 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
     subprocess.run(["docker", "rm", "-f", container_mldsa], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run([
         "docker", "run", "-d", "--name", container_mldsa,
+        "-v", f"{BASE_DIR}:/app",
         "--cpus=0.5", "-m=60m", "--memory-swap=60m",
         "-p", f"{port_mldsa}:5000", "blockchain-node:perf"
     ], check=True)
@@ -383,7 +385,7 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
                 
                 mem_res = subprocess.run(["docker", "exec", container_mldsa, "cat", "/sys/fs/cgroup/memory.current"], capture_output=True, text=True)
                 mem_mb = int(mem_res.stdout.strip()) / 1048576.0 if mem_res.stdout.strip().isdigit() else 60.0
-                if mem_mb < 35.0 and idx > 100:
+                if is_oom or mem_mb >= 59.5 or (mem_mb < 35.0 and idx > 100):
                     mem_mb = 60.0
                     is_oom = True
                 mldsa_samples.append({'tx_count': idx + 1, 'ram_mb': round(mem_mb, 2), 'oom': is_oom})
@@ -408,6 +410,7 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
         subprocess.run(["docker", "rm", "-f", container_mldsa65], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([
             "docker", "run", "-d", "--name", container_mldsa65,
+            "-v", f"{BASE_DIR}:/app",
             "--cpus=0.5", "-m=60m", "--memory-swap=60m",
             "-p", f"{port_mldsa65}:5000", "blockchain-node:perf"
         ], check=True)
@@ -457,6 +460,7 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
         subprocess.run(["docker", "rm", "-f", container_mldsa44], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([
             "docker", "run", "-d", "--name", container_mldsa44,
+            "-v", f"{BASE_DIR}:/app",
             "--cpus=0.5", "-m=60m", "--memory-swap=60m",
             "-p", f"{port_mldsa44}:5000", "blockchain-node:perf"
         ], check=True)
@@ -498,6 +502,7 @@ def run_extreme_oom_hunt() -> Tuple[List[dict], dict]:
     subprocess.run(["docker", "rm", "-f", container_ecdsa], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run([
         "docker", "run", "-d", "--name", container_ecdsa,
+        "-v", f"{BASE_DIR}:/app",
         "--cpus=0.5", "-m=60m", "--memory-swap=60m",
         "-p", f"{port_ecdsa}:5000", "blockchain-node:perf"
     ], check=True)
@@ -641,24 +646,48 @@ def plot_extreme_oom_chart(stress_data: Optional[dict] = None, out_path: Optiona
 
         # Tim diem OOM thuc te trong du lieu
         oom_87_rows = df[df['MLDSA87_OOM_Killed'] == True]
-        oom_tx87 = int(oom_87_rows['Tx_Count'].iloc[0]) if not oom_87_rows.empty else 1050
+        has_oom_87 = not oom_87_rows.empty
+        oom_tx87 = int(oom_87_rows['Tx_Count'].iloc[0]) if has_oom_87 else None
 
         oom_65_rows = df[df['MLDSA65_OOM_Killed'] == True]
-        oom_tx65 = int(oom_65_rows['Tx_Count'].iloc[0]) if not oom_65_rows.empty else 1300
+        has_oom_65 = not oom_65_rows.empty
+        oom_tx65 = int(oom_65_rows['Tx_Count'].iloc[0]) if has_oom_65 else None
 
         fig, ax = plt.subplots(figsize=(12, 6.5), dpi=300)
 
-        # 1. ML-DSA-87 (Dừng dứt khoát tại điểm OOM)
-        m87_active = df[df['Tx_Count'] <= oom_tx87].dropna(subset=['MLDSA87_RAM_MB'])
-        ax.plot(m87_active['Tx_Count'], m87_active['MLDSA87_RAM_MB'],
-                marker='o', markersize=4.5, linewidth=2.4, color='#d62728',
-                label='ML-DSA-87 Level 5 (Tang vot RAM -> OOM tai #1050)')
+        # 1. ML-DSA-87 (Dừng dứt khoát tại điểm OOM nếu có)
+        if has_oom_87:
+            m87_active = df[df['Tx_Count'] <= oom_tx87].dropna(subset=['MLDSA87_RAM_MB'])
+            ax.plot(m87_active['Tx_Count'], m87_active['MLDSA87_RAM_MB'],
+                    marker='o', markersize=4.5, linewidth=2.4, color='#d62728',
+                    label=f'ML-DSA-87 Level 5 (Tang vot RAM -> OOM tai #{oom_tx87})')
+            ax.scatter([oom_tx87], [60.0], color='red', s=220, zorder=6, edgecolor='black', linewidth=1.8)
+            ax.annotate(f"ML-DSA-87 OOM-KILLER ACTIVATED!\n(Exit 137 tai Tx #{oom_tx87})",
+                        xy=(oom_tx87, 60.0), xytext=(max(oom_tx87 - 250, 400), 65.2),
+                        arrowprops=dict(facecolor='red', edgecolor='darkred', shrink=0.08, width=1.8, headwidth=7),
+                        fontsize=8.5, fontweight='bold', color='darkred',
+                        bbox=dict(boxstyle='round,pad=0.4', facecolor='#ffebee', edgecolor='red', linewidth=1.2))
+        else:
+            ax.plot(df['Tx_Count'], df['MLDSA87_RAM_MB'],
+                    marker='o', markersize=4.5, linewidth=2.4, color='#d62728',
+                    label='ML-DSA-87 Level 5')
 
-        # 2. ML-DSA-65 (Dừng dứt khoát tại điểm OOM)
-        m65_active = df[df['Tx_Count'] <= oom_tx65].dropna(subset=['MLDSA65_RAM_MB'])
-        ax.plot(m65_active['Tx_Count'], m65_active['MLDSA65_RAM_MB'],
-                marker='D', markersize=4.5, linewidth=2.2, color='#ff7f0e', linestyle='--',
-                label='ML-DSA-65 Level 3 (NIST Default -> OOM tai #1300)')
+        # 2. ML-DSA-65 (Dừng dứt khoát tại điểm OOM nếu có)
+        if has_oom_65:
+            m65_active = df[df['Tx_Count'] <= oom_tx65].dropna(subset=['MLDSA65_RAM_MB'])
+            ax.plot(m65_active['Tx_Count'], m65_active['MLDSA65_RAM_MB'],
+                    marker='D', markersize=4.5, linewidth=2.2, color='#ff7f0e', linestyle='--',
+                    label=f'ML-DSA-65 Level 3 (NIST Default -> OOM tai #{oom_tx65})')
+            ax.scatter([oom_tx65], [60.0], color='darkorange', s=220, zorder=6, edgecolor='black', linewidth=1.8)
+            ax.annotate(f"ML-DSA-65 OOM-KILLER!\n(Exit 137 tai Tx #{oom_tx65})",
+                        xy=(oom_tx65, 60.0), xytext=(max(oom_tx65 - 150, 800), 65.2),
+                        arrowprops=dict(facecolor='darkorange', edgecolor='brown', shrink=0.08, width=1.8, headwidth=7),
+                        fontsize=8.5, fontweight='bold', color='brown',
+                        bbox=dict(boxstyle='round,pad=0.4', facecolor='#fff3e0', edgecolor='darkorange', linewidth=1.2))
+        else:
+            ax.plot(df['Tx_Count'], df['MLDSA65_RAM_MB'],
+                    marker='D', markersize=4.5, linewidth=2.2, color='#ff7f0e', linestyle='--',
+                    label='ML-DSA-65 Level 3 (NIST Default)')
 
         # 3. ML-DSA-44
         ax.plot(df['Tx_Count'], df['MLDSA44_RAM_MB'],
@@ -672,22 +701,6 @@ def plot_extreme_oom_chart(stress_data: Optional[dict] = None, out_path: Optiona
 
         # Ceiling line 60MB
         ax.axhline(y=60.0, color='darkred', linestyle='-.', linewidth=2.0, label='Linux cgroups Hard Limit (60 MB Ceiling)')
-
-        # Chú thích OOM ML-DSA-87
-        ax.scatter([oom_tx87], [60.0], color='red', s=220, zorder=6, edgecolor='black', linewidth=1.8)
-        ax.annotate(f"ML-DSA-87 OOM-KILLER ACTIVATED!\n(Exit 137 tai Tx #{oom_tx87})",
-                    xy=(oom_tx87, 60.0), xytext=(780, 65.2),
-                    arrowprops=dict(facecolor='red', edgecolor='darkred', shrink=0.08, width=1.8, headwidth=7),
-                    fontsize=8.5, fontweight='bold', color='darkred',
-                    bbox=dict(boxstyle='round,pad=0.4', facecolor='#ffebee', edgecolor='red', linewidth=1.2))
-
-        # Chú thích OOM ML-DSA-65
-        ax.scatter([oom_tx65], [60.0], color='darkorange', s=220, zorder=6, edgecolor='black', linewidth=1.8)
-        ax.annotate(f"ML-DSA-65 OOM-KILLER!\n(Exit 137 tai Tx #{oom_tx65})",
-                    xy=(oom_tx65, 60.0), xytext=(1220, 65.2),
-                    arrowprops=dict(facecolor='darkorange', edgecolor='brown', shrink=0.08, width=1.8, headwidth=7),
-                    fontsize=8.5, fontweight='bold', color='brown',
-                    bbox=dict(boxstyle='round,pad=0.4', facecolor='#fff3e0', edgecolor='darkorange', linewidth=1.2))
 
         ax.set_xlabel("So Luong Giao Dich Mempool Ingestion (Transactions)", fontsize=11, fontweight='bold')
         ax.set_ylabel("RAM Usage (MB)", fontsize=11, fontweight='bold')
@@ -807,7 +820,7 @@ def main():
     # 1.1. Warm-up Docker container de lam am Page Cache he thong (tranh sai so cold start cho test dau tien)
     print("[*] Khoi dong container warm-up de lam am page cache he thong...")
     subprocess.run(["docker", "rm", "-f", "btc-node-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["docker", "run", "-d", "--name", "btc-node-warmup", "blockchain-node:perf"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["docker", "run", "-d", "--name", "btc-node-warmup", "-v", f"{BASE_DIR}:/app", "blockchain-node:perf"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     subprocess.run(["docker", "rm", "-f", "btc-node-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

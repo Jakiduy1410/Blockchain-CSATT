@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 PERF_DIR = Path(__file__).resolve().parent
+BASE_DIR = PERF_DIR.parent
 RESULTS_DIR = PERF_DIR / "results"
 DATA_DIR = PERF_DIR / "data"
 
@@ -91,6 +92,7 @@ def start_node(node_key: str) -> bool:
         "docker", "run", "-d",
         "--name", spec["container"],
         "--network", NETWORK_NAME,
+        "-v", f"{BASE_DIR}:/app",
         f"--cpus={spec['cpus']}",
         f"-m={spec['memory']}",
         f"--memory-swap={spec['memory']}",
@@ -450,7 +452,7 @@ def main():
     macro_results = []
 
     print("[*] Khoi chay container warm-up de lam nong bo dem Linux Page Cache...")
-    subprocess.run(["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "blockchain-node:perf"], stdout=subprocess.DEVNULL)
+    subprocess.run(["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "-v", f"{BASE_DIR}:/app", "blockchain-node:perf"], stdout=subprocess.DEVNULL)
     time.sleep(2.5)
     subprocess.run(["docker", "rm", "-f", "btc-macro-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
