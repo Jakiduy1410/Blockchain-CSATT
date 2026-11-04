@@ -48,7 +48,7 @@ perf/
     ├── perf01_results.json               # Dữ liệu vi mô đầy đủ kèm telemetry cgroups
     ├── perf01_oom_risk_chart.png         # Biểu đồ 3 panel phân tích rủi ro RAM & CPU
     ├── perf01_extreme_oom_matrix.csv     # Bảng theo dõi quỹ đạo RAM ép trần 60MB (4 thuật toán)
-    ├── perf01_extreme_oom_chart.png      # Biểu đồ điểm rơi OOM-Killed Kép (#1050 & #1350)
+    ├── perf01_extreme_oom_chart.png      # Biểu đồ điểm rơi OOM-Killed Kép (#1050 & #1300)
     ├── perf01_macro_matrix.csv           # Bảng số liệu vĩ mô mạng P2P 3 node phân cấp
     ├── perf01_macro_results.json         # Dữ liệu vĩ mô chi tiết từng node (Server/Edge/IoT)
     └── perf01_macro_chart.png            # Biểu đồ 3 panel trễ lan truyền, payload & CPU
@@ -107,7 +107,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 | :--- | :---: | :---: | :--- | :--- |
 | [`txs_stress_ecdsa.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_ecdsa.json) | 1.07 MB | 2,000 | ECDSA | Dung lượng cực nhỏ, 2,000 txs chỉ chiếm 1MB bộ nhớ. Đối chứng an toàn trong bài test 60MB RAM. |
 | [`txs_stress_mldsa44.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa44.json) | 15.49 MB | 2,000 | ML-DSA-44 | 2,000 giao dịch chiếm ~15.5 MB. Sống sót trọn vẹn 1,500 txs trên node IoT 60MB RAM. |
-| [`txs_stress_mldsa65.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa65.json) | 21.61 MB | 2,000 | ML-DSA-65 | Chiếm ~21.6 MB. Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1350** trên node 60MB RAM. |
+| [`txs_stress_mldsa65.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa65.json) | 21.61 MB | 2,000 | ML-DSA-65 | Chiếm ~21.6 MB. Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1300** trên node 60MB RAM. |
 | [`txs_stress_mldsa87.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/data/txs_stress_mldsa87.json) | 29.44 MB | 2,000 | ML-DSA-87 | Dung lượng khổng lồ (~29.5 MB). Kích nổ sự kiện Linux Kernel OOM-Killer tại **Tx #1050** trên node 60MB RAM. |
 
 ---
@@ -161,7 +161,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 5. `ECDSA_RAM_MB`: Dung lượng RAM của ECDSA tại mốc `Tx_Count`.
 6. `Ceiling_Limit_MB`: Trần cgroups cứng (`60.0 MB`).
 7. `MLDSA87_OOM_Killed`: Chuyển thành `True` từ giao dịch **#1050** khi tiến trình chết vì `SIGKILL (Exit Code 137)`.
-8. `MLDSA65_OOM_Killed`: Chuyển thành `True` từ giao dịch **#1350** khi tiến trình chết vì `SIGKILL (Exit Code 137)`.
+8. `MLDSA65_OOM_Killed`: Chuyển thành `True` từ giao dịch **#1300** khi tiến trình chết vì `SIGKILL (Exit Code 137)`.
 9. `MLDSA44_OOM_Killed`: `False` xuyên suốt 1,500 txs (sống sót an toàn).
 10. `ECDSA_OOM_Killed`: `False` xuyên suốt 1,500 txs (ổn định ở mức ~46 MB).
 
@@ -195,7 +195,7 @@ Dùng cho bài kiểm tra tải dồn dập và kịch bản săn tìm sự ki�
 * **Đường dẫn:** [`perf/results/perf01_extreme_oom_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png)
 * **Ý nghĩa:** Trực quan hóa ranh giới sinh tử trên Node IoT 60MB RAM:
   * **Đường đỏ (ML-DSA-87 Level 5):** Chạm trần 60MB và bị Linux OOM-Killer gửi `SIGKILL (Exit 137)` tại **Tx #1050**.
-  * **Đường cam (ML-DSA-65 Level 3):** Chạm trần 60MB và bị Linux OOM-Killer gửi `SIGKILL (Exit 137)` tại **Tx #1350**.
+  * **Đường cam (ML-DSA-65 Level 3):** Chạm trần 60MB và bị Linux OOM-Killer gửi `SIGKILL (Exit 137)` tại **Tx #1300**.
   * **Đường xanh lá (ML-DSA-44 Level 2):** Lượn sát dưới trần 60MB và sống sót trọn vẹn 1,500 txs.
   * **Đường xanh dương (ECDSA secp256k1):** Phẳng tuyệt đối ở mức 46 MB.
 

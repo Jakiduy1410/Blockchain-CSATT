@@ -13,6 +13,7 @@ perf/
 ├── generate_perf01_txs.py      # Sinh dữ liệu tải 500 txs (chuẩn) & 2,000 txs (cực hạn)
 ├── perf01_stress_test.py       # Engine kiểm thử vi mô ma trận 3x4 & Extreme OOM Hunt (60MB RAM)
 ├── perf01_macro_stress.py      # Engine kiểm thử vĩ mô mạng P2P 3 node phân cấp (Server -> Edge -> IoT)
+├── note.md                     # Cẩm nang hỏi - đáp chuyên sâu và bảo vệ đồ án
 ├── PERF01_BENCHMARK_REPORT.md  # Báo cáo kỹ thuật chi tiết theo chuẩn học thuật
 ├── PERF_FILES_EXPLANATION.md   # Hướng dẫn chi tiết từng file dữ liệu, bảng số liệu và biểu đồ (JSON/CSV/PNG)
 ├── data/                       # Chứa các bộ dataset giao dịch chuẩn hóa (.json)

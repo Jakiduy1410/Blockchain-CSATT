@@ -210,7 +210,7 @@ def run_macro_test_round(algo_id: str, algo_name: str, tx_dataset: list, batch_s
     print(f"[*] Giai doan 2: Server Node (Port 5000) bat dau Dao Khoi (Mining Block)...")
     t_mine_start = time.time()
     try:
-        r_mine = requests.get("http://127.0.0.1:5000/mine", timeout=30.0)
+        r_mine = requests.get(f"http://127.0.0.1:5000/mine?max_txs={batch_size}", timeout=30.0)
         mine_duration = round(time.time() - t_mine_start, 3)
         if r_mine.status_code == 200:
             mine_res = r_mine.json()
@@ -422,6 +422,11 @@ def save_macro_csv(macro_results: List[dict], out_path: Path):
 
 def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    if "--plot-only" in sys.argv or "-p" in sys.argv:
+        p = RESULTS_DIR / "perf01_macro_results.json"
+        if p.exists():
+            plot_macro_chart(json.load(open(p, encoding='utf-8')), RESULTS_DIR / "perf01_macro_chart.png")
+            return
 
     print("=" * 80)
     print("  KHOI CHAY PERF-01 MACRO-BENCHMARK: MANG BLOCKCHAIN P2P 3 NODES")
@@ -443,6 +448,11 @@ def main():
     mldsa87_txs = json.load(open(mldsa87_file, 'r', encoding='utf-8'))
 
     macro_results = []
+
+    print("[*] Khoi chay container warm-up de lam nong bo dem Linux Page Cache...")
+    subprocess.run(["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "blockchain-node:perf"], stdout=subprocess.DEVNULL)
+    time.sleep(2.5)
+    subprocess.run(["docker", "rm", "-f", "btc-macro-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # 1. Round 1: ECDSA (secp256k1)
     res_ecdsa = run_macro_test_round("ecdsa", "ECDSA (secp256k1)", ecdsa_txs, batch_size=100)
