@@ -295,62 +295,79 @@ class NonceReuseBenchmark:
         return report_path
 
     def plot_security_comparison(self, summary: Dict, filename: str = "sec06_ecdsa_vs_mldsa_nonce_security.png"):
+        """
+        Trực quan hóa kết quả thực nghiệm SEC-06 theo chuẩn đồ thị khoa học (Scientific Data Visualization):
+        - Subplot 1: Thời gian giải hệ phương trình đại số khôi phục Private Key ECDSA (rời rạc, kèm vạch trung bình).
+        - Subplot 2: Độ phân kỳ khoảng cách Hamming của ML-DSA-44 chứng minh Hiệu ứng Thác đổ (Avalanche Effect quanh mốc 50%).
+        Loại bỏ hoàn toàn đồ thị kép (dual-axis), biểu đồ nối đường biến rời rạc và lỗi đè chữ (overlap).
+        """
         save_path = os.path.join(self.output_dir, filename)
-        cases = summary['ecdsa']['cases']
-        wallet_names = [c['wallet'] for c in cases]
-        ecdsa_rates = [100.0] * len(cases)
-        mldsa_rates = [0.0] * len(cases)
-        crack_times = [c['crack_time_us'] for c in cases]
-        hamming_dists = [c['hamming_distance_percent'] for c in summary['mldsa']['cases']]
+        cases_ecdsa = summary['ecdsa']['cases']
+        cases_mldsa = summary['mldsa']['cases']
+        wallet_names = [c['wallet'] for c in cases_ecdsa]
+        crack_times = [c['crack_time_us'] for c in cases_ecdsa]
+        hamming_dists = [c['hamming_distance_percent'] for c in cases_mldsa]
+        avg_crack_time = summary['ecdsa']['avg_crack_time_us']
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), dpi=300)
-
-        # Đồ thị 1: So sánh Tỷ lệ Lộ Khóa Bí mật
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.8), dpi=300)
         x = np.arange(len(wallet_names))
-        width = 0.35
+        bar_width = 0.45
 
-        bar1 = ax1.bar(x - width/2, ecdsa_rates, width, label='ECDSA (secp256k1)', color='#d62728', alpha=0.9)
-        bar2 = ax1.bar(x + width/2, mldsa_rates, width, label='ML-DSA-44 (FIPS 204)', color='#2ca02c', alpha=0.9)
+        # Panel 1: ECDSA (Thời gian giải hệ phương trình đại số O(1))
+        bars1 = ax1.bar(x, crack_times, width=bar_width, color='#d9534f', edgecolor='#a94442', linewidth=1.2, alpha=0.9)
+        ax1.axhline(avg_crack_time, color='#843534', linestyle='--', linewidth=1.8, 
+                    label=f'Trung bình: {avg_crack_time:.2f} µs')
 
-        ax1.set_ylabel('Tỷ lệ Lộ Private Key (%)', fontsize=11, fontweight='bold')
-        ax1.set_title('Khả năng Chống Rò rỉ Khóa khi Bị Trùng Nonce\n(5 Kịch bản Ví Thực tế)', fontsize=12, fontweight='bold')
+        ax1.set_title('(a) ECDSA: Thời gian Khôi phục Khóa bí mật\n(Bẻ khóa 100% qua giải hệ đại số O(1))',
+                      fontsize=11, fontweight='bold', pad=12)
+        ax1.set_xlabel('Ví kiểm thử (Biến rời rạc độc lập)', fontsize=10, fontweight='bold')
+        ax1.set_ylabel(r'Thời gian tính toán ($\mu s$)', fontsize=10, fontweight='bold')
         ax1.set_xticks(x)
-        ax1.set_xticklabels(wallet_names, fontsize=10)
-        ax1.set_ylim(0, 115)
+        ax1.set_xticklabels(wallet_names, fontsize=9.5)
+        ax1.set_ylim(0, max(crack_times) * 1.35)
         ax1.grid(axis='y', linestyle=':', alpha=0.6)
-        ax1.legend(loc='upper right', frameon=True)
+        ax1.legend(loc='upper right', frameon=True, fontsize=9)
 
-        for bar in bar1:
+        for bar in bars1:
             yval = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2.0, yval + 2, f'{int(yval)}% LỘ KHÓA', ha='center', va='bottom', fontsize=8, color='#d62728', fontweight='bold')
-        for bar in bar2:
-            ax1.text(bar.get_x() + bar.get_width()/2.0, 2, '0% AN TOÀN', ha='center', va='bottom', fontsize=8, color='#2ca02c', fontweight='bold')
+            offset = 6.0 if abs(yval - avg_crack_time) < 4.0 else 3.5
+            ax1.text(bar.get_x() + bar.get_width()/2.0, yval + offset,
+                     f'{yval:.1f} µs', ha='center', va='bottom', fontsize=9, fontweight='bold', color='#a94442',
+                     bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='#d9534f', alpha=0.9, linewidth=0.8))
 
-        # Đồ thị 2: Thời gian Bẻ khóa ECDSA & Độ phân kỳ Entropy của ML-DSA
-        color = '#1f77b4'
-        ax2.set_title('Thời gian Hacker Bẻ Khóa ECDSA & Tính Phân kỳ ML-DSA', fontsize=12, fontweight='bold')
-        ax2.set_xlabel('Ví nạn nhân', fontsize=11, fontweight='bold')
-        ax2.set_ylabel(r'Thời gian bẻ khóa ECDSA ($\mu s$)', color=color, fontsize=11, fontweight='bold')
-        line1 = ax2.plot(wallet_names, crack_times, color=color, marker='o', linewidth=2.5, markersize=8, label=r'Thời gian bẻ khóa ECDSA ($\mu s$)')
-        ax2.tick_params(axis='y', labelcolor=color)
-        ax2.grid(True, linestyle=':', alpha=0.6)
+        # Panel 2: ML-DSA (Hiệu ứng thác đổ quanh mốc 50%)
+        bars2 = ax2.bar(x, hamming_dists, width=bar_width, color='#337ab7', edgecolor='#2e6da4', linewidth=1.2, alpha=0.9)
+        ax2.axhline(50.0, color='#2ca02c', linestyle='-', linewidth=2.0, 
+                    label='Mốc lý tưởng Avalanche Effect (50.0%)')
+        ax2.axhspan(45.0, 55.0, color='#5cb85c', alpha=0.15, 
+                    label='Dải ngẫu nhiên kỳ vọng [45% - 55%]')
 
-        ax2_right = ax2.twinx()
-        color_r = '#ff7f0e'
-        ax2_right.set_ylabel('Độ phân kỳ Hamming Chữ ký ML-DSA (%)', color=color_r, fontsize=11, fontweight='bold')
-        line2 = ax2_right.plot(wallet_names, hamming_dists, color=color_r, marker='s', linewidth=2.5, linestyle='--', markersize=8, label='Hamming Distance ML-DSA (%)')
-        ax2_right.tick_params(axis='y', labelcolor=color_r)
-        ax2_right.set_ylim(40, 60)
+        ax2.set_title('(b) ML-DSA-44: Khoảng cách Hamming Mặt nạ y\n(Cố định seed, khác Transaction Message)',
+                      fontsize=11, fontweight='bold', pad=12)
+        ax2.set_xlabel('Ví kiểm thử (Biến rời rạc độc lập)', fontsize=10, fontweight='bold')
+        ax2.set_ylabel('Khoảng cách Hamming giữa 2 mặt nạ (%)', fontsize=10, fontweight='bold')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(wallet_names, fontsize=9.5)
+        ax2.set_ylim(40, 60)
+        ax2.grid(axis='y', linestyle=':', alpha=0.6)
+        ax2.legend(loc='lower right', frameon=True, fontsize=9)
 
-        # Gộp legend
-        lines = line1 + line2
-        labels = [l.get_label() for l in lines]
-        ax2.legend(lines, labels, loc='lower right', frameon=True)
+        for bar in bars2:
+            yval = bar.get_height()
+            if yval < 50.0:
+                ax2.text(bar.get_x() + bar.get_width()/2.0, yval - 2.2,
+                         f'{yval:.2f}%', ha='center', va='center', fontsize=9, fontweight='bold', color='white')
+            else:
+                ax2.text(bar.get_x() + bar.get_width()/2.0, yval + 1.0,
+                         f'{yval:.2f}%', ha='center', va='bottom', fontsize=9, fontweight='bold', color='#1b5585',
+                         bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='#337ab7', alpha=0.9, linewidth=0.8))
 
-        plt.tight_layout()
+        plt.suptitle('ĐÁNH GIÁ THỰC NGHIỆM AN TOÀN TRƯỚC TẤN CÔNG TÁI SỬ DỤNG NONCE (KỊCH BẢN SEC-06)',
+                     fontsize=12.5, fontweight='bold', y=0.97)
+        plt.subplots_adjust(top=0.82, bottom=0.12, left=0.08, right=0.95, wspace=0.28)
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f"[v] Đã xuất biểu đồ so sánh chất lượng cao tại: {save_path}")
+        print(f"[v] Đã xuất biểu đồ so sánh chuẩn khoa học tại: {save_path}")
         return save_path
 
 

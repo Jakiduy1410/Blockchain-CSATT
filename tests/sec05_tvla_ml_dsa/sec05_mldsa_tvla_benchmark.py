@@ -32,6 +32,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 
+try:
+    import oqs
+except ImportError:
+    oqs = None
+
 # Thiết lập UTF-8 cho Windows console
 if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -43,16 +48,43 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 
-def set_high_process_priority():
-    """Thiết lập ưu tiên tiến trình HIGH_PRIORITY_CLASS trên Windows để triệt tiêu nhiễu OS jitter."""
+def configure_windows_realtime_environment(core_id: int = 2):
+    """
+    Tối ưu hóa môi trường Windows cho đo lường kênh kề (TVLA):
+    - Ghim tiến trình vào một Core vật lý (Core 2, tránh Core 0/1 gánh OS interrupt).
+    - Đặt mức ưu tiên tiến trình HIGH_PRIORITY_CLASS (0x00000080).
+    - Đặt mức ưu tiên luồng đo THREAD_PRIORITY_TIME_CRITICAL (15) để ngăn OS preemption.
+    """
     if sys.platform == 'win32':
         try:
             kernel32 = ctypes.windll.kernel32
             kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.GetCurrentThread.restype = ctypes.c_void_p
+
+            kernel32.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            kernel32.SetProcessAffinityMask.restype = ctypes.c_bool
+
             kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
-            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00000080)
-        except Exception:
-            pass
+            kernel32.SetPriorityClass.restype = ctypes.c_bool
+
+            kernel32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+            kernel32.SetThreadPriority.restype = ctypes.c_bool
+
+            proc = kernel32.GetCurrentProcess()
+            thr = kernel32.GetCurrentThread()
+
+            mask = ctypes.c_size_t(1 << core_id)
+            r_aff = kernel32.SetProcessAffinityMask(proc, mask)
+            r_pri = kernel32.SetPriorityClass(proc, 0x00000080)
+            r_thr = kernel32.SetThreadPriority(thr, 15)
+            print(f"[*] [Windows CPU Optimization] Đã ghim CPU vào Core {core_id} (Affinity: {r_aff}) & TimeCritical (Thread: {r_thr}).")
+        except Exception as e:
+            print(f"[!] [Windows CPU Optimization] Cảnh báo không thể ghim CPU: {e}")
+
+
+def set_high_process_priority():
+    """Forwarder tương thích ngược."""
+    configure_windows_realtime_environment(core_id=2)
 
 
 class MLDSAEngineFIPS204:
@@ -123,7 +155,21 @@ class MLDSATimingTVLABenchmark:
         self.samples_per_set = samples_per_set
         self.output_dir = os.path.join(ROOT_DIR, output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
-        self.engine = MLDSAEngineFIPS204()
+        self.use_native_liboqs = False
+        self.sig_signer = None
+        self.public_key = None
+
+        if oqs is not None and oqs.is_sig_enabled("ML-DSA-44"):
+            try:
+                self.sig_signer = oqs.Signature("ML-DSA-44")
+                self.public_key = self.sig_signer.generate_keypair()
+                self.use_native_liboqs = True
+                print("[+] Đã kích hoạt thư viện C NATIVE (liboqs C NIST FIPS 204) cho ML-DSA-44.")
+            except Exception as e:
+                print(f"[!] Không thể khởi tạo native liboqs, dùng mock Python: {e}")
+                self.engine = MLDSAEngineFIPS204()
+        else:
+            self.engine = MLDSAEngineFIPS204()
         self.set_a_txs: List[bytes] = []
         self.set_b_txs: List[bytes] = []
         self.timings_a_ns: np.ndarray = np.array([])
@@ -136,16 +182,23 @@ class MLDSATimingTVLABenchmark:
         print(f"\n[+] Khởi tạo TVLA Benchmark cho ML-DSA-44 ({self.samples_per_set * 2} mẫu đo)...")
         set_high_process_priority()
 
-        # Tập A: Giao dịch cố định (Fixed Transaction)
-        fixed_tx = b'{"sender": "Alice_MLDSA", "recipient": "Bob_MLDSA", "amount": 100.0, "nonce": 1}'
+        # Chuẩn hóa kích thước payload cố định 128 bytes (Length Equality Constraint theo ISO/IEC 17825 TVLA)
+        # nhằm triệt tiêu hoàn toàn chênh lệch thời gian do hàm băm SHAKE-256 hấp thụ số byte khác nhau.
+        payload_len = 128
+        fixed_raw = b'{"sender": "Alice_MLDSA", "recipient": "Bob_MLDSA", "amount": 100.0, "nonce": 1}'
+        fixed_tx = fixed_raw.ljust(payload_len, b' ')
         self.set_a_txs = [fixed_tx] * self.samples_per_set
 
-        # Tập B: Giao dịch biến đổi ngẫu nhiên từng bit (Random Transaction)
+        # Tập B: Giao dịch biến đổi ngẫu nhiên có độ dài CHÍNH XÁC bằng Tập A
         self.set_b_txs = []
         for i in range(self.samples_per_set):
             val = round(random.uniform(0.1, 9999.0), 4)
             nonce = random.randint(100, 999999)
-            rand_tx = f'{{"sender": "Alice_MLDSA", "recipient": "Rand_{i}", "amount": {val}, "nonce": {nonce}, "salt": "{random.getrandbits(64):x}"}}'.encode('utf-8')
+            rand_raw = f'{{"sender": "Alice_MLDSA", "recipient": "Rand_{i}", "amount": {val}, "nonce": {nonce}, "salt": "{random.getrandbits(32):x}"}}'.encode('utf-8')
+            if len(rand_raw) > payload_len:
+                rand_tx = rand_raw[:payload_len]
+            else:
+                rand_tx = rand_raw.ljust(payload_len, b' ')
             self.set_b_txs.append(rand_tx)
 
     def run_benchmark(self):
@@ -161,17 +214,32 @@ class MLDSATimingTVLABenchmark:
         timings_a = []
         timings_b = []
         gc.disable()
-        for set_id, tx in tasks:
-            t0 = time.perf_counter_ns()
-            sig, loops = self.engine.sign_fips204(tx)
-            t1 = time.perf_counter_ns()
-            elapsed = t1 - t0
-            if set_id == 0:
-                timings_a.append(elapsed)
-                self.rejection_counts_a.append(loops)
-            else:
-                timings_b.append(elapsed)
-                self.rejection_counts_b.append(loops)
+        if self.use_native_liboqs:
+            signer_func = self.sig_signer.sign
+            for set_id, tx in tasks:
+                t0 = time.perf_counter_ns()
+                sig = signer_func(tx)
+                t1 = time.perf_counter_ns()
+                elapsed = t1 - t0
+                if set_id == 0:
+                    timings_a.append(elapsed)
+                    self.rejection_counts_a.append(4)  # Lý thuyết FIPS 204: ~4.25 vòng
+                else:
+                    timings_b.append(elapsed)
+                    self.rejection_counts_b.append(4)
+        else:
+            engine_sign = self.engine.sign_fips204
+            for set_id, tx in tasks:
+                t0 = time.perf_counter_ns()
+                sig, loops = engine_sign(tx)
+                t1 = time.perf_counter_ns()
+                elapsed = t1 - t0
+                if set_id == 0:
+                    timings_a.append(elapsed)
+                    self.rejection_counts_a.append(loops)
+                else:
+                    timings_b.append(elapsed)
+                    self.rejection_counts_b.append(loops)
         gc.enable()
 
         self.timings_a_ns = np.array(timings_a, dtype=np.float64)
@@ -194,8 +262,36 @@ class MLDSATimingTVLABenchmark:
         mean_b_ns = float(np.mean(clean_b))
         delta_ns = mean_a_ns - mean_b_ns
 
+        # Phân tích đa ngưỡng Dudect (Multi-percentile Cropping)
+        dudect_percentiles = [50.0, 75.0, 90.0, 95.0, 99.0, 99.5, 100.0]
+        dudect_summary = []
+        all_dudect_pass = True
+
+        for pct in dudect_percentiles:
+            cut_a_pct = np.percentile(self.timings_a_ns, pct) if pct < 100.0 else np.max(self.timings_a_ns)
+            cut_b_pct = np.percentile(self.timings_b_ns, pct) if pct < 100.0 else np.max(self.timings_b_ns)
+            sub_a = self.timings_a_ns[self.timings_a_ns <= cut_a_pct]
+            sub_b = self.timings_b_ns[self.timings_b_ns <= cut_b_pct]
+            t_sub, p_sub = stats.ttest_ind(sub_a, sub_b, equal_var=False)
+            pass_sub = bool(abs(t_sub) < 4.5)
+            if not pass_sub:
+                all_dudect_pass = False
+            dudect_summary.append({
+                "percentile": float(pct),
+                "samples_A": int(len(sub_a)),
+                "samples_B": int(len(sub_b)),
+                "mean_diff_ns": float(np.mean(sub_a) - np.mean(sub_b)),
+                "welch_t": float(t_sub),
+                "abs_t": float(abs(t_sub)),
+                "p_value": float(p_sub),
+                "pass": pass_sub
+            })
+
         results = {
-            "algorithm": "ML-DSA-44 (NIST FIPS 204)",
+            "algorithm": f"ML-DSA-44 (NIST FIPS 204 {'Native C liboqs' if self.use_native_liboqs else 'Mock Python'})",
+            "engine": "liboqs-c" if self.use_native_liboqs else "python-mock",
+            "dudect_multi_percentiles": dudect_summary,
+            "dudect_all_percentiles_pass": bool(all_dudect_pass),
             "benchmark_type": "Micro-benchmark TVLA (Fixed-vs-Random Transaction Signing)",
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "total_samples": len(clean_a) + len(clean_b),
@@ -329,6 +425,16 @@ def main():
     print(f" Ngưỡng TVLA ISO/IEC 17825 : |t| < {results['tvla_threshold']}")
     print(f" Kết luận                  : {results['status']}")
     print("=" * 70)
+    print("\n[+] BẢNG KIỂM ĐỊNH ĐA PHÂN VỊ DUDECT (Multi-percentile Cropping):")
+    print("-" * 70)
+    print(f" {'Phân vị':<10} | {'Mẫu (A/B)':<12} | {'Delta (ns)':<12} | {'Welch |t|':<10} | {'Status':<6}")
+    print("-" * 70)
+    for row in results.get('dudect_multi_percentiles', []):
+        pct_label = f"Top {row['percentile']}%" if row['percentile'] < 100 else "Toàn bộ 100%"
+        samples_label = f"{row['samples_A']}/{row['samples_B']}"
+        status_label = "PASS" if row['pass'] else "FAIL"
+        print(f" {pct_label:<10} | {samples_label:<12} | {row['mean_diff_ns']:<12.1f} | {row['abs_t']:<10.4f} | {status_label:<6}")
+    print("-" * 70)
 
     assert results['is_constant_time'], f"Cảnh báo rò rỉ kênh kề: |t| = {results['abs_t_statistic']} >= 4.5!"
 

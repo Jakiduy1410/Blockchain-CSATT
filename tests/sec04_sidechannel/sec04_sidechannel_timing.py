@@ -43,17 +43,48 @@ except ImportError:
     oqs = None
 
 
-def set_high_process_priority():
-    """Thiết lập ưu tiên tiến trình HIGH_PRIORITY_CLASS trên Windows để giảm thiểu nhiễu OS jitter."""
+def configure_windows_realtime_environment(core_id: int = 2):
+    """
+    Tối ưu hóa môi trường Windows cho đo lường kênh kề (TVLA):
+    - Ghim tiến trình vào một Core vật lý (Core 2, tránh Core 0/1 gánh OS interrupt).
+    - Đặt mức ưu tiên tiến trình HIGH_PRIORITY_CLASS (0x00000080).
+    - Đặt mức ưu tiên luồng đo THREAD_PRIORITY_TIME_CRITICAL (15) để ngăn OS preemption.
+    """
     if sys.platform == 'win32':
         try:
             kernel32 = ctypes.windll.kernel32
             kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.GetCurrentThread.restype = ctypes.c_void_p
+
+            kernel32.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            kernel32.SetProcessAffinityMask.restype = ctypes.c_bool
+
             kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
-            # 0x00000080 = HIGH_PRIORITY_CLASS
-            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00000080)
-        except Exception:
-            pass
+            kernel32.SetPriorityClass.restype = ctypes.c_bool
+
+            kernel32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+            kernel32.SetThreadPriority.restype = ctypes.c_bool
+
+            proc = kernel32.GetCurrentProcess()
+            thr = kernel32.GetCurrentThread()
+
+            # 1. Ghim CPU Affinity: mask = 1 << core_id (core 2 -> mask = 4)
+            mask = ctypes.c_size_t(1 << core_id)
+            r_aff = kernel32.SetProcessAffinityMask(proc, mask)
+
+            # 2. Đặt Process Priority = HIGH_PRIORITY_CLASS (0x00000080)
+            r_pri = kernel32.SetPriorityClass(proc, 0x00000080)
+
+            # 3. Đặt Thread Priority = THREAD_PRIORITY_TIME_CRITICAL (15)
+            r_thr = kernel32.SetThreadPriority(thr, 15)
+            print(f"[*] [Windows CPU Optimization] Đã ghim CPU vào Core {core_id} (Affinity: {r_aff}) & TimeCritical (Thread: {r_thr}).")
+        except Exception as e:
+            print(f"[!] [Windows CPU Optimization] Cảnh báo không thể ghim CPU: {e}")
+
+
+def set_high_process_priority():
+    """Forwarder tương thích ngược."""
+    configure_windows_realtime_environment(core_id=2)
 
 
 class MLKEMTimingTVLABenchmark:
@@ -207,8 +238,33 @@ class MLKEMTimingTVLABenchmark:
         delta_ns = mean_a - mean_b
         delta_us = delta_ns / 1000.0
 
+        # Phân tích đa ngưỡng Dudect (Multi-percentile Cropping)
+        dudect_percentiles = [50.0, 75.0, 90.0, 95.0, 99.0, 99.5, 100.0]
+        dudect_summary = []
+        all_dudect_pass = True
+
+        for pct in dudect_percentiles:
+            sub_a = self.filter_outliers(self.timings_a_ns, pct) if pct < 100.0 else self.timings_a_ns
+            sub_b = self.filter_outliers(self.timings_b_ns, pct) if pct < 100.0 else self.timings_b_ns
+            t_sub, p_sub = stats.ttest_ind(sub_a, sub_b, equal_var=False)
+            pass_sub = bool(abs(t_sub) < 4.5)
+            if not pass_sub:
+                all_dudect_pass = False
+            dudect_summary.append({
+                "percentile": float(pct),
+                "samples_A": int(len(sub_a)),
+                "samples_B": int(len(sub_b)),
+                "mean_diff_ns": float(np.mean(sub_a) - np.mean(sub_b)),
+                "welch_t": float(t_sub),
+                "abs_t": float(abs(t_sub)),
+                "p_value": float(p_sub),
+                "pass": pass_sub
+            })
+
         results = {
             "algorithm": self.kem_alg,
+            "dudect_multi_percentiles": dudect_summary,
+            "dudect_all_percentiles_pass": bool(all_dudect_pass),
             "timestamp": datetime.now().isoformat(),
             "samples_collected_each": self.samples_per_set,
             "samples_analyzed_A": len(clean_a),
@@ -353,6 +409,16 @@ def main():
     print(f" Ngưỡng TVLA chuẩn       : |t| < {results['tvla_threshold']} (ISO/IEC 17825)")
     print(f" Kết luận                 : {results['status']}")
     print("=" * 65)
+    print("\n[+] BẢNG KIỂM ĐỊNH ĐA PHÂN VỊ DUDECT (Multi-percentile Cropping):")
+    print("-" * 65)
+    print(f" {'Phân vị':<10} | {'Mẫu (A/B)':<12} | {'Delta (ns)':<12} | {'Welch |t|':<10} | {'Status':<6}")
+    print("-" * 65)
+    for row in results.get('dudect_multi_percentiles', []):
+        pct_label = f"Top {row['percentile']}%" if row['percentile'] < 100 else "Toàn bộ 100%"
+        samples_label = f"{row['samples_A']}/{row['samples_B']}"
+        status_label = "PASS" if row['pass'] else "FAIL"
+        print(f" {pct_label:<10} | {samples_label:<12} | {row['mean_diff_ns']:<12.1f} | {row['abs_t']:<10.4f} | {status_label:<6}")
+    print("-" * 65)
 
     benchmark.plot_tvla_kde(results)
     benchmark.save_report(results)

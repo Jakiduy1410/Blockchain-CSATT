@@ -1,10 +1,10 @@
 {
     "title": "SEC-06 Nonce Reuse Cryptanalysis Benchmark Report",
-    "timestamp": "2026-11-01T12:05:39Z",
+    "timestamp": "2026-11-04T07:40:26Z",
     "total_test_cases": 5,
     "ecdsa": {
         "key_recovery_rate_percent": 100.0,
-        "avg_crack_time_us": 47.58,
+        "avg_crack_time_us": 92.6,
         "forged_transactions_accepted": 5,
         "vulnerability_verdict": "CRITICAL VULNERABILITY (100% Key Compromise upon Nonce Reuse)",
         "cases": [
@@ -18,7 +18,7 @@
                 "original_privkey": "0853965f7ff337f69168cb8dfae0f4716f21b43c323ef660511c5f2621ff7f55",
                 "recovered_privkey": "0853965f7ff337f69168cb8dfae0f4716f21b43c323ef660511c5f2621ff7f55",
                 "key_recovery_success": true,
-                "crack_time_us": 60.8,
+                "crack_time_us": 97.9,
                 "forged_tx_accepted_by_node": true
             },
             {
@@ -31,7 +31,7 @@
                 "original_privkey": "1b7b110676cfea39329004645fcea2a04b6e1ebf1dc8ec1c461f5949b11abd6a",
                 "recovered_privkey": "1b7b110676cfea39329004645fcea2a04b6e1ebf1dc8ec1c461f5949b11abd6a",
                 "key_recovery_success": true,
-                "crack_time_us": 43.9,
+                "crack_time_us": 98.0,
                 "forged_tx_accepted_by_node": true
             },
             {
@@ -44,7 +44,7 @@
                 "original_privkey": "8e60ea7bbb8b0169c8448f2cf8ced988c728c7e5d91f20df2beff3d39505c1c8",
                 "recovered_privkey": "8e60ea7bbb8b0169c8448f2cf8ced988c728c7e5d91f20df2beff3d39505c1c8",
                 "key_recovery_success": true,
-                "crack_time_us": 35.8,
+                "crack_time_us": 94.9,
                 "forged_tx_accepted_by_node": true
             },
             {
@@ -57,7 +57,7 @@
                 "original_privkey": "c6c2b64f1456c9fef79e4836ce32935341f502a9c18acf84ebfa6d4d5fd93053",
                 "recovered_privkey": "c6c2b64f1456c9fef79e4836ce32935341f502a9c18acf84ebfa6d4d5fd93053",
                 "key_recovery_success": true,
-                "crack_time_us": 39.5,
+                "crack_time_us": 88.9,
                 "forged_tx_accepted_by_node": true
             },
             {
@@ -70,7 +70,7 @@
                 "original_privkey": "4d696e65725f4e6f64655f5365637265745f4b65795f323032365f5051433031",
                 "recovered_privkey": "4d696e65725f4e6f64655f5365637265745f4b65795f323032365f5051433031",
                 "key_recovery_success": true,
-                "crack_time_us": 57.9,
+                "crack_time_us": 83.3,
                 "forged_tx_accepted_by_node": true
             }
         ]
