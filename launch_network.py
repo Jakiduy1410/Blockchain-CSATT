@@ -22,7 +22,8 @@ if hasattr(sys.stderr, 'reconfigure'):
         pass
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
-py = sys.executable
+msys_py = r'C:\msys64\ucrt64\bin\python.exe'
+py = msys_py if os.path.exists(msys_py) else sys.executable
 
 parser = argparse.ArgumentParser(description="Detached Background Network Launcher")
 parser.add_argument('--tls', type=str, default=os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe"),
@@ -51,6 +52,9 @@ DETACHED_PROCESS = 0x00000008 if sys.platform == 'win32' else 0
 env = os.environ.copy()
 env["BLOCKCHAIN_TLS_MODE"] = tls_mode
 env["BLOCKCHAIN_SIG_MODE"] = sig_mode
+pqc_cnf = os.path.join(base_dir, 'configs', 'pqc_openssl.cnf')
+if os.path.exists(pqc_cnf):
+    env["OPENSSL_CONF"] = pqc_cnf
 
 print(f"[*] Khoi chay 6 Blockchain Nodes (TLS: {tls_mode}, Signature: {sig_mode})...")
 for node in net_cfg['nodes']:

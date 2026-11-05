@@ -20,6 +20,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 
 def get_python_cmd():
+    msys_py = r'C:\msys64\ucrt64\bin\python.exe'
+    if os.path.exists(msys_py):
+        return [msys_py]
     if sys.executable and os.path.exists(sys.executable):
         return [sys.executable]
     import shutil

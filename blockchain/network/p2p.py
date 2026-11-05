@@ -67,22 +67,22 @@ class P2PNetwork:
             self.proto = "ws"
             self.tls_desc = "Plaintext (No TLS)"
         elif self.tls_mode in ("mlkem768", "pure_mlkem768"):
-            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid", audit_logger=self.audit)
             self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
             self.proto = "wss"
             self.tls_desc = "TLS 1.3 Pure ML-KEM-768"
         elif self.tls_mode in ("mlkem512", "pure_mlkem512"):
-            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid", audit_logger=self.audit)
             self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
             self.proto = "wss"
             self.tls_desc = "TLS 1.3 Pure ML-KEM-512"
         elif self.tls_mode in ("hybrid", "mlkem", "pqc"):
-            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid")
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="hybrid", audit_logger=self.audit)
             self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="hybrid")
             self.proto = "wss"
             self.tls_desc = "TLS 1.3 Hybrid (X25519 + ML-KEM-768)"
         else:
-            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="ecdhe")
+            self.server_ssl_ctx = TLSManager.create_server_ssl_context(mode="ecdhe", audit_logger=self.audit)
             self.client_ssl_ctx = TLSManager.create_client_ssl_context(mode="ecdhe")
             self.proto = "wss"
             self.tls_desc = "TLS 1.3 ECDHE (prime256v1)"

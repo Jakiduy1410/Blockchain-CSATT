@@ -7,4 +7,5 @@ ssl_conf = ssl_sect
 system_default = system_default_sect
 
 [system_default_sect]
-Groups = X25519MLKEM768:x25519_mlkem768:x25519_kyber768:P-256:X25519
+# Bắt buộc chính sách PQC_REQUIRED: Chỉ chấp nhận các nhóm Post-Quantum, nghiêm cấm fallback về Classical
+Groups = X25519MLKEM768:x25519_mlkem768:x25519_kyber768

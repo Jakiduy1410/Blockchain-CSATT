@@ -18,11 +18,18 @@ def send_pqc_client_hello():
     comp_block = b'\x01\x00'
 
     exts = bytearray()
+    # 1. Extension: supported_versions (TLS 1.3)
     exts.extend(b'\x00\x2b\x00\x03\x02\x03\x04')
 
+    # 2. Extension: supported_groups (Chứa X25519MLKEM768 0x11ec)
     groups = b'\x11\xec\x00\x1d\x00\x17'
     exts.extend(b'\x00\x0a' + (len(groups) + 2).to_bytes(2, 'big') + len(groups).to_bytes(2, 'big') + groups)
 
+    # 3. Extension: signature_algorithms (RFC 8446 Signature Schemes)
+    sigalgs = b'\x04\x03\x08\x04\x04\x01\x05\x01\x06\x01\x02\x01'
+    exts.extend(b'\x00\x0d' + (len(sigalgs) + 2).to_bytes(2, 'big') + len(sigalgs).to_bytes(2, 'big') + sigalgs)
+
+    # 4. Extension: key_share (ML-KEM-768 Key Share 1216 bytes)
     pqc_key_share = os.urandom(1216)
     entry = b'\x11\xec' + len(pqc_key_share).to_bytes(2, 'big') + pqc_key_share
     shares_list = len(entry).to_bytes(2, 'big') + entry
@@ -39,6 +46,18 @@ def send_pqc_client_hello():
         s.connect((target_host, target_port))
         s.sendall(tls_record)
         time.sleep(0.5)
+        # Nhận phản hồi từ Server (ServerHello hoặc Fatal Alert Handshake Failure)
+        s.settimeout(2.0)
+        try:
+            resp = s.recv(4096)
+            if resp:
+                if len(resp) >= 7 and resp[0] == 0x15:
+                    alert_desc = resp[6] if len(resp) > 6 else resp[-1]
+                    print(f"[!] Server phản hồi TLS Alert (Level={resp[5]}, Description={alert_desc}): TỪ CHỐI BẮT TAY / FAIL-CLOSED!")
+                elif len(resp) >= 6 and resp[0] == 0x16:
+                    print(f"[+] Server chấp nhận và phản hồi ServerHello (len={len(resp)})!")
+        except Exception:
+            print("[*] Kết nối đã bị Server đóng ngắt chủ động (DROP_CONNECTION).")
         print(f"[+] ĐÃ GỬI THÀNH CÔNG gói tin Hybrid PQC sang cổng {target_port}!")
     except Exception as e:
         print(f"[-] Lỗi kết nối tới cổng {target_port}: {e}")
