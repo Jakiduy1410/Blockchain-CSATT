@@ -56,7 +56,7 @@ class P2PNetwork:
 
     def _send_post(self, url: str, data: dict):
         try:
-            requests.post(url, json=data, timeout=1.5)
+            requests.post(url, json=data, timeout=20)
         except Exception:
             pass
 
@@ -137,7 +137,7 @@ class P2PNetwork:
 
         for peer in list(self.peers):
             try:
-                response = requests.get(f"http://{peer}/chain", timeout=2.0)
+                response = requests.get(f"http://{peer}/chain", timeout=30)
                 if response.status_code == 200:
                     data = response.json()
                     length = data.get('length', 0)

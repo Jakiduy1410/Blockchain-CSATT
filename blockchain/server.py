@@ -63,6 +63,7 @@ def create_app(config: NodeConfig = None) -> tuple[Flask, BlockchainLedger, P2PN
 
     app = Flask(__name__, template_folder=templates_dir, static_folder=static_dir)
     CORS(app)
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
     # Gắn API Blueprint
     api_blueprint = create_api_blueprint(ledger, network, miner, config.port)
