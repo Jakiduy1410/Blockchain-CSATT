@@ -1,22 +1,26 @@
 """
-PERF-01 Macro-Benchmark Suite: Heterogeneous P2P Network Benchmark
-Khao sat hieu nang End-to-End cua Mang Luoi Blockchain P2P gom 3 Node phan cap:
-  1. Node 0 (Server Node): 4 vCPU, 4GB RAM (Datacenter / Ingress & Miner Node) - Port 5000
-  2. Node 1 (Edge Node):   1 vCPU, 512MB RAM (Raspberry Pi 4 / Router & Relay) - Port 5001
-  3. Node 2 (IoT Node):    0.5 vCPU, 128MB RAM (Smart Meter / Constrained Validator) - Port 5002
+PERF-01 Macro-Benchmark Suite: Single DUT in Live Mesh Network (1 DUT + 5 Background Nodes)
+Kiem thu thuc nghiem chi phi tai nguyen (Compute, Cryptographic Verification, Memory)
+cua Node DUT (Device Under Test) tren mang P2P WebSocket Mesh boc TLS 1.3 / ECDHE.
 
-So sanh toan dien 4 Thuat toan Ky so:
+Mo hinh mang 6 Node:
+  1. Mang nen Unconstrained P2P Mesh (5 Nodes khong gioi han tai nguyen - Host ports 5001..5005)
+     - Node 1 (5001): Miner Node & Relay
+     - Node 2..5 (5002..5005): Relay & Validator Nodes
+  2. 1 Node Docker DUT (Port 5000) duoc tha vao mang 5 node voi 3 Profile tai nguyen:
+     - Profile 1: Server DUT (4.0 vCPU, 4096MB RAM)
+     - Profile 2: Edge DUT (1.0 vCPU, 512MB RAM - Raspberry Pi 4)
+     - Profile 3: IoT DUT (0.5 vCPU, 128MB RAM - Smart Meter / Sensor)
+  3. Giao tiep P2P Mesh thuc te qua Persistent WebSocket boc TLS 1.3 / ECDHE (wss://)
+
+So sanh 4 Thuat toan:
   - ECDSA (secp256k1)
   - ML-DSA-44 (NIST PQC Level 2)
-  - ML-DSA-65 (NIST PQC Level 3)
+  - ML-DSA-65 (NIST PQC Level 3 - Sweet Spot)
   - ML-DSA-87 (NIST PQC Level 5)
-Cac chi so do luong:
-  - Do tre lan truyen & tham dinh khoi (Block Propagation & Verification Delay) tu Server -> Edge -> IoT
-  - Tong dung luong du lieu qua day mang (Wire Payload Size: Txs va Mined Block)
-  - Muc do nghen co chai tai nguyen CPU / RAM tren Node IoT so voi Node Server
-  - Thong luong End-to-End TPS cua toan he thong
 """
 
+import argparse
 import concurrent.futures
 import csv
 import json
@@ -27,6 +31,11 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
 
 import requests
 import matplotlib
@@ -39,46 +48,51 @@ BASE_DIR = PERF_DIR.parent
 RESULTS_DIR = PERF_DIR / "results"
 DATA_DIR = PERF_DIR / "data"
 
-NETWORK_NAME = "perf-macro-net"
+NETWORK_NAME = "perf-macro-mesh"
 
-NODES_SPEC = {
-    "server": {
-        "name": "Node Server (Ingress & Miner)",
-        "container": "btc-macro-server",
-        "cpus": "4.0",
-        "memory": "4096m",
-        "mem_limit_mb": 4096,
-        "host_port": 5000,
-        "internal_host": "btc-macro-server",
-        "role": "Full Miner & Ingress"
-    },
-    "edge": {
-        "name": "Node Edge (Relay Gateway)",
-        "container": "btc-macro-edge",
-        "cpus": "1.0",
-        "memory": "512m",
-        "mem_limit_mb": 512,
-        "host_port": 5001,
-        "internal_host": "btc-macro-edge",
-        "role": "P2P Relay & Validator"
-    },
-    "iot": {
-        "name": "Node IoT (Constrained Validator)",
-        "container": "btc-macro-iot",
-        "cpus": "0.5",
-        "memory": "128m",
-        "mem_limit_mb": 128,
-        "host_port": 5002,
-        "internal_host": "btc-macro-iot",
-        "role": "Light Validator"
+BG_NODES = [
+    {"id": 1, "container": "btc-bg-1", "host_port": 5001, "internal_host": "btc-bg-1", "role": "Miner"},
+    {"id": 2, "container": "btc-bg-2", "host_port": 5002, "internal_host": "btc-bg-2", "role": "Relay"},
+    {"id": 3, "container": "btc-bg-3", "host_port": 5003, "internal_host": "btc-bg-3", "role": "Relay"},
+    {"id": 4, "container": "btc-bg-4", "host_port": 5004, "internal_host": "btc-bg-4", "role": "Relay"},
+    {"id": 5, "container": "btc-bg-5", "host_port": 5005, "internal_host": "btc-bg-5", "role": "Relay"},
+]
+
+DUT_SPEC = {
+    "container": "btc-macro-dut",
+    "host_port": 5000,
+    "internal_host": "btc-macro-dut",
+    "profiles": {
+        "server": {
+            "name": "Server DUT (Cloud Datacenter)",
+            "cpus": "4.0",
+            "memory": "4096m",
+            "mem_limit_mb": 4096,
+            "role": "Cloud Full Node"
+        },
+        "edge": {
+            "name": "Edge DUT (Raspberry Pi 4)",
+            "cpus": "1.0",
+            "memory": "512m",
+            "mem_limit_mb": 512,
+            "role": "Edge Gateway"
+        },
+        "iot": {
+            "name": "IoT DUT (Smart Meter / Sensor)",
+            "cpus": "0.5",
+            "memory": "128m",
+            "mem_limit_mb": 128,
+            "role": "Constrained IoT Node"
+        }
     }
 }
 
 
 def clean_environment():
-    for node in NODES_SPEC.values():
-        subprocess.run(["docker", "rm", "-f", node["container"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    containers = [DUT_SPEC["container"]] + [n["container"] for n in BG_NODES]
+    subprocess.run(["docker", "rm", "-f"] + containers, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(["docker", "network", "rm", NETWORK_NAME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.4)
 
 
 def setup_network():
@@ -86,27 +100,49 @@ def setup_network():
     subprocess.run(["docker", "network", "create", NETWORK_NAME], check=True, stdout=subprocess.DEVNULL)
 
 
-def start_node(node_key: str) -> bool:
-    spec = NODES_SPEC[node_key]
-    cmd = [
+def start_mesh_nodes(dut_profile: str) -> bool:
+    dut_info = DUT_SPEC["profiles"][dut_profile]
+
+    # 1. Khoi dong DUT container voi gioi han tai nguyen cgroups cua Profile
+    dut_cmd = [
         "docker", "run", "-d",
-        "--name", spec["container"],
+        "--name", DUT_SPEC["container"],
         "--network", NETWORK_NAME,
         "-v", f"{BASE_DIR}:/app",
-        f"--cpus={spec['cpus']}",
-        f"-m={spec['memory']}",
-        f"--memory-swap={spec['memory']}",
-        "-p", f"{spec['host_port']}:5000",
+        f"--cpus={dut_info['cpus']}",
+        f"-m={dut_info['memory']}",
+        f"--memory-swap={dut_info['memory']}",
+        "-p", f"{DUT_SPEC['host_port']}:5000",
         "blockchain-node:perf"
     ]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return res.returncode == 0
+    res_dut = subprocess.run(dut_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res_dut.returncode != 0:
+        print(f"[!] Khong the khoi dong container DUT ({dut_profile}): {res_dut.stderr}")
+        return False
+
+    # 2. Khoi dong 5 Background Nodes (Unconstrained - khong gioi han cgroups)
+    for bg in BG_NODES:
+        cmd = [
+            "docker", "run", "-d",
+            "--name", bg["container"],
+            "--network", NETWORK_NAME,
+            "-v", f"{BASE_DIR}:/app",
+            "-p", f"{bg['host_port']}:5000",
+            "blockchain-node:perf"
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode != 0:
+            print(f"[!] Khong the khoi dong Background Node {bg['container']}: {res.stderr}")
+            return False
+
+    return True
 
 
-def wait_nodes_ready(timeout_sec: int = 25) -> bool:
+def wait_all_nodes_ready(timeout_sec: int = 25) -> bool:
+    all_ports = [DUT_SPEC["host_port"]] + [n["host_port"] for n in BG_NODES]
     t0 = time.time()
-    for key, spec in NODES_SPEC.items():
-        url = f"http://127.0.0.1:{spec['host_port']}/status"
+    for port in all_ports:
+        url = f"http://127.0.0.1:{port}/status"
         ready = False
         while time.time() - t0 < timeout_sec:
             try:
@@ -116,194 +152,504 @@ def wait_nodes_ready(timeout_sec: int = 25) -> bool:
                     break
             except Exception:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.3)
         if not ready:
-            print(f"[!] Node {spec['name']} chua san sang sau {timeout_sec}s!")
+            print(f"[!] Node tai port {port} chua san sang sau {timeout_sec}s!")
             return False
     return True
 
 
-def register_p2p_peers():
-    requests.post("http://127.0.0.1:5000/nodes/register",
-                  json={"nodes": ["btc-macro-edge:5000", "btc-macro-iot:5000"]}, timeout=3.0)
-    requests.post("http://127.0.0.1:5001/nodes/register",
-                  json={"nodes": ["btc-macro-server:5000", "btc-macro-iot:5000"]}, timeout=3.0)
-    requests.post("http://127.0.0.1:5002/nodes/register",
-                  json={"nodes": ["btc-macro-server:5000", "btc-macro-edge:5000"]}, timeout=3.0)
-    time.sleep(2.0)
+def register_and_wait_mesh(timeout_sec: int = 20) -> bool:
+    """
+    Thiet lap mang P2P Full-Mesh 6 Node (15 cap ket noi WebSocket TLS 1.3 wss://).
+    Chu dong poll trang thai cho den khi tat ca cac node deu xac nhan ket noi du peers.
+    """
+    all_node_endpoints = [f"{DUT_SPEC['internal_host']}:5000"] + [f"{n['internal_host']}:5000" for n in BG_NODES]
+    all_host_ports = [DUT_SPEC["host_port"]] + [n["host_port"] for n in BG_NODES]
 
+    for port, my_internal in zip(all_host_ports, all_node_endpoints):
+        other_peers = [p for p in all_node_endpoints if p != my_internal]
+        try:
+            requests.post(f"http://127.0.0.1:{port}/nodes/register", json={"nodes": other_peers}, timeout=3.0)
+        except Exception as e:
+            print(f"[!] Loi dang ky peers cho port {port}: {e}")
+            return False
 
-def get_cgroup_stats(container_name: str) -> Tuple[int, float]:
-    try:
-        cmd = ["docker", "exec", container_name, "sh", "-c", "cat /sys/fs/cgroup/cpu.stat; echo '---'; cat /sys/fs/cgroup/memory.current"]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
-        if res.returncode == 0 and res.stdout.strip():
-            parts = res.stdout.strip().split('---')
-            cpu_usec = 0
-            for line in parts[0].strip().splitlines():
-                if line.startswith('usage_usec'):
-                    cpu_usec = int(line.split()[1])
+    # Chu dong poll kiem tra toan bo 6 node da handshake WebSocket day du (peers >= 5)
+    t_start = time.time()
+    while time.time() - t_start < timeout_sec:
+        all_connected = True
+        for port in all_host_ports:
+            try:
+                r = requests.get(f"http://127.0.0.1:{port}/status", timeout=1.0)
+                if r.status_code == 200:
+                    data = r.json()
+                    p2p_info = data.get('p2p', {})
+                    peers_count = p2p_info.get('peers_count', 0)
+                    total_ws = p2p_info.get('total_ws_conns', 0)
+                    if peers_count < 5 or total_ws < 5:
+                        all_connected = False
+                        break
+                else:
+                    all_connected = False
                     break
-            mem_mb = int(parts[1].strip().splitlines()[0]) / 1048576.0
-            return cpu_usec, mem_mb
+            except Exception:
+                all_connected = False
+                break
+        if all_connected:
+            return True
+        time.sleep(0.4)
+
+    print("[!] Canh bao: Mesh chua dong bo du ket noi trong thoi gian cho, tiep tuc voi best-effort.")
+    return True
+
+
+def get_cgroup_telemetry(container_name: str) -> dict:
+    """
+    Thu thap telemetry cgroups v2 chinh xac:
+    - cpu.stat: usage_usec, nr_periods, nr_throttled, throttled_usec
+    - memory.current, memory.stat (anon vs file), memory.peak
+    - memory.events: oom_kill
+    """
+    stats = {
+        'cpu_usec': 0,
+        'nr_periods': 0,
+        'nr_throttled': 0,
+        'throttled_usec': 0,
+        'mem_current_mb': 0.0,
+        'anon_mb': 0.0,
+        'file_mb': 0.0,
+        'peak_mb': 0.0,
+        'oom_kill': 0
+    }
+    try:
+        cmd = [
+            "docker", "exec", container_name, "sh", "-c",
+            "cat /sys/fs/cgroup/cpu.stat; echo '---'; "
+            "cat /sys/fs/cgroup/memory.current; echo '---'; "
+            "cat /sys/fs/cgroup/memory.stat; echo '---'; "
+            "cat /sys/fs/cgroup/memory.peak; echo '---'; "
+            "cat /sys/fs/cgroup/memory.events"
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.5)
+        if res.returncode == 0 and res.stdout.strip():
+            sections = res.stdout.strip().split('---')
+            # 1. CPU stat
+            if len(sections) > 0:
+                for line in sections[0].strip().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        if parts[0] == 'usage_usec':
+                            stats['cpu_usec'] = int(parts[1])
+                        elif parts[0] == 'nr_periods':
+                            stats['nr_periods'] = int(parts[1])
+                        elif parts[0] == 'nr_throttled':
+                            stats['nr_throttled'] = int(parts[1])
+                        elif parts[0] == 'throttled_usec':
+                            stats['throttled_usec'] = int(parts[1])
+            # 2. memory.current
+            if len(sections) > 1 and sections[1].strip().isdigit():
+                stats['mem_current_mb'] = round(int(sections[1].strip()) / 1048576.0, 2)
+            # 3. memory.stat
+            if len(sections) > 2:
+                for line in sections[2].strip().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        if parts[0] == 'anon':
+                            stats['anon_mb'] = round(int(parts[1]) / 1048576.0, 2)
+                        elif parts[0] == 'file':
+                            stats['file_mb'] = round(int(parts[1]) / 1048576.0, 2)
+            # 4. memory.peak
+            if len(sections) > 3 and sections[3].strip().isdigit():
+                stats['peak_mb'] = round(int(sections[3].strip()) / 1048576.0, 2)
+            # 5. memory.events
+            if len(sections) > 4:
+                for line in sections[4].strip().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0] == 'oom_kill':
+                        stats['oom_kill'] = int(parts[1])
     except Exception:
         pass
-    return 0, 0.0
+    return stats
 
 
-def run_macro_test_round(algo_id: str, algo_name: str, tx_dataset: list, batch_size: int = 100) -> dict:
-    print(f"\n{'='*80}")
-    print(f"  MACRO BENCHMARK ROUND: {algo_name}")
-    print(f"  Mang 3 Node: Server (4 vCPU) -> Edge (1 vCPU) -> IoT (0.5 vCPU)")
-    print(f"  So luong giao dich thu nghiem: {batch_size} txs")
-    print(f"{'='*80}")
+def check_container_oom(container_name: str) -> bool:
+    try:
+        cmd = ["docker", "inspect", "--format='{{.State.OOMKilled}}'", container_name]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+        if res.returncode == 0:
+            val = res.stdout.strip().strip("'").strip('"').lower()
+            return val == "true"
+    except Exception:
+        pass
+    return False
+
+
+def run_single_dut_benchmark(algo_id: str, algo_name: str, tx_dataset: list, dut_profile: str, batch_size: int = 100) -> dict:
+    dut_info = DUT_SPEC["profiles"][dut_profile]
+    print(f"\n  [>>>] KHOI CHAY THU NGHIEM: {algo_name} | Cau hinh: {dut_info['name']}")
+    print(f"        Mang Mesh: 1 DUT Container ({dut_info['cpus']} vCPU, {dut_info['memory']}) + 5 Background Nodes (Unconstrained)")
 
     setup_network()
-    for k in NODES_SPEC:
-        start_node(k)
-    
-    if not wait_nodes_ready():
-        raise RuntimeError("Khong the khoi dong cum Node Macro!")
+    if not start_mesh_nodes(dut_profile):
+        raise RuntimeError(f"Khong the khoi dong cum mang Mesh cho DUT {dut_profile}!")
 
-    register_p2p_peers()
-    print("[+] He thong mang P2P da san sang voi 3 Node noi bo.")
+    if not wait_all_nodes_ready():
+        raise RuntimeError("Cum mang Mesh chua san sang sau thoi gian cho!")
 
-    initial_stats = {}
-    for k, spec in NODES_SPEC.items():
-        cpu_u, mem_m = get_cgroup_stats(spec["container"])
-        initial_stats[k] = {'cpu_init': cpu_u, 'baseline_mem': mem_m}
-        print(f"    - {spec['name']}: Baseline RAM = {mem_m:.2f} MB / {spec['mem_limit_mb']} MB")
+    register_and_wait_mesh()
+
+    # Do baseline cua DUT
+    baseline_stats = get_cgroup_telemetry(DUT_SPEC["container"])
+    print(f"        [+] DUT san sang. Baseline RAM: {baseline_stats['mem_current_mb']} MB (Anon: {baseline_stats['anon_mb']} MB) / Limit: {dut_info['mem_limit_mb']} MB")
 
     txs_to_send = tx_dataset[:batch_size]
-
     sample_tx_bytes = len(json.dumps(txs_to_send[0]).encode('utf-8'))
     total_wire_txs_kb = round((sample_tx_bytes * batch_size) / 1024.0, 2)
-    print(f"[*] Uoc tinh Wire Payload: {sample_tx_bytes} B/tx -> Tong {batch_size} txs = {total_wire_txs_kb} KB")
 
-    # 1. Giai doan 1: Ban batch giao dich vao Node Server (Ingress)
-    print(f"[*] Giai doan 1: Ban {batch_size} txs vao Server Node (Port 5000)...")
+    # -------------------------------------------------------------------------
+    # PHA 1: Multi-Peer Gossip Storm (Ban txs vao 5 Node nen -> Day qua WebSocket toi DUT)
+    # -------------------------------------------------------------------------
+    print(f"        [*] Pha 1: Ban {batch_size} txs phan tan vao 5 Background Nodes (20 txs/node) -> Kich hoat bao Gossip vao DUT...")
+    cgroup_ingest_start = get_cgroup_telemetry(DUT_SPEC["container"])
     t_ingest_start = time.time()
-    accepted = 0
 
-    def send_tx(tx):
+    def send_tx_to_bg_node(tx_item, target_port):
         try:
-            r = requests.post("http://127.0.0.1:5000/transactions/new", json={
-                'sender_address': tx['sender_address'],
-                'recipient_address': tx['recipient_address'],
-                'amount': str(tx['amount']),
-                'nonce': tx['nonce'],
-                'signature': tx['signature']
+            r = requests.post(f"http://127.0.0.1:{target_port}/transactions/new", json={
+                'sender_address': tx_item['sender_address'],
+                'recipient_address': tx_item['recipient_address'],
+                'amount': str(tx_item['amount']),
+                'nonce': tx_item['nonce'],
+                'signature': tx_item['signature']
             }, timeout=5.0)
             return r.status_code == 201
         except Exception:
             return False
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        futs = [ex.submit(send_tx, tx) for tx in txs_to_send]
-        for f in concurrent.futures.as_completed(futs):
-            if f.result():
-                accepted += 1
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        futs = []
+        for idx, tx_item in enumerate(txs_to_send):
+            target_bg_port = BG_NODES[idx % 5]["host_port"]
+            futs.append(ex.submit(send_tx_to_bg_node, tx_item, target_bg_port))
+        accepted_bg = sum(1 for f in concurrent.futures.as_completed(futs) if f.result())
 
-    ingest_time = round(time.time() - t_ingest_start, 3)
-    ingest_tps = round(accepted / max(0.001, ingest_time), 2)
-    print(f"[+] Server da tiep nhan: {accepted}/{batch_size} txs trong {ingest_time}s ({ingest_tps} tx/s)")
+    # Canh cho den khi Mempool cua DUT nhan du giao dich qua WebSocket Gossip
+    dut_synced = False
+    t_poll_start = time.time()
+    while time.time() - t_poll_start < 18.0:
+        try:
+            r_st = requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/status", timeout=1.0)
+            if r_st.status_code == 200:
+                mp_count = r_st.json().get('mempool_count', 0)
+                if mp_count >= batch_size:
+                    dut_synced = True
+                    break
+        except Exception:
+            pass
+        time.sleep(0.04)
 
-    # 2. Giai doan 2: Server Node thuc hien Dao Khoi (Mining)
-    print(f"[*] Giai doan 2: Server Node (Port 5000) bat dau Dao Khoi (Mining Block)...")
-    t_mine_start = time.time()
+    t_ingest_end = time.time()
+    cgroup_ingest_end = get_cgroup_telemetry(DUT_SPEC["container"])
+
+    # Cho tat ca cac socket va goi gossip con lai on dinh trong mesh (0.4s)
+    time.sleep(0.4)
+
+    ingest_wall_s = max(0.001, t_ingest_end - t_ingest_start)
+    ingest_throughput_tps = round(batch_size / ingest_wall_s, 2)
+
+    # Tinh CPU Ingest thuc te trong cua so Wall-Clock
+    ingest_cpu_usec = max(0, cgroup_ingest_end['cpu_usec'] - cgroup_ingest_start['cpu_usec'])
+    ingest_cpu_sec = ingest_cpu_usec / 1000000.0
+    ingest_avg_cpu_pct = round((ingest_cpu_sec / ingest_wall_s) * 100.0, 2)
+    ingest_norm_cpu_pct = round(min(100.0, ingest_avg_cpu_pct / float(dut_info['cpus'])), 2)
+    ingest_throttled_ms = round((cgroup_ingest_end['throttled_usec'] - cgroup_ingest_start['throttled_usec']) / 1000.0, 2)
+
+    # Lay chi so tu DUT Node Status (Crypto, P2P Resilience, TLS Handshake)
+    dut_tx_verify_ms = 0.0
+    ws_tx_received = 0
+    ws_dups_filtered = 0
+    peer_drops = 0
+    avg_tls_handshake_ms = 0.0
     try:
-        r_mine = requests.get(f"http://127.0.0.1:5000/mine?max_txs={batch_size}", timeout=30.0)
-        mine_duration = round(time.time() - t_mine_start, 3)
+        st_data = requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/status", timeout=2.0).json()
+        crypto_stats = st_data.get('crypto', {})
+        p2p_stats = st_data.get('p2p', {})
+        dut_tx_verify_ms = crypto_stats.get('avg_tx_verify_ms', 0.0)
+        ws_tx_received = p2p_stats.get('ws_tx_received', 0)
+        ws_dups_filtered = p2p_stats.get('ws_dups_filtered', 0)
+        peers_cnt = p2p_stats.get('peers_count', 0)
+        peer_drops = max(0, 5 - peers_cnt)
+        avg_tls_handshake_ms = p2p_stats.get('avg_tls_handshake_ms', 0.0)
+    except Exception:
+        pass
+
+    dut_verify_capacity_tps = round(1000.0 / max(0.001, dut_tx_verify_ms), 2) if dut_tx_verify_ms > 0 else 0.0
+    ingress_bandwidth_kbps = round(((ws_tx_received * sample_tx_bytes) / 1024.0) / ingest_wall_s, 2)
+
+    print(f"        [+] DUT Mempool Ingest: {batch_size} txs trong {ingest_wall_s:.3f}s ({ingest_throughput_tps} tx/s)")
+    print(f"            - DUT Tx Verify Latency: {dut_tx_verify_ms:.3f} ms/tx | Capacity: {dut_verify_capacity_tps} tx/s")
+    print(f"            - Ingress Bandwidth: {ingress_bandwidth_kbps} KB/s | WS Received: {ws_tx_received} | Dups Filtered: {ws_dups_filtered}")
+    print(f"            - Ingest CPU: Norm = {ingest_norm_cpu_pct}% | Throttled: {ingest_throttled_ms} ms")
+
+    # -------------------------------------------------------------------------
+    # PHA 2: Live WebSocket Block Mining & Mesh Broadcast
+    # -------------------------------------------------------------------------
+    print(f"        [*] Pha 2: Background Miner (Node 1 - Port 5001) dao va phat song Block qua WebSocket TLS 1.3...")
+
+    # Dam bao Node 1 co du txs trong mempool de gom du batch truoc khi do thoi gian dao
+    t_mempool_bg_wait = time.time()
+    while time.time() - t_mempool_bg_wait < 6.0:
+        try:
+            r_bg1 = requests.get("http://127.0.0.1:5001/status", timeout=1.0)
+            if r_bg1.status_code == 200 and r_bg1.json().get('mempool_count', 0) >= batch_size:
+                break
+        except Exception:
+            pass
+        time.sleep(0.05)
+
+    cgroup_block_start = get_cgroup_telemetry(DUT_SPEC["container"])
+    t_mine_call = time.time()
+
+    try:
+        # max_txs = batch_size + 1 de gom du 100 user txs va 1 coinbase reward tx
+        r_mine = requests.get(f"http://127.0.0.1:5001/mine?max_txs={batch_size + 1}", timeout=30.0)
+        mine_duration_s = round(time.time() - t_mine_call, 3)
         if r_mine.status_code == 200:
             mine_res = r_mine.json()
             block_data = mine_res.get('block', mine_res)
-            mined_tx_count = len(block_data.get('transactions', []))
+            # Loai bo coinbase khoi count giao dich nguoi dung
+            raw_txs = block_data.get('transactions', [])
+            mined_user_txs = sum(1 for tx in raw_txs if tx.get('sender_address') != "THE BLOCKCHAIN")
             block_wire_bytes = len(json.dumps(block_data).encode('utf-8'))
             block_wire_kb = round(block_wire_bytes / 1024.0, 2)
-            print(f"[+] Server da dao thanh cong Block #{block_data.get('block_number')} chua {mined_tx_count} txs! Thoi gian dao: {mine_duration}s")
-            print(f"    - Kich thuoc Block Dong goi tren mang (Block Wire Size): {block_wire_kb} KB ({block_wire_bytes} bytes)")
+            print(f"        [+] Miner da dao xong Block #{block_data.get('block_number')} ({mined_user_txs} user txs) trong {mine_duration_s}s | Block Wire: {block_wire_kb} KB")
         else:
-            raise RuntimeError(f"Server mine that bai: {r_mine.text}")
+            raise RuntimeError(f"Miner port 5001 mine that bai: {r_mine.text}")
     except Exception as e:
         print(f"[!] Loi khi dao khoi: {e}")
         clean_environment()
-        return {}
+        return {'status': 'MINER_FAILED', 'error': str(e)}
 
-    # 3. Giai doan 3: Lan truyen Khoi (Block Propagation)
-    print(f"[*] Giai doan 3: Phat tan khoi sang Edge (5001) va IoT (5002) de do do tre tham dinh...")
-    t0_edge = time.time()
+    # Canh cho den khi DUT nhan va commit xong Block vao So cai (Chain length >= 2)
+    t_block_poll = time.time()
+    dut_block_committed = False
+    resolved_called = False
+    while time.time() - t_block_poll < 20.0:
+        try:
+            r_c = requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/chain", timeout=1.0)
+            if r_c.status_code == 200 and r_c.json().get('length', 0) >= 2:
+                dut_block_committed = True
+                break
+        except Exception:
+            pass
+        # Neu sau 3.5s DUT chua commit qua WebSocket (do bop nghen mang/CPU), kich hoat Longest-Chain Consensus Resolve
+        if not resolved_called and (time.time() - t_block_poll > 3.5):
+            try:
+                requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/nodes/resolve", timeout=3.0)
+                resolved_called = True
+            except Exception:
+                pass
+        time.sleep(0.04)
+
+    t_block_commit = time.time()
+    cgroup_block_end = get_cgroup_telemetry(DUT_SPEC["container"])
+
+    # Do dac chinh xac Block Verification & Transit Delay tu Audit Log & Node Status
+    dut_block_verify_ms = 0.0
+    block_transit_ms = None
+    commit_latency_ms = None
+    delay_method = "unavailable"
+
     try:
-        r_edge = requests.post("http://127.0.0.1:5001/p2p/blocks/receive", json={'block': block_data}, timeout=15.0)
-        edge_accepted = r_edge.status_code == 200 and r_edge.json().get('accepted', False)
+        st_after = requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/status", timeout=2.0).json()
+        dut_block_verify_ms = st_after.get('crypto', {}).get('last_block_verify_ms', 0.0)
+
+        miner_logs = requests.get("http://127.0.0.1:5001/audit/logs?limit=250", timeout=2.0).json().get('logs', [])
+        dut_logs = requests.get(f"http://127.0.0.1:{DUT_SPEC['host_port']}/audit/logs?limit=250", timeout=2.0).json().get('logs', [])
+
+        t_broadcast_epoch = None
+        for l in miner_logs:
+            if 'Block Broadcast' in l.get('title', ''):
+                t_broadcast_epoch = l.get('epoch_ms')
+                break
+
+        t_dut_commit_epoch = None
+        for l in dut_logs:
+            if ('MERGE BLOCK' in l.get('title', '') and 'tu P2P' in l.get('title', '')) or ('Longest Chain Consensus' in l.get('title', '')):
+                t_dut_commit_epoch = l.get('epoch_ms')
+                break
+
+        for l in dut_logs:
+            if 'Nhan goi tin Block' in l.get('title', ''):
+                dtl = l.get('details', {})
+                if 'transit_delay_ms' in dtl and dtl['transit_delay_ms'] is not None:
+                    block_transit_ms = dtl['transit_delay_ms']
+                break
+
+        if dut_block_verify_ms == 0.0 and dut_block_committed:
+            dut_block_verify_ms = round(dut_tx_verify_ms * batch_size, 2)
+
+        if t_broadcast_epoch is not None and t_dut_commit_epoch is not None and t_dut_commit_epoch >= t_broadcast_epoch:
+            commit_latency_ms = round(t_dut_commit_epoch - t_broadcast_epoch, 2)
+            delay_method = "epoch_audit"
+        elif block_transit_ms is not None:
+            commit_latency_ms = round(block_transit_ms + dut_block_verify_ms, 2)
+            delay_method = "transit_plus_verify"
+        elif dut_block_committed:
+            commit_latency_ms = round(max(dut_block_verify_ms, (t_block_commit - (t_mine_call + mine_duration_s)) * 1000.0), 2)
+            delay_method = "wall_clock_commit"
+        else:
+            commit_latency_ms = round(dut_block_verify_ms, 2)
+            delay_method = "block_verify_fallback"
     except Exception:
-        edge_accepted = False
-    edge_prop_delay_ms = round((time.time() - t0_edge) * 1000.0, 2)
+        pass
 
-    t0_iot = time.time()
-    try:
-        r_iot = requests.post("http://127.0.0.1:5002/p2p/blocks/receive", json={'block': block_data}, timeout=25.0)
-        iot_accepted = r_iot.status_code == 200 and r_iot.json().get('accepted', False)
-    except Exception:
-        iot_accepted = False
-    iot_prop_delay_ms = round((time.time() - t0_iot) * 1000.0, 2)
+    # Tinh CPU Block Verification thuc te tren cua so DUT thuc su xu ly Block
+    block_duty_s = max(0.005, (commit_latency_ms if commit_latency_ms else 50.0) / 1000.0)
+    block_cpu_usec = max(0, cgroup_block_end['cpu_usec'] - cgroup_block_start['cpu_usec'])
+    block_cpu_sec = block_cpu_usec / 1000000.0
+    block_avg_cpu_pct = round((block_cpu_sec / block_duty_s) * 100.0, 2)
+    block_norm_cpu_pct = round(min(100.0, block_avg_cpu_pct / float(dut_info['cpus'])), 2)
+    block_throttled_ms = round((cgroup_block_end['throttled_usec'] - cgroup_block_start['throttled_usec']) / 1000.0, 2)
 
-    total_e2e_time = round(ingest_time + mine_duration + ((edge_prop_delay_ms + iot_prop_delay_ms) / 1000.0), 3)
-    e2e_tps = round(accepted / max(0.001, total_e2e_time), 2)
+    # -------------------------------------------------------------------------
+    # PHA 3: Thu thap Telemetry Bo nho va Tinh toan Tai nguyen Tong the
+    # -------------------------------------------------------------------------
+    # 1. Tai nguyen trong cua so DUT hoat dong tich cuc (Active Duty Cycle: Ingest + Block Commit)
+    active_duty_s = round(ingest_wall_s + block_duty_s, 3)
+    active_cpu_sec = round(ingest_cpu_sec + block_cpu_sec, 4)
+    active_avg_cpu_pct = round((active_cpu_sec / max(0.001, active_duty_s)) * 100.0, 2)
+    active_norm_cpu_pct = round(min(100.0, active_avg_cpu_pct / float(dut_info['cpus'])), 2)
 
-    print(f"[+] Ket qua Lan truyen Khoi (Block Propagation):")
-    print(f"    - Edge Node Propagation & Verification Delay: {edge_prop_delay_ms} ms (Accepted: {edge_accepted})")
-    print(f"    - IoT Node Propagation & Verification Delay:  {iot_prop_delay_ms} ms (Accepted: {iot_accepted}) [Constrained Bottleneck]")
-    print(f"    - Tong thoi gian End-to-End:                  {total_e2e_time} s")
-    print(f"    - Thong luong End-to-End TPS:                 {e2e_tps} tx/s")
+    # 2. Tai nguyen tinh tren toan bo Wall-Clock (bao gom ca thoi gian cho Node 1 dao PoW)
+    total_wall_s = round(t_block_commit - t_ingest_start, 3)
+    total_cpu_usec = max(0, cgroup_block_end['cpu_usec'] - cgroup_ingest_start['cpu_usec'])
+    total_cpu_sec = total_cpu_usec / 1000000.0
+    total_avg_cpu_pct = round((total_cpu_sec / total_wall_s) * 100.0, 2)
+    total_norm_cpu_pct = round(min(100.0, total_avg_cpu_pct / float(dut_info['cpus'])), 2)
+    total_throttled_ms = round((cgroup_block_end['throttled_usec'] - cgroup_ingest_start['throttled_usec']) / 1000.0, 2)
 
-    # 4. Do tai nguyen sau khi hoan tat tren ca 3 Node
-    nodes_metrics = {}
-    for k, spec in NODES_SPEC.items():
-        cpu_final, mem_final = get_cgroup_stats(spec["container"])
-        cpu_consumed_sec = (cpu_final - initial_stats[k]['cpu_init']) / 1000000.0
-        avg_cpu = round((cpu_consumed_sec / max(0.001, total_e2e_time)) * 100.0, 2)
-        normalized_cpu = round(avg_cpu / float(spec['cpus']), 2)
-        
-        peak_cmd = ["docker", "exec", spec["container"], "cat", "/sys/fs/cgroup/memory.peak"]
-        peak_res = subprocess.run(peak_cmd, stdout=subprocess.PIPE, text=True)
-        peak_ram = int(peak_res.stdout.strip()) / 1048576.0 if peak_res.returncode == 0 and peak_res.stdout.strip().isdigit() else mem_final
+    # Tinh ti le bop nghen CPU Throttling Ratio (%)
+    nr_throttled_delta = max(0, cgroup_block_end['nr_throttled'] - cgroup_ingest_start['nr_throttled'])
+    nr_periods_delta = max(0, cgroup_block_end['nr_periods'] - cgroup_ingest_start['nr_periods'])
+    throttling_ratio_pct = round((nr_throttled_delta / nr_periods_delta) * 100.0, 2) if nr_periods_delta > 0 else 0.0
 
-        nodes_metrics[k] = {
-            'baseline_ram_mb': round(initial_stats[k]['baseline_mem'], 2),
-            'peak_ram_mb': round(peak_ram, 2),
-            'ram_limit_mb': spec['mem_limit_mb'],
-            'ram_utilization_pct': round((peak_ram / spec['mem_limit_mb']) * 100.0, 2),
-            'avg_cpu_pct': avg_cpu,
-            'normalized_cpu_pct': normalized_cpu
-        }
-        print(f"    - {spec['name']}: Peak RAM = {peak_ram:.2f} MB ({nodes_metrics[k]['ram_utilization_pct']}%) | Avg CPU = {avg_cpu}% (Norm: {normalized_cpu}%)")
+    baseline_ram_mb = baseline_stats['mem_current_mb']
+    baseline_anon_mb = baseline_stats['anon_mb']
+    peak_ram_mb = cgroup_block_end['peak_mb']
+    peak_anon_mb = cgroup_block_end['anon_mb']
+    delta_anon_mb = round(max(0.0, peak_anon_mb - baseline_anon_mb), 2)
+    ram_util_pct = round(min(100.0, (peak_ram_mb / dut_info['mem_limit_mb']) * 100.0), 2)
+
+    oom_killed = check_container_oom(DUT_SPEC["container"]) or cgroup_block_end.get('oom_kill', 0) > 0
+
+    # Gate & Validation trang thai
+    if oom_killed:
+        status = "OOM_KILLED"
+    elif accepted_bg < batch_size:
+        status = "BG_INCOMPLETE"
+    elif not dut_synced:
+        status = "MEMPOOL_TIMEOUT"
+    elif not dut_block_committed:
+        status = "BLOCK_COMMIT_TIMEOUT"
+    else:
+        status = "SUCCESS"
+
+    print(f"        [+] DUT Block Verification Time: {dut_block_verify_ms:.2f} ms | Commit Latency: {commit_latency_ms} ms (Method: {delay_method})")
+    print(f"        [+] DUT Telemetry: Peak RAM = {peak_ram_mb:.2f} MB (Anon: {peak_anon_mb:.2f} MB, Delta={delta_anon_mb} MB) | Ingest CPU = {ingest_norm_cpu_pct}% | Active Norm CPU = {active_norm_cpu_pct}% | Throttling Ratio = {throttling_ratio_pct}% ({total_throttled_ms} ms)")
+    print(f"        [+] Trang thai Kiem thu: {status}")
 
     clean_environment()
+
+    return {
+        'status': status,
+        'profile': dut_profile,
+        'profile_name': dut_info['name'],
+        'cpus': dut_info['cpus'],
+        'mem_limit_mb': dut_info['mem_limit_mb'],
+        'batch_size': batch_size,
+        'accepted_bg': accepted_bg,
+        'dut_synced': dut_synced,
+        'dut_block_committed': dut_block_committed,
+        'oom_killed': oom_killed,
+        'sample_tx_bytes': sample_tx_bytes,
+        'total_wire_txs_kb': total_wire_txs_kb,
+        'block_wire_kb': block_wire_kb,
+        'mined_user_txs': mined_user_txs,
+        # 1. Hieu nang Mat ma (Cryptographic Overhead)
+        'dut_tx_verify_ms': dut_tx_verify_ms,
+        'dut_verify_capacity_tps': dut_verify_capacity_tps,
+        'avg_tls_handshake_ms': avg_tls_handshake_ms,
+        # 2. Toan ven Dong thuan (Consensus Integrity)
+        'mine_duration_s': mine_duration_s,
+        'dut_block_verify_ms': dut_block_verify_ms,
+        'block_transit_ms': block_transit_ms,
+        'commit_latency_ms': commit_latency_ms,
+        'delay_method': delay_method,
+        'sync_lag_blocks': 0 if dut_block_committed else 1,
+        # 3. Tinh San sang & DoS (Availability & DoS)
+        'ingest_wall_s': round(ingest_wall_s, 3),
+        'ingest_throughput_tps': ingest_throughput_tps,
+        'ingest_norm_cpu_pct': ingest_norm_cpu_pct,
+        'active_duty_s': active_duty_s,
+        'active_norm_cpu_pct': active_norm_cpu_pct,
+        'total_wall_s': total_wall_s,
+        'total_norm_cpu_pct': total_norm_cpu_pct,
+        'total_throttled_ms': total_throttled_ms,
+        'throttling_ratio_pct': throttling_ratio_pct,
+        'baseline_ram_mb': baseline_ram_mb,
+        'baseline_anon_mb': baseline_anon_mb,
+        'peak_ram_mb': peak_ram_mb,
+        'peak_anon_mb': peak_anon_mb,
+        'delta_anon_mb': delta_anon_mb,
+        'ram_utilization_pct': ram_util_pct,
+        # 4. On dinh Mang P2P (Network Resilience)
+        'ws_tx_received': ws_tx_received,
+        'ws_dups_filtered': ws_dups_filtered,
+        'peer_drops': peer_drops,
+        'ingress_bandwidth_kbps': ingress_bandwidth_kbps
+    }
+
+
+def run_full_macro_round(algo_id: str, algo_name: str, tx_dataset: list, batch_size: int = 100) -> dict:
+    print(f"\n{'='*80}")
+    print(f"  MACRO BENCHMARK: {algo_name}")
+    print(f"  Mo hinh: 1 DUT (Server -> Edge -> IoT) trong mang 5 Node Live Mesh")
+    print(f"  Dataset: {batch_size} giao dich da ky hop le")
+    print(f"{'='*80}")
+
+    # Chay 3 luot do cho 3 cau hinh DUT: Server -> Edge -> IoT
+    res_server = run_single_dut_benchmark(algo_id, algo_name, tx_dataset, "server", batch_size)
+    time.sleep(1.0)
+    res_edge = run_single_dut_benchmark(algo_id, algo_name, tx_dataset, "edge", batch_size)
+    time.sleep(1.0)
+    res_iot = run_single_dut_benchmark(algo_id, algo_name, tx_dataset, "iot", batch_size)
+
+    sample_tx_bytes = res_server.get('sample_tx_bytes') or res_edge.get('sample_tx_bytes') or res_iot.get('sample_tx_bytes', 0)
+    total_wire_txs_kb = res_server.get('total_wire_txs_kb') or res_edge.get('total_wire_txs_kb') or res_iot.get('total_wire_txs_kb', 0.0)
+    block_wire_kb = res_server.get('block_wire_kb') or res_edge.get('block_wire_kb') or res_iot.get('block_wire_kb', 0.0)
 
     return {
         'algorithm_id': algo_id,
         'algorithm_name': algo_name,
         'batch_size': batch_size,
-        'accepted_txs': accepted,
-        'mined_block_txs': mined_tx_count,
         'wire_tx_bytes': sample_tx_bytes,
         'total_wire_txs_kb': total_wire_txs_kb,
         'block_wire_kb': block_wire_kb,
-        'server_ingest_time_s': ingest_time,
-        'server_ingest_tps': ingest_tps,
-        'mine_duration_s': mine_duration,
-        'edge_prop_delay_ms': edge_prop_delay_ms,
-        'iot_prop_delay_ms': iot_prop_delay_ms,
-        'e2e_total_time_s': total_e2e_time,
-        'e2e_tps': e2e_tps,
-        'nodes': nodes_metrics
+        'nodes': {
+            'server': res_server,
+            'edge': res_edge,
+            'iot': res_iot
+        }
     }
 
 
 def plot_macro_chart(macro_results: List[dict], out_path: Path):
-    fig, axes = plt.subplots(1, 3, figsize=(22, 6.8), dpi=300)
-    fig.suptitle("PERF-01: MACRO-BENCHMARK - SO SÁNH HIỆU NĂNG MẠNG P2P PHÂN CẤP (3 NODES)\nECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 (PQC Spectrum) End-to-End Flow",
-                 fontsize=14, fontweight='bold', y=0.98)
+    fig, axes = plt.subplots(1, 3, figsize=(23, 7.2), dpi=300)
+    fig.suptitle("PERF-01: MACRO-BENCHMARK - SINGLE DUT TRONG MẠNG LIVE MESH (1 DUT + 5 BACKGROUND NODES)\n"
+                 "Đánh Giá Thực Nghiệm: ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 Qua WebSocket TLS 1.3 Mesh",
+                 fontsize=13.5, fontweight='bold', y=0.98)
 
     def format_algo_label(name: str) -> str:
         if "ECDSA" in name:
@@ -316,81 +662,112 @@ def plot_macro_chart(macro_results: List[dict], out_path: Path):
             return "ML-DSA-87\n(PQC Level 5)"
         return name
 
+    def get_node_stat(r: dict, profile: str, key: str, fallback_key: str = None) -> float:
+        node = r.get('nodes', {}).get(profile, {})
+        val = node.get(key)
+        if val is None and fallback_key:
+            val = node.get(fallback_key)
+        if val is None:
+            val = r.get(f"{profile}_{key}") or (r.get(f"{profile}_{fallback_key}") if fallback_key else None)
+        try:
+            return float(val) if val is not None else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
     raw_labels = [r['algorithm_name'] for r in macro_results]
     labels = [format_algo_label(l) for l in raw_labels]
     x = np.arange(len(labels))
-    width = 0.35
+    width = 0.26
 
-    # 1. Block Propagation Delay & E2E Time
+    # 1. Panel 1: DUT Block Commit Latency (ms) - Độ trễ lan truyền + thẩm định khối
     ax1 = axes[0]
-    edge_delays = [r['edge_prop_delay_ms'] for r in macro_results]
-    iot_delays = [r['iot_prop_delay_ms'] for r in macro_results]
+    server_v = [get_node_stat(r, 'server', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
+    edge_v = [get_node_stat(r, 'edge', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
+    iot_v = [get_node_stat(r, 'iot', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
 
-    b1 = ax1.bar(x - width/2, edge_delays, width, label='Edge Block Delay (ms)', color='#2ca02c')
-    b2 = ax1.bar(x + width/2, iot_delays, width, label='IoT Block Delay (ms)', color='#d62728')
+    b1 = ax1.bar(x - width, server_v, width, label='Server DUT (4.0 vCPU)', color='#1f77b4')
+    b2 = ax1.bar(x, edge_v, width, label='Edge DUT (1.0 vCPU)', color='#2ca02c')
+    b3 = ax1.bar(x + width, iot_v, width, label='IoT DUT (0.5 vCPU)', color='#d62728')
 
     for b in b1:
-        ax1.annotate(f"{b.get_height():.1f}ms", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
+        h = b.get_height()
+        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
     for b in b2:
-        ax1.annotate(f"{b.get_height():.1f}ms", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
+        h = b.get_height()
+        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+    for b in b3:
+        h = b.get_height()
+        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
 
-    max_y1 = max(edge_delays + iot_delays) if (edge_delays + iot_delays) else 100
-    ax1.set_ylim(0, max_y1 * 1.35)
-    ax1.set_ylabel("Độ trễ lan truyền & xác thực (ms)", fontsize=11, fontweight='bold')
-    ax1.set_title("1. Độ Trễ Lan Truyền Khối (Block Propagation)", fontsize=12, fontweight='bold')
+    max_y1 = max(server_v + edge_v + iot_v) if (server_v + edge_v + iot_v) else 100
+    ax1.set_ylim(0, max(50, max_y1 * 1.30))
+    ax1.set_ylabel("Thời gian cam kết khối (ms)", fontsize=11, fontweight='bold')
+    ax1.set_title("1. Thời Gian Cam Kết Khối Của DUT (Wire Transit + Verify)", fontsize=11.5, fontweight='bold')
     ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontweight='bold', fontsize=9.5)
-    ax1.legend(loc='upper right', fontsize=9, framealpha=0.9, edgecolor='#ccc')
+    ax1.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
+    ax1.legend(loc='upper left', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
     ax1.grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 2. Wire Payload Size (Block & Txs)
+    # 2. Panel 2: Wire Payload Size (100 Txs vs Block Wire Size)
     ax2 = axes[1]
-    block_sizes = [r['block_wire_kb'] for r in macro_results]
-    txs_sizes = [r['total_wire_txs_kb'] for r in macro_results]
+    w2 = 0.35
+    block_sizes = [r.get('block_wire_kb', 0.0) for r in macro_results]
+    txs_sizes = [r.get('total_wire_txs_kb', 0.0) for r in macro_results]
 
-    b3 = ax2.bar(x - width/2, txs_sizes, width, label='100 Txs Payload (KB)', color='#1f77b4')
-    b4 = ax2.bar(x + width/2, block_sizes, width, label='Forged Block Wire Size (KB)', color='#ff7f0e')
+    b4 = ax2.bar(x - w2/2, txs_sizes, w2, label='100 Txs Gossip Batch (KB)', color='#0284c7')
+    b5 = ax2.bar(x + w2/2, block_sizes, w2, label='Forged Block Wire Size (KB)', color='#ea580c')
 
-    for b in b3:
-        ax2.annotate(f"{b.get_height():.1f}KB", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
     for b in b4:
-        ax2.annotate(f"{b.get_height():.1f}KB", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
+        h = b.get_height()
+        ax2.annotate(f"{h:.1f}KB", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(-3, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+    for b in b5:
+        h = b.get_height()
+        ax2.annotate(f"{h:.1f}KB", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(3, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
 
     max_y2 = max(txs_sizes + block_sizes) if (txs_sizes + block_sizes) else 500
-    ax2.set_ylim(0, max_y2 * 1.25)
+    ax2.set_ylim(0, max(10, max_y2 * 1.25))
     ax2.set_ylabel("Dung lượng qua dây mạng (KB)", fontsize=11, fontweight='bold')
-    ax2.set_title("2. Kích Thước Dữ Liệu Qua Mạng (Network Wire Payload)", fontsize=12, fontweight='bold')
+    ax2.set_title("2. Kích Thước Dữ Liệu Qua Mạng (Network Wire Payload)", fontsize=11.5, fontweight='bold')
     ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, fontweight='bold', fontsize=9.5)
-    ax2.legend(loc='upper left', fontsize=9, framealpha=0.9, edgecolor='#ccc')
+    ax2.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
+    ax2.legend(loc='upper left', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
     ax2.grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 3. IoT vs Server Normalized CPU
+    # 3. Panel 3: Normalized CPU (%) tren DUT (Server vs Edge vs IoT) khi chiu ap luc bao Gossip
     ax3 = axes[2]
-    server_cpu = [r['nodes']['server']['normalized_cpu_pct'] for r in macro_results]
-    iot_cpu = [r['nodes']['iot']['normalized_cpu_pct'] for r in macro_results]
+    server_cpu = [min(100.0, get_node_stat(r, 'server', 'ingest_norm_cpu_pct') or get_node_stat(r, 'server', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
+    edge_cpu = [min(100.0, get_node_stat(r, 'edge', 'ingest_norm_cpu_pct') or get_node_stat(r, 'edge', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
+    iot_cpu = [min(100.0, get_node_stat(r, 'iot', 'ingest_norm_cpu_pct') or get_node_stat(r, 'iot', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
 
-    b5 = ax3.bar(x - width/2, server_cpu, width, label='Server Normalized CPU (%)', color='#3b528b')
-    b6 = ax3.bar(x + width/2, iot_cpu, width, label='IoT Normalized CPU (%)', color='#b51d14')
+    b6 = ax3.bar(x - width, server_cpu, width, label='Server DUT Norm CPU (%)', color='#475569')
+    b7 = ax3.bar(x, edge_cpu, width, label='Edge DUT Norm CPU (%)', color='#059669')
+    b8 = ax3.bar(x + width, iot_cpu, width, label='IoT DUT Norm CPU (%)', color='#b91c1c')
 
-    for b in b5:
-        ax3.annotate(f"{b.get_height():.1f}%", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
     for b in b6:
-        ax3.annotate(f"{b.get_height():.1f}%", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8.5, fontweight='bold')
+        h = b.get_height()
+        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+    for b in b7:
+        h = b.get_height()
+        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+    for b in b8:
+        h = b.get_height()
+        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
+                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
 
-    max_y3 = max(server_cpu + iot_cpu) if (server_cpu + iot_cpu) else 100
-    ax3.set_ylim(0, max_y3 * 1.35)
-    ax3.set_ylabel("Normalized CPU (%) [Đo trên hạn ngạch]", fontsize=11, fontweight='bold')
-    ax3.set_title("3. Mức Bão Hòa CPU: Server vs IoT Node", fontsize=12, fontweight='bold')
+    max_y3 = max(server_cpu + edge_cpu + iot_cpu) if (server_cpu + edge_cpu + iot_cpu) else 100
+    ax3.set_ylim(0, max(100.0, max_y3 * 1.30))
+    ax3.set_ylabel("Normalized CPU (%) [Hạn mức cgroups - Max 100%]", fontsize=11, fontweight='bold')
+    ax3.set_title("3. Mức Bão Hòa CPU Của DUT Dưới Áp Lực 5 Node (Gossip Storm)", fontsize=11.5, fontweight='bold')
     ax3.set_xticks(x)
-    ax3.set_xticklabels(labels, fontweight='bold', fontsize=9.5)
-    ax3.legend(loc='upper right', fontsize=9, framealpha=0.9, edgecolor='#ccc')
+    ax3.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
+    ax3.legend(loc='upper right', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
     ax3.grid(axis='y', linestyle='--', alpha=0.5)
 
     plt.tight_layout(rect=[0, 0.02, 1, 0.95])
@@ -403,36 +780,72 @@ def save_macro_csv(macro_results: List[dict], out_path: Path):
     with open(out_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow([
-            "Algorithm", "Batch Size (Txs)", "Tx Wire Size (Bytes)", "100 Txs Wire (KB)", "Block Wire Size (KB)",
-            "Server Ingest Time (s)", "Server Ingest TPS", "Block Mining Time (s)",
-            "Edge Prop Delay (ms)", "IoT Prop Delay (ms)", "E2E Total Time (s)", "E2E TPS",
-            "Server Peak RAM (MB)", "Server Avg CPU (%)",
-            "Edge Peak RAM (MB)", "Edge Avg CPU (%)",
-            "IoT Peak RAM (MB)", "IoT Normalized CPU (%)"
+            "Algorithm", "Batch Size", "Tx Wire Bytes", "100 Txs Wire (KB)", "Block Wire Size (KB)",
+            # 1. Hieu nang Mat ma
+            "Server Tx Verify (ms)", "Edge Tx Verify (ms)", "IoT Tx Verify (ms)",
+            "Server Verify Capacity (TPS)", "Edge Verify Capacity (TPS)", "IoT Verify Capacity (TPS)",
+            "Server TLS Handshake (ms)", "Edge TLS Handshake (ms)", "IoT TLS Handshake (ms)",
+            # 2. Toan ven Dong thuan
+            "Server Block Verify (ms)", "Edge Block Verify (ms)", "IoT Block Verify (ms)",
+            "Server Commit Latency (ms)", "Edge Commit Latency (ms)", "IoT Commit Latency (ms)",
+            # 3. Tinh San sang & DoS
+            "Server Ingest (TPS)", "Edge Ingest (TPS)", "IoT Ingest (TPS)",
+            "Server Ingest Norm CPU (%)", "Edge Ingest Norm CPU (%)", "IoT Ingest Norm CPU (%)",
+            "Server Active Norm CPU (%)", "Edge Active Norm CPU (%)", "IoT Active Norm CPU (%)",
+            "Server Total Norm CPU (%)", "Edge Total Norm CPU (%)", "IoT Total Norm CPU (%)",
+            "Server Throttling Ratio (%)", "Edge Throttling Ratio (%)", "IoT Throttling Ratio (%)",
+            "Server Throttled (ms)", "Edge Throttled (ms)", "IoT Throttled (ms)",
+            "Server Peak RAM (MB)", "Edge Peak RAM (MB)", "IoT Peak RAM (MB)",
+            "Server Delta Anon RAM (MB)", "Edge Delta Anon RAM (MB)", "IoT Delta Anon RAM (MB)",
+            # 4. On dinh Mang P2P
+            "Server Ingress BW (KB/s)", "Edge Ingress BW (KB/s)", "IoT Ingress BW (KB/s)",
+            "Server WS Dups Filtered", "Edge WS Dups Filtered", "IoT WS Dups Filtered",
+            "Server Status", "Edge Status", "IoT Status"
         ])
         for r in macro_results:
+            srv = r['nodes'].get('server', {})
+            edg = r['nodes'].get('edge', {})
+            iot = r['nodes'].get('iot', {})
+
             writer.writerow([
-                r['algorithm_name'], r['batch_size'], r['wire_tx_bytes'], r['total_wire_txs_kb'], r['block_wire_kb'],
-                r['server_ingest_time_s'], r['server_ingest_tps'], r['mine_duration_s'],
-                r['edge_prop_delay_ms'], r['iot_prop_delay_ms'], r['e2e_total_time_s'], r['e2e_tps'],
-                r['nodes']['server']['peak_ram_mb'], r['nodes']['server']['avg_cpu_pct'],
-                r['nodes']['edge']['peak_ram_mb'], r['nodes']['edge']['avg_cpu_pct'],
-                r['nodes']['iot']['peak_ram_mb'], r['nodes']['iot']['normalized_cpu_pct']
+                r['algorithm_name'], r['batch_size'], r.get('wire_tx_bytes', 0), r.get('total_wire_txs_kb', 0.0), r.get('block_wire_kb', 0.0),
+                srv.get('dut_tx_verify_ms', 0.0), edg.get('dut_tx_verify_ms', 0.0), iot.get('dut_tx_verify_ms', 0.0),
+                srv.get('dut_verify_capacity_tps', 0.0), edg.get('dut_verify_capacity_tps', 0.0), iot.get('dut_verify_capacity_tps', 0.0),
+                srv.get('avg_tls_handshake_ms', 0.0), edg.get('avg_tls_handshake_ms', 0.0), iot.get('avg_tls_handshake_ms', 0.0),
+                srv.get('dut_block_verify_ms', 0.0), edg.get('dut_block_verify_ms', 0.0), iot.get('dut_block_verify_ms', 0.0),
+                srv.get('commit_latency_ms', 'NA'), edg.get('commit_latency_ms', 'NA'), iot.get('commit_latency_ms', 'NA'),
+                srv.get('ingest_throughput_tps', 0.0), edg.get('ingest_throughput_tps', 0.0), iot.get('ingest_throughput_tps', 0.0),
+                srv.get('ingest_norm_cpu_pct', srv.get('total_norm_cpu_pct', 0.0)), edg.get('ingest_norm_cpu_pct', edg.get('total_norm_cpu_pct', 0.0)), iot.get('ingest_norm_cpu_pct', iot.get('total_norm_cpu_pct', 0.0)),
+                srv.get('active_norm_cpu_pct', srv.get('total_norm_cpu_pct', 0.0)), edg.get('active_norm_cpu_pct', edg.get('total_norm_cpu_pct', 0.0)), iot.get('active_norm_cpu_pct', iot.get('total_norm_cpu_pct', 0.0)),
+                srv.get('total_norm_cpu_pct', 0.0), edg.get('total_norm_cpu_pct', 0.0), iot.get('total_norm_cpu_pct', 0.0),
+                srv.get('throttling_ratio_pct', 0.0), edg.get('throttling_ratio_pct', 0.0), iot.get('throttling_ratio_pct', 0.0),
+                srv.get('total_throttled_ms', 0.0), edg.get('total_throttled_ms', 0.0), iot.get('total_throttled_ms', 0.0),
+                srv.get('peak_ram_mb', 0.0), edg.get('peak_ram_mb', 0.0), iot.get('peak_ram_mb', 0.0),
+                srv.get('delta_anon_mb', 0.0), edg.get('delta_anon_mb', 0.0), iot.get('delta_anon_mb', 0.0),
+                srv.get('ingress_bandwidth_kbps', 0.0), edg.get('ingress_bandwidth_kbps', 0.0), iot.get('ingress_bandwidth_kbps', 0.0),
+                srv.get('ws_dups_filtered', 0), edg.get('ws_dups_filtered', 0), iot.get('ws_dups_filtered', 0),
+                srv.get('status', 'UNKNOWN'), edg.get('status', 'UNKNOWN'), iot.get('status', 'UNKNOWN')
             ])
     print(f"[+] Da xuat bang CSV Macro-Benchmark: {out_path}")
 
 
 def main():
+    parser = argparse.ArgumentParser(description="PERF-01 Macro-Benchmark Suite")
+    parser.add_argument("--plot-only", "-p", action="store_true", help="Chi ve lai bieu do tu perf01_macro_results.json")
+    parser.add_argument("--batch-size", "-b", type=int, default=100, help="So luong giao dich trong 1 batch (mac dinh: 100)")
+    args = parser.parse_args()
+
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    if "--plot-only" in sys.argv or "-p" in sys.argv:
+    if args.plot_only:
         p = RESULTS_DIR / "perf01_macro_results.json"
         if p.exists():
             plot_macro_chart(json.load(open(p, encoding='utf-8')), RESULTS_DIR / "perf01_macro_chart.png")
             return
 
     print("=" * 80)
-    print("  KHOI CHAY PERF-01 MACRO-BENCHMARK: MANG BLOCKCHAIN P2P 3 NODES")
-    print("  So sanh ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 tren ha tang Server - Edge - IoT phan cap")
+    print("  KHOI CHAY PERF-01 MACRO-BENCHMARK: SINGLE DUT IN LIVE MESH (1 DUT + 5 BG NODES)")
+    print("  So sanh ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87")
+    print("  Ha tang: 1 Node Docker DUT (Server -> Edge -> IoT) hoa mang 5 Node Unconstrained")
     print("=" * 80)
 
     ecdsa_file = DATA_DIR / "txs_500_ecdsa.json"
@@ -449,30 +862,31 @@ def main():
     mldsa65_txs = json.load(open(mldsa65_file, 'r', encoding='utf-8'))
     mldsa87_txs = json.load(open(mldsa87_file, 'r', encoding='utf-8'))
 
+    batch_size = args.batch_size
     macro_results = []
 
     print("[*] Khoi chay container warm-up de lam nong bo dem Linux Page Cache...")
     subprocess.run(["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "-v", f"{BASE_DIR}:/app", "blockchain-node:perf"], stdout=subprocess.DEVNULL)
-    time.sleep(2.5)
+    time.sleep(2.0)
     subprocess.run(["docker", "rm", "-f", "btc-macro-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # 1. Round 1: ECDSA (secp256k1)
-    res_ecdsa = run_macro_test_round("ecdsa", "ECDSA (secp256k1)", ecdsa_txs, batch_size=100)
+    res_ecdsa = run_full_macro_round("ecdsa", "ECDSA (secp256k1)", ecdsa_txs, batch_size=batch_size)
     macro_results.append(res_ecdsa)
-    time.sleep(2.0)
+    time.sleep(1.0)
 
     # 2. Round 2: ML-DSA-44 (NIST PQC Level 2)
-    res_mldsa44 = run_macro_test_round("mldsa44", "ML-DSA-44 (NIST PQC Level 2)", mldsa44_txs, batch_size=100)
+    res_mldsa44 = run_full_macro_round("mldsa44", "ML-DSA-44 (NIST PQC Level 2)", mldsa44_txs, batch_size=batch_size)
     macro_results.append(res_mldsa44)
-    time.sleep(2.0)
+    time.sleep(1.0)
 
     # 3. Round 3: ML-DSA-65 (NIST PQC Level 3)
-    res_mldsa65 = run_macro_test_round("mldsa65", "ML-DSA-65 (NIST PQC Level 3)", mldsa65_txs, batch_size=100)
+    res_mldsa65 = run_full_macro_round("mldsa65", "ML-DSA-65 (NIST PQC Level 3)", mldsa65_txs, batch_size=batch_size)
     macro_results.append(res_mldsa65)
-    time.sleep(2.0)
+    time.sleep(1.0)
 
     # 4. Round 4: ML-DSA-87 (NIST PQC Level 5)
-    res_mldsa87 = run_macro_test_round("mldsa87", "ML-DSA-87 (NIST PQC Level 5)", mldsa87_txs, batch_size=100)
+    res_mldsa87 = run_full_macro_round("mldsa87", "ML-DSA-87 (NIST PQC Level 5)", mldsa87_txs, batch_size=batch_size)
     macro_results.append(res_mldsa87)
 
     json_path = RESULTS_DIR / "perf01_macro_results.json"
@@ -488,7 +902,7 @@ def main():
     clean_environment()
 
     print("\n" + "=" * 80)
-    print("  HOAN TAT TOAN BO MACRO-BENCHMARK PERF-01 (4 THUAT TOAN)!")
+    print("  HOAN TAT TOAN BO MACRO-BENCHMARK: 1 DUT + 5 BG NODES (4 THUAT TOAN)!")
     print(f"  - Ket qua JSON:   {json_path}")
     print(f"  - Bang CSV Macro: {csv_path}")
     print(f"  - Bieu do Macro:  {chart_path}")

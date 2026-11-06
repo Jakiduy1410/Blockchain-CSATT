@@ -124,23 +124,23 @@ stateDiagram-v2
 
 ---
 
-### 4. SỰ KHÁC BIỆT GIỮA MICRO-BENCHMARK (ĐƠN LẺ) VÀ MACRO-BENCHMARK (MẠNG P2P 3-NODE)
+### 4. SỰ KHÁC BIỆT GIỮA MICRO-BENCHMARK (ĐƠN LẺ) VÀ MACRO-BENCHMARK (MẠNG P2P SINGLE DUT MESH)
 
 #### Câu hỏi của Giảng viên:
-> *"Tại sao cần cả bài đo Micro (3x4 đơn lẻ) và bài đo Macro (3 Node P2P)? Hai bài đo này bổ sung cho nhau như thế nào?"*
+> *"Tại sao cần cả bài đo Micro (3x4 đơn lẻ) và bài đo Macro (1 DUT + 5 Background Nodes)? Tại sao không dùng mô hình chuỗi tuyến tính 3 node đơn giản mà phải dựng mạng mesh 6 node?"*
 
 #### Câu trả lời:
 * **Micro-Benchmark (Kiểm thử vi mô 3x4):**
   * *Mục tiêu:* Cô lập từng node riêng biệt để tìm giới hạn cực đại của tài nguyên tính toán (CPU Saturation) và bộ nhớ (Peak RAM) khi tiếp nhận liên tục 500 giao dịch vào Mempool qua REST API.
   * *Ý nghĩa:* Trả lời câu hỏi: *"Một thiết bị phần cứng cụ thể (Server, Edge, IoT) có thể chịu tải nạp giao dịch ở tốc độ bao nhiêu?"*
-* **Macro-Benchmark (Kiểm thử vĩ mô mạng P2P 3-Node phân cấp):**
-  * *Mục tiêu:* Khảo sát luồng chu trình hoàn chỉnh từ đầu đến cuối (**End-to-End Flow**) của một mạng Blockchain thực tế:
-    $$\text{Client Ingress (5000)} \xrightarrow{\text{Nạp 100 txs}} \text{Server Miner (5000)} \xrightarrow{\text{Đào Block}} \text{Edge Relay (5001)} \xrightarrow{\text{Lan truyền P2P}} \text{IoT Validator (5002)}$$
-  * *Phát hiện thực nghiệm đắt giá:*
-    * **Khối đào đóng gói (Forged Block Wire Size):** Khối đào chứa đủ 100 giao dịch có kích thước: ECDSA ($54.5\text{ KB}$), ML-DSA-44 ($758.4\text{ KB}$), ML-DSA-65 ($1,057.0\text{ KB}$), ML-DSA-87 ($1,439.4\text{ KB}$).
-    * **Độ trễ thẩm định trên IoT yếu (0.5 vCPU):** 
-      * Với ML-DSA, dù khối nặng $1.4\text{ MB}$, nhờ NTT của `liboqs` xác thực nhanh, độ trễ lan truyền và thẩm định khối trên IoT chỉ mất **$22 - 28\text{ ms}$**.
-      * Với ECDSA, dù khối chỉ nặng $54\text{ KB}$, nhưng việc phải chạy 100 phép thẩm định Pure-Python ECDSA trên chip 0.5 vCPU khiến độ trễ xác thực bị đội lên tới **$216.6\text{ ms}$**!
+* **Macro-Benchmark (Kiểm thử vĩ mô mạng P2P Single DUT in Live Mesh Network):**
+  * *Hạn chế của mô hình chuỗi tuyến tính cũ (Server -> Edge -> IoT):* Thiếu tính thực tế vì trong mạng Blockchain không node nào kết nối độc đạo kiểu dây chuyền; không tạo ra được áp lực bão tin nhắn P2P; không đo được khả năng khử trùng lặp gossip.
+  * *Ưu thế vượt trội của mô hình Single DUT in Live Mesh Network (1 DUT + 5 Background Nodes):*
+    * **Phản ánh chính xác thực tế:** 5 node nền unconstrained tạo thành mạng lưới sống, liên tục gossip giao dịch và đào khối. 1 node DUT (Server / Edge / IoT) được "thả" vào mạng để kiểm tra xem thiết bị yếu có theo kịp nhịp đồng thuận hay sẽ bị nghẽn mạng và sập nguồn.
+    * **Kiểm tra sức đề kháng bão Gossip (Gossip Storm Stress):** DUT nhận đồng thời 500 - 900 gói tin WebSocket P2P từ 5 peers, chứng minh hiệu quả của thuật toán khử trùng lặp `seen_tx_hashes` (lọc thành công 400 - 800 gói tin dư thừa).
+    * **Chứng minh thực nghiệm Nghịch lý độ trễ (The Latency Paradox):**
+      * Khối đào đóng gói 100 txs: ECDSA ($54.5	ext{ KB}$), ML-DSA-44 ($758.4	ext{ KB}$), ML-DSA-65 ($1,057.0	ext{ KB}$), ML-DSA-87 ($1,439.4	ext{ KB}$).
+      * **Độ trễ thẩm định trên IoT yếu (0.5 vCPU):** Với ML-DSA-65, dù khối nặng hơn 19 lần, nhờ NTT của thư viện C `liboqs`, độ trễ thẩm định khối chỉ mất **$53.54	ext{ ms}$**. Ngược lại, ECDSA dù khối siêu nhẹ nhưng chạy Pure-Python trên CPU yếu khiến độ trễ bị đội lên tới **$223.98	ext{ ms}$** (chậm gấp 4.2 lần!).
 
 ---
 

@@ -34,6 +34,14 @@ class BlockchainLedger:
 
         self.node_id = str(uuid4()).replace('-', '')
         self.lock = threading.Lock()
+
+        # Telemetry counters for Crypto & Block verification
+        self.verified_tx_count = 0
+        self.total_tx_verify_ms = 0.0
+        self.verified_block_count = 0
+        self.last_block_verify_ms = 0.0
+        self.total_block_verify_ms = 0.0
+
         self.create_genesis_block()
 
     def _load_initial_balances(self):
@@ -189,7 +197,12 @@ class BlockchainLedger:
                 return False
 
             # 2. Thẩm định chữ ký số (ML-DSA-44/65/87 / ECDSA / RSA)
+            t_sig_start = time()
             is_valid = tx.is_valid(self.mining_sender)
+            sig_verify_ms = round((time() - t_sig_start) * 1000.0, 4)
+            if is_valid:
+                self.verified_tx_count += 1
+                self.total_tx_verify_ms += sig_verify_ms
             sig_len = len(tx.signature) if tx.signature else 0
             pk_len = len(tx.sender_address) if tx.sender_address else 0
             if sig_len >= 9000 or pk_len >= 5000:
@@ -253,7 +266,8 @@ class BlockchainLedger:
                     'recipient': f"{tx.recipient_address[:24]}...",
                     'amount': f"{tx.value} COIN",
                     'nonce': getattr(tx, 'nonce', 0),
-                    'signature_algorithm': algo
+                    'signature_algorithm': algo,
+                    'verify_duration_ms': sig_verify_ms
                 },
                 status="SUCCESS"
             )
@@ -309,6 +323,7 @@ class BlockchainLedger:
             return block
 
     def append_block(self, block: dict) -> bool:
+        t_append_start = time()
         with self.lock:
             last_block = self.chain[-1]
 
@@ -410,6 +425,11 @@ class BlockchainLedger:
             ]
             cleaned_count = before_len - len(self.transactions)
 
+            verify_duration_ms = round((time() - t_append_start) * 1000.0, 3)
+            self.verified_block_count += 1
+            self.last_block_verify_ms = verify_duration_ms
+            self.total_block_verify_ms += verify_duration_ms
+
             self.audit.log(
                 category="CONSENSUS",
                 title=f"MERGE BLOCK #{block['block_number']} tu P2P thanh cong!",
@@ -417,6 +437,7 @@ class BlockchainLedger:
                     'block_hash': f"{calculate_block_hash(block)[:20]}...",
                     'nonce': block['nonce'],
                     'tx_included': len(block['transactions']),
+                    'verify_duration_ms': verify_duration_ms,
                     'mempool_cleaned': f"Da giai phong {cleaned_count} giao dich"
                 },
                 status="SUCCESS"

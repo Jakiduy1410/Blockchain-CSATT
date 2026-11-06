@@ -54,7 +54,15 @@ class P2PNetwork:
         # Bộ lọc chống lặp và DoS
         self.seen_tx_hashes: Set[str] = set()
         self.seen_block_hashes: Set[str] = set()
-        self.executor = ThreadPoolExecutor(max_workers=15)
+        self.seen_lock = threading.Lock()
+
+        # Telemetry đếm tải P2P Gossip thực tế
+        self.ws_tx_received_count = 0
+        self.ws_dups_filtered_count = 0
+        self.ws_block_received_count = 0
+        self.tls_handshake_durations: List[float] = []
+
+        self.executor = ThreadPoolExecutor(max_workers=20)
         self._running = True
 
         # Thiết lập SSL Context (TLS 1.3 / ECDHE)
@@ -72,16 +80,18 @@ class P2PNetwork:
     def _start_ws_server(self):
         def run_server():
             try:
+                # max_size=32MB cho phep truyen Block PQC lon (ML-DSA-65/87 co kich thuoc > 1MB)
                 self._ws_server = ws_serve(
                     self._handle_incoming_connection,
                     host="0.0.0.0",
                     port=self.ws_port,
-                    ssl=self.server_ssl_ctx
+                    ssl=self.server_ssl_ctx,
+                    max_size=32 * 1024 * 1024
                 )
                 self.audit.log(
                     category="P2P",
-                    title=f"Khoi chay WebSocket P2P Server (wss://127.0.0.1:{self.ws_port})",
-                    details={'tls': 'TLS 1.3 / ECDHE', 'ws_port': self.ws_port},
+                    title=f"Khoi chay WebSocket P2P Server (wss://0.0.0.0:{self.ws_port})",
+                    details={'tls': 'TLS 1.3 / ECDHE', 'ws_port': self.ws_port, 'max_size_mb': 32},
                     status="SUCCESS"
                 )
                 self._ws_server.serve_forever()
@@ -106,7 +116,7 @@ class P2PNetwork:
                 self.incoming_sockets.discard(websocket)
 
     def _peer_to_ws_url(self, peer: str) -> str:
-        """Chuyển đổi peer address (127.0.0.1:5001) thành URL wss:// (wss://127.0.0.1:6001)"""
+        """Chuyển đổi peer address (127.0.0.1:5001 hoặc node-1:5000) thành URL wss://"""
         host = "127.0.0.1"
         port = 5001
         if ":" in peer:
@@ -123,7 +133,11 @@ class P2PNetwork:
         if not peer_url:
             return
 
-        parsed = urlparse(peer_url)
+        clean_url = str(peer_url).strip()
+        if '://' not in clean_url:
+            clean_url = 'http://' + clean_url
+
+        parsed = urlparse(clean_url)
         peer_netloc = parsed.netloc if parsed.netloc else parsed.path
         peer_netloc = peer_netloc.strip().replace("http://", "").replace("https://", "").replace("ws://", "").replace("wss://", "")
 
@@ -151,14 +165,18 @@ class P2PNetwork:
                 if not has_conn:
                     ws_url = self._peer_to_ws_url(peer)
                     try:
-                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=1.5)
+                        # max_size=32MB cho phep nhan Block PQC lon (> 1MB)
+                        t_hs_start = time.time()
+                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=2.0, max_size=32 * 1024 * 1024)
+                        hs_ms = round((time.time() - t_hs_start) * 1000.0, 2)
                         with self.conn_lock:
                             self.outgoing_sockets[peer] = sock
+                            self.tls_handshake_durations.append(hs_ms)
 
                         self.audit.log(
                             category="P2P",
                             title=f"Thiet lap Persistent WebSocket toi Peer: {peer}",
-                            details={'ws_url': ws_url, 'cipher': 'TLS 1.3 / ECDHE'},
+                            details={'ws_url': ws_url, 'cipher': 'TLS 1.3 / ECDHE', 'handshake_ms': hs_ms, 'max_size_mb': 32},
                             status="SUCCESS"
                         )
 
@@ -166,7 +184,7 @@ class P2PNetwork:
                         threading.Thread(target=self._listen_outgoing_socket, args=(peer, sock), daemon=True).start()
                     except Exception:
                         pass
-            time.sleep(3.0)
+            time.sleep(0.5)
 
     def _listen_outgoing_socket(self, peer: str, sock):
         try:
@@ -186,47 +204,47 @@ class P2PNetwork:
             data = msg.get("data")
 
             if msg_type == "TRANSACTION" and data:
+                self.ws_tx_received_count += 1
                 tx = Transaction.from_dict(data)
                 self.gossip_transaction(tx)
             elif msg_type == "BLOCK" and data:
-                self.handle_incoming_block(data)
+                self.ws_block_received_count += 1
+                send_epoch_ms = msg.get("send_epoch_ms")
+                self.handle_incoming_block(data, send_epoch_ms=send_epoch_ms)
         except Exception as e:
             logger.debug(f"Lỗi xử lý gói tin P2P: {e}")
 
     def _send_ws_payload(self, payload: dict):
-        """Gửi gói tin qua toàn bộ các kết nối WebSocket đang mở (Outgoing + Incoming)"""
+        """Gửi gói tin song song qua toàn bộ các kết nối WebSocket đang mở (loại trừ gửi trùng lặp)"""
         msg_str = json.dumps(payload)
-        dead_outgoing = []
 
-        # 1. Gửi qua Outgoing Sockets
+        # Lấy danh sách socket duy nhất (tránh gửi 2 lần cho cùng một peer do kết nối 2 chiều)
         with self.conn_lock:
-            out_targets = list(self.outgoing_sockets.items())
-            in_targets = list(self.incoming_sockets)
+            target_socks = list(self.outgoing_sockets.values())
+            for s in self.incoming_sockets:
+                if s not in target_socks:
+                    target_socks.append(s)
 
-        for peer, sock in out_targets:
+        if not target_socks:
+            return
+
+        def send_to_sock(sock):
             try:
                 sock.send(msg_str)
+                return (sock, True)
             except Exception:
-                dead_outgoing.append(peer)
+                return (sock, False)
 
-        if dead_outgoing:
+        # Gửi song song qua ThreadPoolExecutor để tránh nghẽn hàng đợi tuần tự (Head-of-Line Blocking)
+        with ThreadPoolExecutor(max_workers=min(12, len(target_socks))) as pool:
+            results = list(pool.map(send_to_sock, target_socks))
+
+        # Dọn dẹp socket hỏng nếu có
+        dead = {s for s, ok in results if not ok}
+        if dead:
             with self.conn_lock:
-                for peer in dead_outgoing:
-                    if peer in self.outgoing_sockets:
-                        del self.outgoing_sockets[peer]
-
-        # 2. Gửi qua Incoming Sockets
-        dead_incoming = []
-        for sock in in_targets:
-            try:
-                sock.send(msg_str)
-            except Exception:
-                dead_incoming.append(sock)
-
-        if dead_incoming:
-            with self.conn_lock:
-                for sock in dead_incoming:
-                    self.incoming_sockets.discard(sock)
+                self.outgoing_sockets = {p: s for p, s in self.outgoing_sockets.items() if s not in dead}
+                self.incoming_sockets = {s for s in self.incoming_sockets if s not in dead}
 
     def gossip_transaction(self, tx: Transaction) -> bool:
         # 0. Kiểm tra chống Replay Attack: nếu giao dịch đã có trong Blockchain -> Từ chối ngay
@@ -243,10 +261,11 @@ class P2PNetwork:
                         return False
 
         # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Bỏ qua
-        if tx.tx_id in self.seen_tx_hashes:
-            return True
-
-        self.seen_tx_hashes.add(tx.tx_id)
+        with self.seen_lock:
+            if tx.tx_id in self.seen_tx_hashes:
+                self.ws_dups_filtered_count += 1
+                return True
+            self.seen_tx_hashes.add(tx.tx_id)
 
         # 2. Thẩm định mật mã và số dư ví
         success = self.ledger.submit_transaction(tx)
@@ -272,37 +291,56 @@ class P2PNetwork:
 
     def broadcast_block(self, block: dict):
         block_hash = calculate_block_hash(block)
-        if block_hash in self.seen_block_hashes:
-            return
+        with self.seen_lock:
+            if block_hash in self.seen_block_hashes:
+                return
+            self.seen_block_hashes.add(block_hash)
 
-        self.seen_block_hashes.add(block_hash)
+        active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
+        send_epoch_ms = round(time.time() * 1000.0, 3)
+
+        # Ghi log audit truoc khi submit vao executor de timestamp dong bo
+        self.audit.log(
+            category="P2P",
+            title=f"Block Broadcast (WebSocket TLS ECDHE): Phat song Block #{block['block_number']} qua {active_conn_count} ket noi wss://",
+            details={
+                'block_hash': f"{block_hash[:20]}...",
+                'nonce': block['nonce'],
+                'tx_count': len(block.get('transactions', [])),
+                'broadcast_epoch_ms': send_epoch_ms
+            },
+            status="SUCCESS"
+        )
 
         payload = {
             'type': 'BLOCK',
             'data': block,
-            'origin': self.my_address
+            'origin': self.my_address,
+            'send_epoch_ms': send_epoch_ms
         }
-        self.executor.submit(self._send_ws_payload, payload)
+        # Phat song Block uu tien ngay lap tuc qua luong rieng (khong cho hang doi Gossip)
+        threading.Thread(target=self._send_ws_payload, args=(payload,), daemon=True).start()
 
-        active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
-        self.audit.log(
-            category="P2P",
-            title=f"Block Broadcast (WebSocket TLS ECDHE): Phat song Block #{block['block_number']} qua {active_conn_count} ket noi wss://",
-            details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce'], 'tx_count': len(block.get('transactions', []))},
-            status="SUCCESS"
-        )
-
-    def handle_incoming_block(self, block: dict) -> bool:
+    def handle_incoming_block(self, block: dict, send_epoch_ms: Optional[float] = None) -> bool:
         block_hash = calculate_block_hash(block)
-        if block_hash in self.seen_block_hashes:
-            return True
+        with self.seen_lock:
+            if block_hash in self.seen_block_hashes:
+                return True
+            self.seen_block_hashes.add(block_hash)
 
-        self.seen_block_hashes.add(block_hash)
+        recv_epoch_ms = round(time.time() * 1000.0, 3)
+        transit_delay_ms = round(recv_epoch_ms - send_epoch_ms, 2) if send_epoch_ms else None
 
         self.audit.log(
             category="P2P",
             title=f"Nhan goi tin Block #{block['block_number']} tu WebSocket P2P",
-            details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce']},
+            details={
+                'block_hash': f"{block_hash[:20]}...",
+                'nonce': block['nonce'],
+                'transit_delay_ms': transit_delay_ms,
+                'send_epoch_ms': send_epoch_ms,
+                'recv_epoch_ms': recv_epoch_ms
+            },
             status="INFO"
         )
 
@@ -354,6 +392,28 @@ class P2PNetwork:
             return True
 
         return False
+
+    def get_p2p_stats(self) -> dict:
+        with self.conn_lock:
+            out_conns = len(self.outgoing_sockets)
+            in_conns = len(self.incoming_sockets)
+            avg_hs_ms = round(sum(self.tls_handshake_durations) / len(self.tls_handshake_durations), 2) if self.tls_handshake_durations else 0.0
+        with self.seen_lock:
+            seen_tx = len(self.seen_tx_hashes)
+            seen_blocks = len(self.seen_block_hashes)
+        return {
+            'ws_port': self.ws_port,
+            'peers_count': len(self.peers),
+            'outgoing_ws_conns': out_conns,
+            'incoming_ws_conns': in_conns,
+            'total_ws_conns': out_conns + in_conns,
+            'ws_tx_received': self.ws_tx_received_count,
+            'ws_dups_filtered': self.ws_dups_filtered_count,
+            'ws_block_received': self.ws_block_received_count,
+            'seen_tx_count': seen_tx,
+            'seen_block_count': seen_blocks,
+            'avg_tls_handshake_ms': avg_hs_ms
+        }
 
     def stop(self):
         self._running = False

@@ -60,6 +60,14 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
         mempool = ledger.get_mempool()
         chain = ledger.get_chain()
         balances = ledger.get_all_balances()
+        p2p_stats = network.get_p2p_stats() if hasattr(network, 'get_p2p_stats') else {}
+        crypto_stats = {
+            'verified_tx_count': getattr(ledger, 'verified_tx_count', 0),
+            'total_tx_verify_ms': round(getattr(ledger, 'total_tx_verify_ms', 0.0), 3),
+            'avg_tx_verify_ms': round(getattr(ledger, 'total_tx_verify_ms', 0.0) / max(1, getattr(ledger, 'verified_tx_count', 1)), 4),
+            'last_block_verify_ms': round(getattr(ledger, 'last_block_verify_ms', 0.0), 3),
+            'verified_block_count': getattr(ledger, 'verified_block_count', 0)
+        }
         response = {
             'node_id': ledger.node_id,
             'port': port,
@@ -68,6 +76,8 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             'mempool': mempool,
             'chain_length': len(chain),
             'peers': list(network.peers),
+            'p2p': p2p_stats,
+            'crypto': crypto_stats,
             'balances': balances,
             'stack_threshold': 3
         }
@@ -251,13 +261,7 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
         if not data:
             return jsonify({'status': 'ignored'}), 400
 
-        tx = Transaction(
-            sender_address=data.get('sender_address', ''),
-            recipient_address=data.get('recipient_address', ''),
-            value=data.get('value', '0'),
-            signature=data.get('signature', '')
-        )
-
+        tx = Transaction.from_dict(data)
         network.gossip_transaction(tx)
         return jsonify({'status': 'acknowledged'}), 200
 

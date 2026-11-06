@@ -8,11 +8,12 @@ Trách nhiệm An ninh mạng:
 
 from datetime import datetime
 import threading
+import time
 from typing import List, Dict
 
 
 class AuditLogger:
-    def __init__(self, max_entries: int = 100):
+    def __init__(self, max_entries: int = 1000):
         self.max_entries = max_entries
         self.logs: List[Dict] = []
         self.lock = threading.Lock()
@@ -24,8 +25,10 @@ class AuditLogger:
         - status: SUCCESS, FAILED, INFO, WARNING
         """
         now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        epoch_ms = round(time.time() * 1000.0, 3)
         entry = {
             'timestamp': now,
+            'epoch_ms': epoch_ms,
             'category': category.upper(),
             'title': title,
             'status': status.upper(),
