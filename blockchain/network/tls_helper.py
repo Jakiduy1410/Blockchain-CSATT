@@ -51,9 +51,19 @@ class TLSManager:
 
     @classmethod
     def get_or_create_ca(cls) -> Tuple[str, str]:
-        """Tạo hoặc lấy chứng chỉ Root CA nội bộ cho mạng Blockchain P2P để chống MiTM triệt để"""
+        """Tạo hoặc lấy chứng chỉ Root CA nội bộ dùng chung cho toàn mạng Blockchain P2P để chống MiTM triệt để"""
         if cls._ca_cert_path and cls._ca_key_path and os.path.exists(cls._ca_cert_path) and os.path.exists(cls._ca_key_path):
             return cls._ca_cert_path, cls._ca_key_path
+
+        cert_dir = os.path.join(_base_dir, 'configs', 'certs')
+        os.makedirs(cert_dir, exist_ok=True)
+        ca_cert_path = os.path.join(cert_dir, 'p2p_root_ca.crt')
+        ca_key_path = os.path.join(cert_dir, 'p2p_root_ca.key')
+
+        if os.path.exists(ca_cert_path) and os.path.exists(ca_key_path):
+            cls._ca_cert_path = ca_cert_path
+            cls._ca_key_path = ca_key_path
+            return ca_cert_path, ca_key_path
 
         ca_key = ec.generate_private_key(ec.SECP256R1())
         ca_subject = x509.Name([
@@ -83,12 +93,9 @@ class TLSManager:
             encryption_algorithm=serialization.NoEncryption(),
         )
 
-        ca_cert_fd, ca_cert_path = tempfile.mkstemp(prefix='p2p_root_ca_', suffix='.crt')
-        ca_key_fd, ca_key_path = tempfile.mkstemp(prefix='p2p_root_ca_', suffix='.key')
-
-        with os.fdopen(ca_cert_fd, 'wb') as f:
+        with open(ca_cert_path, 'wb') as f:
             f.write(ca_cert_pem)
-        with os.fdopen(ca_key_fd, 'wb') as f:
+        with open(ca_key_path, 'wb') as f:
             f.write(ca_key_pem)
 
         cls._ca_cert_path = ca_cert_path
@@ -97,9 +104,19 @@ class TLSManager:
 
     @classmethod
     def get_or_create_cert(cls) -> Tuple[str, str]:
-        """Tạo hoặc lấy chứng chỉ Node được ký bởi Root CA nội bộ"""
+        """Tạo hoặc lấy chứng chỉ Node dùng chung được ký bởi Root CA nội bộ"""
         if cls._cert_path and cls._key_path and os.path.exists(cls._cert_path) and os.path.exists(cls._key_path):
             return cls._cert_path, cls._key_path
+
+        cert_dir = os.path.join(_base_dir, 'configs', 'certs')
+        os.makedirs(cert_dir, exist_ok=True)
+        cert_path = os.path.join(cert_dir, 'p2p_node.crt')
+        key_path = os.path.join(cert_dir, 'p2p_node.key')
+
+        if os.path.exists(cert_path) and os.path.exists(key_path):
+            cls._cert_path = cert_path
+            cls._key_path = key_path
+            return cert_path, key_path
 
         ca_cert_path, ca_key_path = cls.get_or_create_ca()
         with open(ca_cert_path, 'rb') as f:
@@ -135,12 +152,9 @@ class TLSManager:
             encryption_algorithm=serialization.NoEncryption(),
         )
 
-        cert_fd, cert_path = tempfile.mkstemp(prefix='p2p_node_cert_', suffix='.crt')
-        key_fd, key_path = tempfile.mkstemp(prefix='p2p_node_key_', suffix='.key')
-
-        with os.fdopen(cert_fd, 'wb') as f:
+        with open(cert_path, 'wb') as f:
             f.write(cert_pem)
-        with os.fdopen(key_fd, 'wb') as f:
+        with open(key_path, 'wb') as f:
             f.write(key_pem)
 
         cls._cert_path = cert_path

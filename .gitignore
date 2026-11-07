@@ -7,4 +7,6 @@ logs/
 *.log
 sslkeys.log
 *.jsonl
+configs/certs/*.crt
+configs/certs/*.key
 .agent

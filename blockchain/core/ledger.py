@@ -210,7 +210,7 @@ class BlockchainLedger:
                 )
                 return False
 
-            # 3. Kiểm tra trùng lặp trong Mempool
+            # 3. Kiem tra trung lap trong Mempool (Anti-Replay / Unconfirmed Double-Spending)
             for existing_tx in self.transactions:
                 if existing_tx.get('sender_address') == tx.sender_address and \
                    (existing_tx.get('signature') == tx.signature or (
@@ -218,7 +218,13 @@ class BlockchainLedger:
                        int(existing_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and
                        int(getattr(tx, 'nonce', 0)) > 0
                    )):
-                    return True
+                    self.audit.log(
+                        category="SECURITY",
+                        title="Tu choi giao dich: Phat hien REPLAY ATTACK (Nonce hoac Chu ky da ton tai trong Mempool)!",
+                        details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                        status="FAILED"
+                    )
+                    return False
 
             # 4. Kiểm tra số dư người gửi (Solvency & Anti Double-Spending)
             if tx.sender_address != self.mining_sender:

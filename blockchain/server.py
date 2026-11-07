@@ -48,10 +48,16 @@ def create_app(config: NodeConfig = None) -> tuple[Flask, BlockchainLedger, P2PN
     if config.peers:
         network.register_peers_bulk(config.peers)
 
-    # 3. Khởi tạo Consensus Miner
-    miner = Miner(ledger=ledger, network=network, auto_mine=config.is_miner, check_interval=config.auto_mine_interval)
+    # 3. Khởi tạo Consensus Miner (Gom khối theo batch_size)
+    miner = Miner(
+        ledger=ledger,
+        network=network,
+        auto_mine=config.is_miner,
+        check_interval=config.auto_mine_interval,
+        batch_size=config.batch_size
+    )
     if config.is_miner:
-        print(f"[*] Node {my_address} khoi chay voi vai tro: ACTIVE AUTO-MINER [MINER]")
+        print(f"[*] Node {my_address} khoi chay voi vai tro: ACTIVE AUTO-MINER [Gom {config.batch_size} txs / Block]")
         miner.start_auto_miner()
     else:
         print(f"[*] Node {my_address} khoi chay voi vai tro: RELAY & VALIDATOR NODE")

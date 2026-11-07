@@ -260,17 +260,57 @@ class P2PNetwork:
             for blk in self.ledger.chain:
                 for past_tx in blk.get('transactions', []):
                     if past_tx.get('signature') and past_tx.get('signature') == tx.signature:
+                        self.audit.log(
+                            category="SECURITY",
+                            title="Tu choi giao dich: Phat hien REPLAY ATTACK (Chu ky da ton tai trong So cai)!",
+                            details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                            status="FAILED"
+                        )
                         return False
                     if tx.sender_address != self.ledger.mining_sender and \
                        past_tx.get('sender_address') == tx.sender_address and \
                        past_tx.get('nonce') is not None and \
                        int(past_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and \
                        int(getattr(tx, 'nonce', 0)) > 0:
+                        self.audit.log(
+                            category="SECURITY",
+                            title="Tu choi giao dich: Phat hien REPLAY ATTACK (Nonce da duoc thuc thi truoc do)!",
+                            details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                            status="FAILED"
+                        )
                         return False
 
-        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Bỏ qua
+            for pending_tx in self.ledger.transactions:
+                if pending_tx.get('signature') and pending_tx.get('signature') == tx.signature:
+                    self.audit.log(
+                        category="SECURITY",
+                        title="Tu choi giao dich: Phat hien REPLAY ATTACK (Chu ky da ton tai trong Mempool)!",
+                        details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                        status="FAILED"
+                    )
+                    return False
+                if tx.sender_address != self.ledger.mining_sender and \
+                   pending_tx.get('sender_address') == tx.sender_address and \
+                   pending_tx.get('nonce') is not None and \
+                   int(pending_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and \
+                   int(getattr(tx, 'nonce', 0)) > 0:
+                    self.audit.log(
+                        category="SECURITY",
+                        title="Tu choi giao dich: Phat hien REPLAY ATTACK (Nonce dang ton tai trong Mempool)!",
+                        details={'sender': f"{tx.sender_address[:20]}...", 'nonce': getattr(tx, 'nonce', 0)},
+                        status="FAILED"
+                    )
+                    return False
+
+        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Từ chối
         if tx.tx_id in self.seen_tx_hashes:
-            return True
+            self.audit.log(
+                category="SECURITY",
+                title="Tu choi giao dich: Phat hien DUPLICATE TRANSACTION (TX_ID da duoc tiep nhan)!",
+                details={'tx_id': f"{tx.tx_id[:16]}..."},
+                status="FAILED"
+            )
+            return False
 
         self.seen_tx_hashes.add(tx.tx_id)
 

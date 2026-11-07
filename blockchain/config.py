@@ -19,6 +19,7 @@ class NodeConfig:
         self.is_miner: bool = False
         self.difficulty: int = 2
         self.auto_mine_interval: float = 2.0
+        self.batch_size: int = 10
         self.tls_mode: str = "ecdhe"
         self.sig_mode: str = "all"
 
@@ -31,7 +32,8 @@ class NodeConfig:
         parser.add_argument('--host', default="127.0.0.1", type=str, help='Địa chỉ IP / Host (mặc định: 127.0.0.1)')
         parser.add_argument('--peers', default="", type=str, help='Danh sách Peers ban đầu, cách nhau bằng dấu phẩy (vd: 127.0.0.1:5001,127.0.0.1:5002)')
         parser.add_argument('--miner', action='store_true', help='Kích hoạt chế độ Auto-Miner cho Node này')
-        parser.add_argument('--difficulty', default=2, type=int, help='Độ khó Proof of Work (mặc định: 2)')
+        parser.add_argument('--difficulty', default=2, type=int, help='Đ度 khó Proof of Work (mặc định: 2)')
+        parser.add_argument('--batch-size', default=int(os.environ.get("BLOCKCHAIN_BATCH_SIZE", 10)), type=int, help='Số giao dịch tối đa gom vào 1 block (mặc định: 10)')
         parser.add_argument('--tls', default=os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe"), type=str, help='Chế độ TLS (ecdhe, hybrid, mlkem768, none)')
         parser.add_argument('--sig', default=os.environ.get("BLOCKCHAIN_SIG_MODE", "all"), type=str, help='Chế độ Chữ ký số (ecdsa, mldsa44, mldsa87, rsa, all)')
         parser.add_argument('-c', '--config', default="", type=str, help='Đường dẫn tới file cấu hình JSON')
@@ -48,6 +50,7 @@ class NodeConfig:
                     config.peers = file_data.get('peers', config.peers)
                     config.is_miner = file_data.get('is_miner', config.is_miner)
                     config.difficulty = file_data.get('difficulty', config.difficulty)
+                    config.batch_size = file_data.get('batch_size', config.batch_size)
             except Exception as e:
                 print(f"[CẢNH BÁO] Không thể đọc file config: {e}")
 
@@ -59,6 +62,7 @@ class NodeConfig:
         if args.miner:
             config.is_miner = True
         config.difficulty = args.difficulty
+        config.batch_size = args.batch_size
         config.tls_mode = (args.tls or "ecdhe").lower()
         config.sig_mode = (args.sig or "all").lower()
 

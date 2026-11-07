@@ -68,13 +68,18 @@ def show_interactive_menu():
     print("║  [1] CƠ CHẾ TRAO ĐỔI KHÓA & BẢO VỆ ĐƯỜNG TRUYỀN P2P (TLS 1.3 TRANSPORT):  ║")
     print("║      (1) Classical TLS 1.3 ECDHE (prime256v1 / NIST P-256) [Mặc định]      ║")
     print("║      (2) Hybrid Post-Quantum TLS (X25519 + ML-KEM-768 / FIPS 203)          ║")
-    print("║      (3) Plaintext (Không mã hóa TLS - Đo kiểm hiệu năng thuần HTTP)      ║")
+    print("║      (3) Plaintext (Không mã hóa TLS - Đo kiểm hiệu năng thuần HTTP)       ║")
     print("║                                                                            ║")
     print("║  [2] THUẬT TOÁN CHỮ KÝ SỐ GIAO DỊCH ƯU TIÊN (SIGNATURE SCHEME):            ║")
     print("║      (1) Đa thuật toán (Hybrid / Auto: Hỗ trợ cả ECDSA, RSA & ML-DSA) [Mặc]║")
     print("║      (2) Post-Quantum ML-DSA-44 (FIPS 204 NIST Level 2 - Ví Alice_PQC)     ║")
     print("║      (3) Post-Quantum ML-DSA-87 (FIPS 204 NIST Level 5 - Ví Perf_MLDSA87)  ║")
     print("║      (4) Classical ECDSA (secp256k1 - Ví Alice/Bob cổ điển)                ║")
+    print("║                                                                            ║")
+    print("║  [3] CHẾ ĐỘ ĐÀO BLOCK (MINING & BATCHING CHO NODE 2):                      ║")
+    print("║      (1) Auto-Mining: Tự động gom 10 giao dịch / block [Mặc định]          ║")
+    print("║      (2) Auto-Mining: Tự động gom 20 giao dịch / block                     ║")
+    print("║      (3) Manual Mining: Đào thủ công trên giao diện Node 2 (Nút Mine)      ║")
     print("╚" + "═" * 76 + "╝\n")
 
     # 1. Nhập lựa chọn TLS
@@ -97,7 +102,19 @@ def show_interactive_menu():
     else:
         sig_mode = 'all'
 
-    return tls_mode, sig_mode
+    # 3. Nhập lựa chọn Mining & Batch Size
+    mine_choice = input("👉 Chọn chế độ Đào Block [1-3] (Nhấn Enter chọn mặc định 1 - Auto 10 txs): ").strip()
+    if mine_choice == '2':
+        auto_mine = True
+        batch_size = 20
+    elif mine_choice == '3':
+        auto_mine = False
+        batch_size = 10
+    else:
+        auto_mine = True
+        batch_size = 10
+
+    return tls_mode, sig_mode, auto_mine, batch_size
 
 
 def main():
@@ -114,6 +131,8 @@ def main():
                         help="Bỏ qua hộp tùy chọn và sử dụng cấu hình mặc định")
     parser.add_argument('--auto-mine', action='store_true',
                         help="Kích hoạt tự động đào cho Node 2 (Miner)")
+    parser.add_argument('--batch-size', type=int, default=10, choices=[10, 20],
+                        help="Kích thước batch gom giao dịch vào block (10 hoặc 20, mặc định: 10)")
 
     args, _ = parser.parse_known_args()
 
@@ -123,10 +142,12 @@ def main():
     should_prompt = args.menu or (args.tls is None and args.sig is None and not args.non_interactive and sys.stdin.isatty())
 
     if should_prompt:
-        tls_mode, sig_mode = show_interactive_menu()
+        tls_mode, sig_mode, auto_mine, batch_size = show_interactive_menu()
     else:
         tls_mode = (args.tls or os.environ.get("BLOCKCHAIN_TLS_MODE", "ecdhe")).lower()
         sig_mode = (args.sig or os.environ.get("BLOCKCHAIN_SIG_MODE", "all")).lower()
+        auto_mine = args.auto_mine
+        batch_size = args.batch_size
 
     if tls_mode == 'mlkem768':
         tls_mode = 'hybrid'
@@ -139,6 +160,7 @@ def main():
     env = os.environ.copy()
     env["BLOCKCHAIN_TLS_MODE"] = tls_mode
     env["BLOCKCHAIN_SIG_MODE"] = sig_mode
+    env["BLOCKCHAIN_BATCH_SIZE"] = str(batch_size)
 
     tls_title = "TLS 1.3 ECDHE (prime256v1)"
     if tls_mode == "hybrid":
@@ -157,12 +179,15 @@ def main():
     elif sig_mode == "ecdsa":
         sig_title = "Classical ECDSA-secp256k1 (Ví Alice/Bob)"
 
+    mining_title = f"Auto-Mining [Batch {batch_size} txs/block]" if auto_mine else "Manual Mining (Đào thủ công trên Web/API)"
+
     print("=" * 78)
     print("  KHOI CHAY MANG BLOCKCHAIN P2P 6 NODE - CHE DO TUONG TAC THUC TE")
     print("=" * 78)
-    print("  🛡️  CẤU HÌNH BẢO MẬT ĐANG HOẠT ĐỘNG:")
+    print("  🛡️  CẤU HÌNH BẢO MẬT & ĐỒNG THUẬN ĐANG HOẠT ĐỘNG:")
     print(f"      • Cơ chế TLS:      {tls_title}")
     print(f"      • Chữ ký số:       {sig_title}")
+    print(f"      • Chế độ đào:      {mining_title}")
     if tls_mode == "hybrid" and "OPENSSL_CONF" in env:
         print(f"      • OpenSSL Config:  {env['OPENSSL_CONF']}")
     print("-" * 78)
@@ -180,21 +205,31 @@ def main():
     ports_to_check = [8080] + [n['port'] for n in net_cfg['nodes']] + [n['port'] + 1000 for n in net_cfg['nodes']]
     check_and_clear_port_conflicts(ports_to_check)
 
+    # Khoi tao truoc bo chung chi mTLS dung chung cho ca 6 Node
+    if tls_mode != 'none':
+        try:
+            from blockchain.network.tls_helper import TLSManager
+            TLSManager.get_or_create_ca()
+            TLSManager.get_or_create_cert()
+            print("[*] Da san sang bo chung chi Root CA & Node mTLS dung chung tai configs/certs/")
+        except Exception as e:
+            print(f"[!] Canh bao khoi tao SSL: {e}")
+
     processes = []
 
     try:
         print("\n[*] 1. Dang khoi dong 6 Node P2P Mesh...")
         for node in net_cfg['nodes']:
             cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port']),
-                            '--tls', tls_mode, '--sig', sig_mode]
-            if args.auto_mine and node.get('is_miner'):
+                            '--tls', tls_mode, '--sig', sig_mode, '--batch-size', str(batch_size)]
+            if auto_mine and node.get('is_miner'):
                 cmd.append('--miner')
             if node['peers']:
                 cmd.extend(['--peers', ','.join(node['peers'])])
 
             p = subprocess.Popen(cmd, cwd=base_dir, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             processes.append(p)
-            role_desc = 'MINER [AUTO] ⛏' if (args.auto_mine and node['is_miner']) else ('MINER [MANUAL] ⛏' if node['is_miner'] else 'RELAY')
+            role_desc = f'MINER [AUTO - Batch {batch_size}] ⛏' if (auto_mine and node['is_miner']) else ('MINER [MANUAL] ⛏' if node['is_miner'] else 'RELAY')
             print(f"    [OK] Node {node['id']} dang khoi dong tai: http://127.0.0.1:{node['port']} ({role_desc})")
 
         print("\n[*] 2. Dang khoi dong Blockchain Client...")

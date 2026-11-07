@@ -135,11 +135,17 @@
     <!-- Security & Verification Live Audit Trail (Hộp đen kiểm toán) -->
     <div class="container mt-3">
       <div class="card border-dark">
-        <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+        <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center flex-wrap">
           <span class="font-weight-bold">
             <i class="fa fa-shield"></i> Hộp Đen Kiểm Toán An Ninh & P2P (Live Verification Audit Trail)
           </span>
+          <div class="btn-group btn-group-sm my-1" role="group" id="audit_filter_group">
+            <button type="button" class="btn btn-outline-light btn-sm active audit-filter-btn" data-filter="ALL">Tất cả</button>
+            <button type="button" class="btn btn-outline-warning btn-sm audit-filter-btn" data-filter="SECURITY_CRYPTO">Chữ ký & Bảo mật</button>
+            <button type="button" class="btn btn-outline-info btn-sm audit-filter-btn" data-filter="P2P">P2P Mesh</button>
+          </div>
           <small class="text-success" id="audit_live_indicator"><i class="fa fa-circle"></i> Đang theo dõi thời gian thực</small>
+        </div>
         </div>
         <div class="card-body p-2 bg-dark">
           <div class="audit-box" id="audit_log_feed">
@@ -263,35 +269,57 @@
 
         // 2. Fetch Security Audit Logs
         $.ajax({
-          url: "/audit/logs?limit=30",
+          url: "/audit/logs?limit=100",
           type: "GET",
           success: function(res) {
-            var html = "";
-            if (res.logs && res.logs.length > 0) {
-              for (var i = 0; i < res.logs.length; i++) {
-                var l = res.logs[i];
-                var catClass = "cat-" + l.category;
-                var statClass = "status-" + l.status;
-
-                var detailsStr = "";
-                if (l.details && Object.keys(l.details).length > 0) {
-                  detailsStr = " <span style='color: #8b949e;'>(" + JSON.stringify(l.details).replace(/\"/g, '') + ")</span>";
-                }
-
-                html += "<div class='py-1 border-bottom border-secondary' style='border-color: #21262d !important;'>";
-                html += "<span class='text-muted'>[" + l.timestamp + "]</span> ";
-                html += "<span class='badge-category " + catClass + "'>" + l.category + "</span> ";
-                html += "<span class='" + statClass + "'>" + l.title + "</span>";
-                html += detailsStr;
-                html += "</div>";
-              }
-            } else {
-              html = "<div class='text-muted'>Chưa có sự kiện nào được ghi nhận.</div>";
-            }
-            $("#audit_log_feed").html(html);
+            window.latestAuditLogs = res.logs || [];
+            renderAuditLogs();
           }
         });
       }
+
+      var currentAuditFilter = "ALL";
+      window.latestAuditLogs = [];
+
+      function renderAuditLogs() {
+        var logs = window.latestAuditLogs || [];
+        var html = "";
+        var count = 0;
+        for (var i = 0; i < logs.length; i++) {
+          var l = logs[i];
+          if (currentAuditFilter === "SECURITY_CRYPTO") {
+            if (l.category !== "CRYPTO" && l.category !== "SECURITY" && l.category !== "BALANCE") continue;
+          } else if (currentAuditFilter === "P2P") {
+            if (l.category !== "P2P") continue;
+          }
+
+          var catClass = "cat-" + l.category;
+          var statClass = "status-" + l.status;
+          var detailsStr = "";
+          if (l.details && Object.keys(l.details).length > 0) {
+            detailsStr = " <span style='color: #8b949e;'>(" + JSON.stringify(l.details).replace(/"/g, '') + ")</span>";
+          }
+
+          html += "<div class='py-1 border-bottom border-secondary' style='border-color: #21262d !important;'>";
+          html += "<span class='text-muted'>[" + l.timestamp + "]</span> ";
+          html += "<span class='badge-category " + catClass + "'>" + l.category + "</span> ";
+          html += "<span class='" + statClass + "'>" + l.title + "</span>";
+          html += detailsStr;
+          html += "</div>";
+          count++;
+        }
+        if (count === 0) {
+          html = "<div class='text-muted'>Không có bản ghi nào phù hợp bộ lọc (" + currentAuditFilter + ").</div>";
+        }
+        $("#audit_log_feed").html(html);
+      }
+
+      $(document).on("click", ".audit-filter-btn", function() {
+        $(".audit-filter-btn").removeClass("active");
+        $(this).addClass("active");
+        currentAuditFilter = $(this).data("filter");
+        renderAuditLogs();
+      });
 
       var sampleWallets = {};
 
