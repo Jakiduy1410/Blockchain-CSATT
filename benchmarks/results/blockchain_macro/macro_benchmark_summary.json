@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-11-08 00:11:21",
+  "timestamp": "2026-11-08 00:27:28",
   "tx_count_per_scheme": 15,
   "signatures_macro": [
     {
       "algorithm": "ECDSA (secp256k1)",
       "tx_sent": 15,
       "tx_accepted": 15,
-      "ingestion_tps": 84.59,
-      "latency_mean_ms": 11.82,
-      "latency_p95_ms": 22.0,
-      "propagation_delay_sec": 0.273,
+      "ingestion_tps": 81.96,
+      "latency_mean_ms": 12.2,
+      "latency_p95_ms": 16.35,
+      "propagation_delay_sec": 0.29,
       "block_wire_kb": 0.38,
       "avg_bytes_per_tx": 386.0
     },
@@ -17,10 +17,10 @@
       "algorithm": "ML-DSA-44",
       "tx_sent": 15,
       "tx_accepted": 15,
-      "ingestion_tps": 63.28,
-      "latency_mean_ms": 15.8,
-      "latency_p95_ms": 16.91,
-      "propagation_delay_sec": 0.283,
+      "ingestion_tps": 80.03,
+      "latency_mean_ms": 12.49,
+      "latency_p95_ms": 24.09,
+      "propagation_delay_sec": 0.416,
       "block_wire_kb": 150.69,
       "avg_bytes_per_tx": 9644.0
     },
@@ -28,10 +28,10 @@
       "algorithm": "ML-DSA-65",
       "tx_sent": 15,
       "tx_accepted": 15,
-      "ingestion_tps": 82.56,
-      "latency_mean_ms": 12.11,
-      "latency_p95_ms": 28.08,
-      "propagation_delay_sec": 0.302,
+      "ingestion_tps": 83.77,
+      "latency_mean_ms": 11.94,
+      "latency_p95_ms": 18.5,
+      "propagation_delay_sec": 0.301,
       "block_wire_kb": 71.67,
       "avg_bytes_per_tx": 12230.8
     },
@@ -39,10 +39,10 @@
       "algorithm": "ML-DSA-87",
       "tx_sent": 15,
       "tx_accepted": 15,
-      "ingestion_tps": 90.83,
-      "latency_mean_ms": 11.01,
-      "latency_p95_ms": 23.27,
-      "propagation_delay_sec": 0.385,
+      "ingestion_tps": 83.64,
+      "latency_mean_ms": 11.95,
+      "latency_p95_ms": 22.29,
+      "propagation_delay_sec": 0.394,
       "block_wire_kb": 290.35,
       "avg_bytes_per_tx": 18582.1
     }
@@ -50,28 +50,28 @@
   "tls_macro": [
     {
       "tls_mode": "Classical ECDHE",
-      "handshake_latency_ms": 2.7,
+      "handshake_latency_ms": 2.27,
       "client_key_share_bytes": 32,
       "server_key_share_bytes": 32,
       "total_wire_overhead_kb": 2.1
     },
     {
       "tls_mode": "Hybrid (X25519 + ML-KEM-768)",
-      "handshake_latency_ms": 3.87,
+      "handshake_latency_ms": 3.91,
       "client_key_share_bytes": 1216,
       "server_key_share_bytes": 1120,
       "total_wire_overhead_kb": 4.5
     },
     {
       "tls_mode": "Pure ML-KEM-768",
-      "handshake_latency_ms": 3.07,
+      "handshake_latency_ms": 3.01,
       "client_key_share_bytes": 1184,
       "server_key_share_bytes": 1088,
       "total_wire_overhead_kb": 4.3
     },
     {
       "tls_mode": "Pure ML-KEM-512",
-      "handshake_latency_ms": 2.97,
+      "handshake_latency_ms": 3.09,
       "client_key_share_bytes": 800,
       "server_key_share_bytes": 768,
       "total_wire_overhead_kb": 3.6

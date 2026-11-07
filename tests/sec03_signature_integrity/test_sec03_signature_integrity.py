@@ -8,7 +8,9 @@ import random
 import unittest
 from collections import OrderedDict
 
-import ecdsa
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from blockchain.core.ledger import BlockchainLedger
 from blockchain.core.transaction import Transaction
 from blockchain.core.crypto import verify_ecdsa_signature, verify_mldsa_signature
@@ -17,9 +19,9 @@ from blockchain.core.crypto import verify_ecdsa_signature, verify_mldsa_signatur
 class TestSec03SignatureIntegrity(unittest.TestCase):
     def setUp(self):
         self.ledger = BlockchainLedger(difficulty=1, mining_reward=1.0)
-        self.sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        self.vk = self.sk.verifying_key
-        self.sender_pub = self.vk.to_string().hex()
+        self.sk = ec.generate_private_key(ec.SECP256K1())
+        pub_num = self.sk.public_key().public_numbers()
+        self.sender_pub = f"{pub_num.x:064x}{pub_num.y:064x}" 
         self.recipient_pub = "0" * 128
         self.ledger.initial_balances[self.sender_pub] = 1000.0
 
@@ -30,7 +32,9 @@ class TestSec03SignatureIntegrity(unittest.TestCase):
             ('value', str(amount)),
             ('nonce', str(nonce))
         ])
-        sig = self.sk.sign(str(ordered_tx).encode('utf-8'))
+        der = self.sk.sign(str(ordered_tx).encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+        r, s = decode_dss_signature(der)
+        sig = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
         return {
             'sender_address': self.sender_pub,
             'recipient_address': self.recipient_pub,

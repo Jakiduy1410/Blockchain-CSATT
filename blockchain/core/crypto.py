@@ -46,11 +46,6 @@ try:
 except (ImportError, Exception):
     ec = None
 
-try:
-    from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
-except (ImportError, Exception):
-    VerifyingKey = None
-
 from Crypto.Hash import SHA
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
@@ -94,71 +89,53 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
 
 def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
-    Xác thực chữ ký số ECDSA (đường cong secp256k1) sử dụng C-backend (OpenSSL qua cryptography).
-    Tối ưu hóa hiệu năng native C, đảm bảo so sánh ngang hàng công bằng với PQC (liboqs C-core).
+    Xác thực chữ ký số ECDSA (đường cong secp256k1) thuần túy bằng C-Engine (OpenSSL qua cryptography).
+    Tuyệt đối không sử dụng thư viện Pure-Python; đảm bảo tính minh bạch và công bằng 100% với PQC (liboqs C-core).
     """
-    if not sender_public_key_hex or not signature_hex:
+    if ec is None or not sender_public_key_hex or not signature_hex:
         return False
 
-    ordered_tx = OrderedDict([
-        ('sender_address', str(transaction_dict.get('sender_address', ''))),
-        ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
-        ('value', str(transaction_dict.get('value', '')))
-    ])
-    if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
-        ordered_tx['nonce'] = str(transaction_dict['nonce'])
+    try:
+        ordered_tx = OrderedDict([
+            ('sender_address', str(transaction_dict.get('sender_address', ''))),
+            ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
+            ('value', str(transaction_dict.get('value', '')))
+        ])
+        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
+            ordered_tx['nonce'] = str(transaction_dict['nonce'])
 
-    tx_bytes = str(ordered_tx).encode('utf-8')
+        tx_bytes = str(ordered_tx).encode('utf-8')
+        public_key_bytes = bytes.fromhex(sender_public_key_hex)
+        signature_bytes = bytes.fromhex(signature_hex)
 
-    # 1. Thẩm định qua OpenSSL C-Engine (cryptography)
-    if ec is not None:
+        # 1. Đọc Public Key bằng OpenSSL C-Engine (hỗ trợ raw 64B x||y, compressed 33B, hoặc 65B 0x04)
+        if len(public_key_bytes) == 64:
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
+        elif len(public_key_bytes) in (33, 65):
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
+        else:
+            pk = serialization.load_der_public_key(public_key_bytes)
+
+        # 2. Đọc Signature (chuẩn raw r||s 64B hoặc chuẩn DER ASN.1)
+        if len(signature_bytes) == 64:
+            r = int.from_bytes(signature_bytes[:32], 'big')
+            s = int.from_bytes(signature_bytes[32:], 'big')
+            der_sig = encode_dss_signature(r, s)
+        else:
+            der_sig = signature_bytes
+
+        # 3. Thẩm định hoàn toàn bằng C native OpenSSL (ưu tiên SHA-256, hỗ trợ SHA-1 legacy)
         try:
-            public_key_bytes = bytes.fromhex(sender_public_key_hex)
-            signature_bytes = bytes.fromhex(signature_hex)
-
-            # Đọc Public Key: hỗ trợ raw uncompressed 64B (x||y), compressed 33B, hoặc 65B (0x04)
-            if len(public_key_bytes) == 64:
-                pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
-            elif len(public_key_bytes) in (33, 65):
-                pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
-            else:
-                pk = serialization.load_der_public_key(public_key_bytes)
-
-            # Chuyển raw r||s 64B sang DER nếu cần
-            if len(signature_bytes) == 64:
-                r = int.from_bytes(signature_bytes[:32], 'big')
-                s = int.from_bytes(signature_bytes[32:], 'big')
-                der_sig = encode_dss_signature(r, s)
-            else:
-                der_sig = signature_bytes
-
+            pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA256()))
+            return True
+        except InvalidSignature:
             try:
-                pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA256()))
+                pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA1()))
                 return True
             except InvalidSignature:
-                try:
-                    pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA1()))
-                    return True
-                except InvalidSignature:
-                    return False
-        except Exception:
-            pass
-
-    # 2. Fallback sang pure-python ecdsa nếu gặp format ngoại lệ
-    if VerifyingKey is not None:
-        try:
-            public_key_bytes = bytes.fromhex(sender_public_key_hex)
-            signature_bytes = bytes.fromhex(signature_hex)
-            vk = VerifyingKey.from_string(public_key_bytes, curve=SECP256k1)
-            try:
-                return vk.verify(signature_bytes, tx_bytes)
-            except Exception:
-                import ecdsa.util
-                return vk.verify(signature_bytes, tx_bytes, sigdecode=ecdsa.util.sigdecode_der)
-        except Exception:
-            return False
-
-    return False
+                return False
+    except Exception:
+        return False
 
 
 def verify_rsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:

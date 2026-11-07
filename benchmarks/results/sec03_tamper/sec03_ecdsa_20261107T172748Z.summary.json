@@ -1,0 +1,153 @@
+{
+  "algorithm": "Classical ECDSA (secp256k1)",
+  "scheme": "ecdsa",
+  "timestamp": "2026-11-07T17:27:53.308348+00:00",
+  "workers": 2,
+  "total_cases": 30,
+  "benign_cases": 15,
+  "attack_cases": 15,
+  "breach_count": 0,
+  "latency_stats": {
+    "all_attack": {
+      "count": 15,
+      "min": 0.0,
+      "mean": 16.6,
+      "median": 16.0,
+      "p95": 32.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "all_benign": {
+      "count": 15,
+      "min": 0.0,
+      "mean": 10.4,
+      "median": 15.0,
+      "p95": 32.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "bitflip": {
+      "count": 5,
+      "min": 0.0,
+      "mean": 9.4,
+      "median": 15.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    },
+    "mutation": {
+      "count": 5,
+      "min": 0.0,
+      "mean": 12.4,
+      "median": 15.0,
+      "p95": 31.0,
+      "p99": 31.0,
+      "max": 31.0
+    },
+    "replay": {
+      "count": 5,
+      "min": 15.0,
+      "mean": 28.0,
+      "median": 31.0,
+      "p95": 32.0,
+      "p99": 32.0,
+      "max": 32.0
+    }
+  },
+  "bit_flip_detail": {
+    "1": {
+      "count": 1,
+      "min": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "max": 0.0
+    },
+    "2": {
+      "count": 0,
+      "min": 0.0,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "max": 0.0
+    },
+    "3": {
+      "count": 2,
+      "min": 15.0,
+      "mean": 15.5,
+      "median": 15.5,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    },
+    "4": {
+      "count": 2,
+      "min": 0.0,
+      "mean": 8.0,
+      "median": 8.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    }
+  },
+  "mutation_detail": {
+    "amount": {
+      "count": 2,
+      "min": 0.0,
+      "mean": 8.0,
+      "median": 8.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    },
+    "recipient_address": {
+      "count": 2,
+      "min": 0.0,
+      "mean": 7.5,
+      "median": 7.5,
+      "p95": 15.0,
+      "p99": 15.0,
+      "max": 15.0
+    },
+    "sender_address": {
+      "count": 1,
+      "min": 31.0,
+      "mean": 31.0,
+      "median": 31.0,
+      "p95": 31.0,
+      "p99": 31.0,
+      "max": 31.0
+    }
+  },
+  "mining_reconciliation": {
+    "mining_triggered": true,
+    "miner_port": 5001,
+    "total_chain_length": 3,
+    "blocks": [
+      {
+        "block_number": 2,
+        "timestamp": 1794072470.5715642,
+        "total_tx_count": 10,
+        "user_tx_count": 10,
+        "nonce": 174,
+        "hash": "55a8e8d797b5023e79f9851a188b3ba5891f519b2d23b256819f7d77c64ac8d5"
+      },
+      {
+        "block_number": 3,
+        "timestamp": 1794072473.2561486,
+        "total_tx_count": 6,
+        "user_tx_count": 5,
+        "nonce": 67,
+        "hash": "180d9c5db306cacd0a4196fa687232fe6fffb4586f2a6f402336c733b2f602aa"
+      }
+    ],
+    "total_user_txs_mined": 15,
+    "expected_benign_count": 15,
+    "mempool_remaining": 0,
+    "tampered_tx_in_block": 0,
+    "status": "SUCCESS"
+  },
+  "log_path": "C:\\Users\\ADMIN\\Documents\\Blockchain-CSATT\\benchmarks\\results\\sec03_tamper\\sec03_ecdsa_20261107T172748Z.jsonl"
+}

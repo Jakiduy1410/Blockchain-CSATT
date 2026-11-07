@@ -10,7 +10,9 @@ from collections import OrderedDict
 # Thêm project root vào sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ecdsa
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from blockchain.core.ledger import BlockchainLedger
 from blockchain.core.transaction import Transaction
 from blockchain.core.block import Block
@@ -20,16 +22,16 @@ from blockchain.core.crypto import calculate_block_hash
 class TestConsensusSecurity(unittest.TestCase):
     def setUp(self):
         self.ledger = BlockchainLedger(difficulty=1, mining_reward=1.0)
-        # Tạo cặp khóa ECDSA cho Alice và Bob
-        self.alice_sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        self.alice_vk = self.alice_sk.verifying_key
-        self.alice_pub = self.alice_vk.to_string().hex()
-        self.alice_priv = self.alice_sk.to_string().hex()
+        # Tạo cặp khóa ECDSA cho Alice và Bob qua OpenSSL C-Engine
+        self.alice_sk = ec.generate_private_key(ec.SECP256K1())
+        pub_a = self.alice_sk.public_key().public_numbers()
+        self.alice_pub = f"{pub_a.x:064x}{pub_a.y:064x}"
+        self.alice_priv = f"{self.alice_sk.private_numbers().private_value:064x}"
 
-        self.bob_sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        self.bob_vk = self.bob_sk.verifying_key
-        self.bob_pub = self.bob_vk.to_string().hex()
-        self.bob_priv = self.bob_sk.to_string().hex()
+        self.bob_sk = ec.generate_private_key(ec.SECP256K1())
+        pub_b = self.bob_sk.public_key().public_numbers()
+        self.bob_pub = f"{pub_b.x:064x}{pub_b.y:064x}"
+        self.bob_priv = f"{self.bob_sk.private_numbers().private_value:064x}" 
 
         # Nạp số dư khởi tạo cho Alice = 50.0 COIN
         self.ledger.initial_balances[self.alice_pub] = 50.0
@@ -43,7 +45,9 @@ class TestConsensusSecurity(unittest.TestCase):
             ('value', str(value)),
             ('nonce', str(nonce))
         ])
-        sig = sk.sign(str(d).encode('utf-8'))
+        der = sk.sign(str(d).encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+        r, s = decode_dss_signature(der)
+        sig = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
         return Transaction(sender, recipient, str(value), sig.hex(), nonce=nonce)
 
     def test_valid_transaction_submission(self):

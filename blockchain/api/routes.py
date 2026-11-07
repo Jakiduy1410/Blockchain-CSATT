@@ -109,7 +109,6 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
     def inspect_packet():
         import json, os, hashlib
         from collections import OrderedDict
-        import ecdsa
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -145,11 +144,7 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             r, s = decode_dss_signature(der_sig)
             sig = (r.to_bytes(32, 'big') + s.to_bytes(32, 'big')).hex()
         except Exception:
-            try:
-                sk = ecdsa.SigningKey.from_string(bytes.fromhex(alice_priv), curve=ecdsa.SECP256k1)
-                sig = sk.sign(str(tx_dict).encode('utf-8')).hex()
-            except Exception:
-                sig = "3045022100" + "ab" * 30 + "0220" + "cd" * 31
+            sig = "3045022100" + "ab" * 30 + "0220" + "cd" * 31
 
         tx_obj = Transaction(alice_pub, bob_pub, amount_str, sig, nonce=next_nonce)
         p2p_payload = {

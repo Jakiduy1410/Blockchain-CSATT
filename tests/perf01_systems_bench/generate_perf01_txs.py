@@ -19,7 +19,9 @@ PERF_DIR = Path(__file__).resolve().parent
 BASE_DIR = PERF_DIR.parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-import ecdsa
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
 from Crypto.Hash import SHA
@@ -32,10 +34,10 @@ except ImportError:
 
 
 def generate_ecdsa_transactions(n: int = 2000) -> list:
-    print(f"[*] Dang sinh {n} giao dich ECDSA (secp256k1)...")
-    sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-    vk = sk.verifying_key
-    pub_hex = vk.to_string().hex()
+    print(f"[*] Dang sinh {n} giao dich ECDSA (secp256k1) qua C OpenSSL...")
+    sk = ec.generate_private_key(ec.SECP256K1())
+    pub_num = sk.public_key().public_numbers()
+    pub_hex = f"{pub_num.x:064x}{pub_num.y:064x}"
     recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
 
     txs = []
@@ -46,7 +48,9 @@ def generate_ecdsa_transactions(n: int = 2000) -> list:
             ('value', "1.0"),
             ('nonce', str(i))
         ])
-        sig = sk.sign(str(tx_dict).encode('utf-8'))
+        der = sk.sign(str(tx_dict).encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+        r, s = decode_dss_signature(der)
+        sig = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
         txs.append({
             'sender_address': pub_hex,
             'recipient_address': recipient_hex,
