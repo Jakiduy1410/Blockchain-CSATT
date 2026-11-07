@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Mô Phỏng & Giám Sát Trực Quan Mạng P2P 6 Node</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .node-box { transition: all 0.2s ease; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-5 font-sans antialiased">
+  
+  <div class="max-w-6xl mx-auto space-y-4">
+    
+    <!-- Header -->
+    <header class="flex flex-wrap items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-5 py-3.5 shadow-sm">
+      <div>
+        <h1 class="text-base font-bold text-white flex items-center gap-2">
+          Blockchain P2P Network <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">6 Nodes Mesh</span>
+        </h1>
+        <p class="text-xs text-slate-400">Trực quan hóa đường truyền gói tin, thẩm định chữ ký RSA và hợp nhất khối (Merge Block)</p>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex items-center space-x-2 mt-2 sm:mt-0">
+        <button id="btn-send-tx" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm flex items-center gap-1">
+          <span>⚡ Mô Phỏng Gửi 1 Tx</span>
+        </button>
+        <button id="btn-real-mine" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition shadow-sm flex items-center gap-1">
+          <span>⛏️ Khai Thác Node 2 (Mine)</span>
+        </button>
+        <button id="btn-live-toggle" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1">
+          <span id="live-dot" class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+          <span id="live-text">Live Sync (Ports 5000-5005)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Grid: Topology Canvas & Live Security Audit Feed -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      
+      <!-- Canvas 6 Node (7 Cột) -->
+      <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col relative shadow-sm">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800 mb-2 text-xs text-slate-400">
+          <span class="font-medium text-slate-300 uppercase tracking-wide">Topology Mạng 6 Node</span>
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Gói Tin Tx</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Gói Tin Block</span>
+          </div>
+        </div>
+
+        <div class="relative w-full aspect-[16/11] bg-slate-950 rounded-lg overflow-hidden border border-slate-800/80">
+          <canvas id="p2pCanvas" class="w-full h-full block"></canvas>
+          
+          <div id="step-badge" class="absolute bottom-3 left-3 bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-cyan-300 shadow backdrop-blur">
+            <span class="text-slate-400">Trạng thái:</span> <span id="step-desc" class="font-medium text-white">Sẵn sàng</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hộp Đen Kiểm Toán An Ninh Live Feed (5 Cột) -->
+      <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+            <span>🛡️ Hộp Đen Kiểm Toán An Ninh (Security Trail)</span>
+          </h2>
+          <span class="text-[10px] text-emerald-400 font-mono">Live Ingest</span>
+        </div>
+        
+        <div id="audit-feed-box" class="flex-1 max-h-[340px] overflow-y-auto space-y-1.5 font-mono text-[11px] bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
+          <div class="text-slate-500 italic">Đang lắng nghe sự kiện mật mã và P2P từ các Node...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bảng Theo Dõi 6 Node (Basic Grid) -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+      <div class="flex items-center justify-between text-xs pb-1 border-b border-slate-800">
+        <span class="font-bold text-slate-300 uppercase tracking-wide">Trạng Thái 6 Node Con (Live Mempool & Chain)</span>
+        <span class="text-slate-500">Mở từng tab để thao tác: localhost:5000 đến 5005</span>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5" id="nodes-container">
+        <!-- Rendered basic cards -->
+      </div>
+    </div>
+
+    <!-- Thanh Sổ Cái Blockchain Ledger -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm space-y-2">
+      <div class="flex items-center justify-between text-xs pb-1 border-b border-slate-800">
+        <span class="font-bold text-slate-300 uppercase tracking-wide">Sổ Cái Chuỗi Khối (Global Blockchain Ledger)</span>
+        <span id="chain-count-text" class="text-emerald-400 font-mono text-xs">Tổng số: 1 Block</span>
+      </div>
+      <div id="chain-timeline" class="flex items-center space-x-2 overflow-x-auto py-1 text-xs">
+        <!-- Rendered blocks -->
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const NODES = [
+      { id: 1, name: "Node 1", port: 5000, role: "Ingress", isMiner: false, x: 0, y: 0, mempool: 0, chain: 1 },
+      { id: 2, name: "Node 2", port: 5001, role: "Miner ⛏️", isMiner: true, x: 0, y: 0, mempool: 0, chain: 1 },
+      { id: 3, name: "Node 3", port: 5002, role: "Peer", isMiner: false, x: 0, y: 0, mempool: 0, chain: 1 },
+      { id: 4, name: "Node 4", port: 5003, role: "Peer", isMiner: false, x: 0, y: 0, mempool: 0, chain: 1 },
+      { id: 5, name: "Node 5", port: 5004, role: "Peer", isMiner: false, x: 0, y: 0, mempool: 0, chain: 1 },
+      { id: 6, name: "Node 6", port: 5005, role: "Peer", isMiner: false, x: 0, y: 0, mempool: 0, chain: 1 }
+    ];
+
+    let globalChain = [{ blockNumber: 1, hash: "00a1...genesis", txs: 0 }];
+    let packets = [];
+    let isLiveSync = true;
+
+    const canvas = document.getElementById("p2pCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      updateNodeCoords(rect.width, rect.height);
+    }
+
+    function updateNodeCoords(w, h) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) * 0.36;
+      for (let i = 0; i < NODES.length; i++) {
+        const angle = (i * 2 * Math.PI) / NODES.length - Math.PI / 2;
+        NODES[i].x = cx + r * Math.cos(angle);
+        NODES[i].y = cy + r * Math.sin(angle);
+      }
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    function renderNodeCards() {
+      const container = document.getElementById("nodes-container");
+      container.innerHTML = "";
+      NODES.forEach(n => {
+        const card = document.createElement("a");
+        card.href = `http://localhost:${n.port}`;
+        card.target = "_blank";
+        card.className = `node-box block p-2.5 rounded-lg border ${n.isMiner ? 'bg-amber-950/20 border-amber-800/60 hover:border-amber-500' : 'bg-slate-950 border-slate-800 hover:border-slate-600'} text-xs space-y-1.5 transition no-underline`;
+        card.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-bold ${n.isMiner ? 'text-amber-400' : 'text-slate-200'}">${n.name}</span>
+            <span class="text-[10px] text-cyan-400 font-mono">:${n.port} ↗</span>
+          </div>
+          <div class="flex justify-between text-[11px] pt-1 border-t border-slate-800/80">
+            <span class="text-slate-500">Mempool:</span>
+            <span class="font-semibold ${n.mempool > 0 ? 'text-emerald-400' : 'text-slate-500'}">${n.mempool} tx</span>
+          </div>
+          <div class="flex justify-between text-[11px]">
+            <span class="text-slate-500">Chain:</span>
+            <span class="font-semibold text-slate-300">#${n.chain}</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderChainTimeline() {
+      const container = document.getElementById("chain-timeline");
+      container.innerHTML = "";
+      globalChain.forEach((blk, idx) => {
+        const item = document.createElement("div");
+        item.className = "flex items-center space-x-1.5 shrink-0";
+        item.innerHTML = `
+          <div class="px-3 py-1.5 rounded-lg border ${idx === globalChain.length - 1 ? 'border-cyan-500 bg-cyan-950/40 text-cyan-200' : 'border-slate-800 bg-slate-950 text-slate-300'} font-mono">
+            <span class="font-bold">Block #${blk.blockNumber}</span>
+            <span class="text-[10px] text-slate-500 ml-1">(${blk.txs} tx)</span>
+          </div>
+          ${idx < globalChain.length - 1 ? `<span class="text-slate-600">➔</span>` : ''}
+        `;
+        container.appendChild(item);
+      });
+      document.getElementById("chain-count-text").innerText = `Tổng số: ${globalChain.length} Block(s)`;
+    }
+
+    // Live Polling từ các Node backend thật (ports 5000 -> 5005)
+    async function fetchLiveStatus() {
+      if (!isLiveSync) return;
+
+      for (let node of NODES) {
+        try {
+          const res = await fetch(`http://127.0.0.1:${node.port}/status`);
+          if (res.ok) {
+            const data = await res.json();
+            node.mempool = data.mempool_count;
+            node.chain = data.chain_length;
+          }
+        } catch (e) {
+          // Node chua bat hoac offline
+        }
+      }
+      renderNodeCards();
+
+      // Lay Audit logs tu Node 1 hoac Node 2
+      try {
+        const auditRes = await fetch("http://127.0.0.1:5000/audit/logs?limit=20");
+        if (auditRes.ok) {
+          const auditData = await auditRes.json();
+          renderAuditFeed(auditData.logs);
+        }
+      } catch (e) {}
+
+      // Lay Chain thuc te tu Node 1
+      try {
+        const chainRes = await fetch("http://127.0.0.1:5000/chain");
+        if (chainRes.ok) {
+          const cData = await chainRes.json();
+          globalChain = cData.chain.map(b => ({
+            blockNumber: b.block_number,
+            hash: b.previous_hash ? b.previous_hash.substring(0, 8) + "..." : "genesis",
+            txs: b.transactions.length
+          }));
+          renderChainTimeline();
+        }
+      } catch (e) {}
+    }
+
+    function renderAuditFeed(logs) {
+      const box = document.getElementById("audit-feed-box");
+      if (!logs || logs.length === 0) return;
+
+      let html = "";
+      logs.forEach(l => {
+        let catColor = "text-blue-400";
+        if (l.category === "CRYPTO") catColor = "text-cyan-400 font-bold";
+        if (l.category === "P2P") catColor = "text-emerald-400";
+        if (l.category === "CONSENSUS") catColor = "text-purple-400 font-bold";
+        if (l.category === "MINER") catColor = "text-amber-400";
+
+        let statusColor = l.status === "SUCCESS" ? "text-emerald-400" : (l.status === "FAILED" ? "text-red-400" : "text-slate-400");
+
+        html += `
+          <div class="border-b border-slate-800/60 pb-1">
+            <span class="text-slate-500">[${l.timestamp}]</span>
+            <span class="${catColor}">[${l.category}]</span>
+            <span class="${statusColor}">${l.title}</span>
+          </div>
+        `;
+      });
+      box.innerHTML = html;
+    }
+
+    // Packet Animation
+    class Packet {
+      constructor(fromX, fromY, toX, toY, color, onArrive) {
+        this.fromX = fromX; this.fromY = fromY; this.toX = toX; this.toY = toY;
+        this.progress = 0; this.speed = 0.025; this.color = color;
+        this.onArrive = onArrive; this.dead = false;
+      }
+      update() {
+        this.progress += this.speed;
+        if (this.progress >= 1) {
+          this.progress = 1; this.dead = true;
+          if (this.onArrive) this.onArrive();
+        }
+      }
+      draw(c) {
+        const curX = this.fromX + (this.toX - this.fromX) * this.progress;
+        const curY = this.fromY + (this.toY - this.fromY) * this.progress;
+        c.save();
+        c.fillStyle = this.color;
+        c.beginPath();
+        c.arc(curX, curY, 4.5, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+    }
+
+    function animate() {
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(51, 65, 85, 0.4)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < NODES.length; i++) {
+        for (let j = i + 1; j < NODES.length; j++) {
+          ctx.beginPath();
+          ctx.moveTo(NODES[i].x, NODES[i].y);
+          ctx.lineTo(NODES[j].x, NODES[j].y);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      for (let i = packets.length - 1; i >= 0; i--) {
+        packets[i].update();
+        packets[i].draw(ctx);
+        if (packets[i].dead) packets.splice(i, 1);
+      }
+
+      NODES.forEach(n => {
+        ctx.save();
+        ctx.fillStyle = n.isMiner ? "#271d12" : "#0f172a";
+        ctx.strokeStyle = n.isMiner ? "#f59e0b" : "#0284c7";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(n.name, n.x, n.y + 3);
+
+        ctx.font = "9px monospace";
+        ctx.fillStyle = n.isMiner ? "#fbbf24" : "#94a3b8";
+        ctx.fillText(n.isMiner ? "MINER" : `:${n.port}`, n.x, n.y + 32);
+
+        if (n.mempool > 0) {
+          ctx.fillStyle = "#10b981";
+          ctx.beginPath();
+          ctx.arc(n.x + 14, n.y - 14, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 8px sans-serif";
+          ctx.fillText(n.mempool, n.x + 14, n.y - 11);
+        }
+        ctx.restore();
+      });
+
+      requestAnimationFrame(animate);
+    }
+
+    // Nut Mine Node 2 that
+    document.getElementById("btn-real-mine").addEventListener("click", async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:5001/mine");
+        if (res.ok) {
+          const data = await res.json();
+          alert(`Đào thành công Block #${data.block_number} trên Node 2!`);
+          fetchLiveStatus();
+        } else {
+          alert("Không thể đào hoặc Node 2 chưa chạy.");
+        }
+      } catch (e) {
+        alert("Lỗi kết nối tới Node 2 (:5001). Đảm bảo mạng đang chạy!");
+      }
+    });
+
+    // Nut Mo phong Gui Tx
+    document.getElementById("btn-send-tx").addEventListener("click", () => {
+      const n1 = NODES[0];
+      packets.push(new Packet(n1.x - 50, n1.y - 50, n1.x, n1.y, "#10b981", () => {
+        for (let i = 1; i < NODES.length; i++) {
+          packets.push(new Packet(n1.x, n1.y, NODES[i].x, NODES[i].y, "#06b6d4"));
+        }
+      }));
+    });
+
+    // Toggle live sync
+    document.getElementById("btn-live-toggle").addEventListener("click", () => {
+      isLiveSync = !isLiveSync;
+      const dot = document.getElementById("live-dot");
+      const text = document.getElementById("live-text");
+      if (isLiveSync) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400 inline-block";
+        text.innerText = "Live Sync: ON";
+      } else {
+        dot.className = "w-2 h-2 rounded-full bg-slate-500 inline-block";
+        text.innerText = "Live Sync: OFF";
+      }
+    });
+
+    // Boot
+    setTimeout(() => {
+      resizeCanvas();
+      renderNodeCards();
+      renderChainTimeline();
+      animate();
+      fetchLiveStatus();
+      setInterval(fetchLiveStatus, 2000);
+    }, 100);
+
+  </script>
+</body>
+</html>

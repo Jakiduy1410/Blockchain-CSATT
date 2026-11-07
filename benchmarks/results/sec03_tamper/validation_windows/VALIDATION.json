@@ -1,0 +1,85 @@
+{
+  "platform": "Windows x86_64",
+  "requests_total": 7250,
+  "regression_tests_passed": 8,
+  "runs": [
+    {
+      "algorithm": "RSA",
+      "passed": true,
+      "requests": 1450,
+      "blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ]
+    },
+    {
+      "algorithm": "ECDSA",
+      "passed": true,
+      "requests": 1450,
+      "blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ]
+    },
+    {
+      "algorithm": "ML-DSA-44",
+      "passed": true,
+      "requests": 1450,
+      "blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ]
+    },
+    {
+      "algorithm": "ML-DSA-65",
+      "passed": true,
+      "requests": 1450,
+      "blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ]
+    },
+    {
+      "algorithm": "ML-DSA-87",
+      "passed": true,
+      "requests": 1450,
+      "blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ]
+    }
+  ],
+  "source_verification": "95 runtime files and common attack byte-identical to workspace",
+  "runner_change": "Only import and call prepare_runtime before the original main flow",
+  "historical_measurements": "reference/ retains the original workspace batch and figures"
+}

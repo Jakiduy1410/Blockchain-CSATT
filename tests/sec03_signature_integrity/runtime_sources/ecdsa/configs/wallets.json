@@ -1,0 +1,26 @@
+{
+  "Alice": {
+    "name": "Alice",
+    "initial_balance": 100.0,
+    "private_key": "45f29fad0e5c0742d6a5a5b87d2bf0942988de47b1200804c3f6a286fa2a7b29",
+    "public_key": "63db4e21810e3ad936ab704569c0e09ea312e470459a08370d911709282ea673a024598f493c47d134fdd7c27fd1d06d6640fcf25e3d539369905fba33c1e585"
+  },
+  "Bob": {
+    "name": "Bob",
+    "initial_balance": 50.0,
+    "private_key": "19b3aa127c83366b10790403c656507d7cd5f369d2db3d31285a6b27812f64b0",
+    "public_key": "3d5f2189d8372eff04125be3bbaab6e6741b509e016f2759d73e3c6ff89c1142edb2f80ec01fe0e5acf11d654ed7a3cab1e5535b5e417c20b05d9cfcd0d5a4af"
+  },
+  "Charlie": {
+    "name": "Charlie",
+    "initial_balance": 30.0,
+    "private_key": "5e0eb0a4a839fed299bb5a44b151495e260179b26b107f46af07eabca294dd93",
+    "public_key": "f5e6677617dc890f9a13e21db70ce9071c9b9efbc92f70d1b0b1da4d4de05da80f67a5856dd29e85ad8f9ce91ff1b15c62871db37392b1fe929d054b453351ef"
+  },
+  "Dave": {
+    "name": "Dave",
+    "initial_balance": 10.0,
+    "private_key": "c7433628985b3407e2dc27ec862e424460acfb2a5137b2e83424ab186c66f95b",
+    "public_key": "c02b5892c5008d7260e04f93043806f0f97e196f7a18dea8de1d7fb0e31260027be0a896910641e3792d3e0fd8ceb1c1b6f78c18a615d4774892b1aa874ec18e"
+  }
+}

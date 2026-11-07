@@ -1,0 +1,8 @@
+*.sh text eol=lf
+*.bat text eol=crlf
+/oqs.dll binary
+# These files have byte-level provenance checks and must survive Git checkout.
+/tests/sec03_signature_integrity/runtime_sources/** -text
+/tests/sec03_signature_integrity/attack_sec03.py -text
+/benchmarks/results/sec03_tamper/reference/** -text
+/benchmarks/results/sec03_tamper/validation_windows/** -text

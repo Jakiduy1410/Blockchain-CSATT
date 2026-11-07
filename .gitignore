@@ -1,0 +1,22 @@
+venv/
+.agentvenv/
+__pycache__/
+*.pyc
+.vscode/
+logs/
+*.log
+sslkeys.log
+*.jsonl
+configs/certs/*.crt
+configs/certs/*.key
+.agent
+
+# SEC-03 runtime projects are generated from tests/sec03_signature_integrity/runtime_sources/.
+/Blockchain-CSATT-*/
+/.sec03-native/
+/venv-windows/
+/venv-kali/
+/sec03_batch_*.json
+/sec03_comparison_*.png
+*.tmp
+*.sec03.bak
