@@ -213,6 +213,8 @@ class P2PNetwork:
 
             if msg_type == "TRANSACTION" and data:
                 tx = Transaction.from_dict(data)
+                if tx.tx_id in self.seen_tx_hashes:
+                    return
                 self.gossip_transaction(tx)
             elif msg_type == "BLOCK" and data:
                 self.handle_incoming_block(data)

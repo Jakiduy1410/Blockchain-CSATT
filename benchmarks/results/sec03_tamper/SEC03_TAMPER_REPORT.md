@@ -112,18 +112,18 @@ Kết quả thực nghiệm trên mạng 6 Node Full Mesh với 4 thuật toán:
 
 | Thuật toán | Kịch bản Kiểm thử | Tỷ lệ Chặn / Gửi | Tỷ lệ An toàn | Thời gian Chặn TB (ms) | Phân vị P95 (ms) | Số ca Vi phạm (Breach) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **ECDSA** | Bit-flipping Integrity | 30/30 | 100.0% | 11.50 ms | 31.00 ms | 0 |
-| *(secp256k1)* | Payload Mutation (3 vectors) | 30/30 | 100.0% | 8.87 ms | 16.00 ms | 0 |
-| | Anti-Replay Defense | 30/30 | 100.0% | 15.63 ms | 16.00 ms | 0 |
-| **ML-DSA-44** | Bit-flipping Integrity | 30/30 | 100.0% | 13.07 ms | 31.00 ms | 0 |
-| *(FIPS 204 L2)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 11.57 ms | 32.00 ms | 0 |
-| | Anti-Replay Defense | 30/30 | 100.0% | 10.43 ms | 32.00 ms | 0 |
-| **ML-DSA-65** | Bit-flipping Integrity | 30/30 | 100.0% | 14.70 ms | 31.00 ms | 0 |
-| *(FIPS 204 L3)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 8.30 ms | 16.00 ms | 0 |
-| | Anti-Replay Defense | 30/30 | 100.0% | 20.77 ms | 32.00 ms | 0 |
-| **ML-DSA-87** | Bit-flipping Integrity | 30/30 | 100.0% | 15.57 ms | 31.00 ms | 0 |
-| *(FIPS 204 L5)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 14.67 ms | 47.00 ms | 0 |
-| | Anti-Replay Defense | 30/30 | 100.0% | 9.80 ms | 31.00 ms | 0 |
+| **ECDSA** | Bit-flipping Integrity | 30/30 | 100.0% | 13.03 ms | 47.00 ms | 0 |
+| *(secp256k1)* | Payload Mutation (3 vectors) | 30/30 | 100.0% | 13.57 ms | 31.00 ms | 0 |
+| | Anti-Replay Defense | 30/30 | 100.0% | 20.33 ms | 32.00 ms | 0 |
+| **ML-DSA-44** | Bit-flipping Integrity | 30/30 | 100.0% | 11.50 ms | 16.00 ms | 0 |
+| *(FIPS 204 L2)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 8.93 ms | 16.00 ms | 0 |
+| | Anti-Replay Defense | 30/30 | 100.0% | 11.50 ms | 32.00 ms | 0 |
+| **ML-DSA-65** | Bit-flipping Integrity | 30/30 | 100.0% | 10.53 ms | 31.00 ms | 0 |
+| *(FIPS 204 L3)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 11.47 ms | 31.00 ms | 0 |
+| | Anti-Replay Defense | 30/30 | 100.0% | 12.60 ms | 32.00 ms | 0 |
+| **ML-DSA-87** | Bit-flipping Integrity | 30/30 | 100.0% | 15.67 ms | 31.00 ms | 0 |
+| *(FIPS 204 L5)*| Payload Mutation (3 vectors) | 30/30 | 100.0% | 11.93 ms | 31.00 ms | 0 |
+| | Anti-Replay Defense | 30/30 | 100.0% | 17.67 ms | 31.00 ms | 0 |
 
 ---
 

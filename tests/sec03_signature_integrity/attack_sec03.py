@@ -299,11 +299,11 @@ def build_test_suite(
     for i in range(half):
         sender, recipient = client_pairs[i % num_pairs]
         s_name, r_name = sender["name"], recipient["name"]
-        nonce = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
 
         # Benign: giao dịch chữ ký chuẩn
-        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce)
+        nonce_b = sender_nonces[s_name]
+        sender_nonces[s_name] += 1
+        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
         independent_cases.append(TestCase(
             case_id=case_counter,
             scenario=SCENARIO_BITFLIP,
@@ -316,8 +316,13 @@ def build_test_suite(
         case_counter += 1
 
         # Malicious: giao dịch bị lật bit chữ ký (1..4 bit)
+        # Sử dụng Nonce độc lập để kiểm tra đúng năng lực phát hiện chữ ký hỏng tầng CRYPTO,
+        # tránh bị bộ lọc Replay Attack ở tầng Ingress ngắt sớm trước khi verify chữ ký.
+        nonce_m = sender_nonces[s_name]
+        sender_nonces[s_name] += 1
+        tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
         flips = bit_plan[i]
-        mutated_tx, _ = mutate_signature_bits(valid_tx, rng, num_flips=flips)
+        mutated_tx, _ = mutate_signature_bits(tx_to_mutate, rng, num_flips=flips)
         independent_cases.append(TestCase(
             case_id=case_counter,
             scenario=SCENARIO_BITFLIP,
@@ -336,10 +341,11 @@ def build_test_suite(
     for i in range(half):
         sender, recipient = client_pairs[(i + half) % num_pairs]
         s_name, r_name = sender["name"], recipient["name"]
-        nonce = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
 
-        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce)
+        # Benign: giao dịch chữ ký chuẩn
+        nonce_b = sender_nonces[s_name]
+        sender_nonces[s_name] += 1
+        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
         independent_cases.append(TestCase(
             case_id=case_counter,
             scenario=SCENARIO_MUTATION,
@@ -351,8 +357,12 @@ def build_test_suite(
         ))
         case_counter += 1
 
+        # Malicious: Nonce độc lập để kiểm tra đúng năng lực phát hiện sửa đổi Payload ở tầng CRYPTO
+        nonce_m = sender_nonces[s_name]
+        sender_nonces[s_name] += 1
+        tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
         mut_field = mut_fields[i % 3]
-        mutated_tx = mutate_payload_data(valid_tx, rng, field_to_mutate=mut_field, alternate_sender=recipient["public_key"])
+        mutated_tx = mutate_payload_data(tx_to_mutate, rng, field_to_mutate=mut_field, alternate_sender=recipient["public_key"])
         if mut_field == "amount":
             sub_label = f"Malicious (Sửa Amount x100 - {s_name})"
         elif mut_field == "recipient_address":
