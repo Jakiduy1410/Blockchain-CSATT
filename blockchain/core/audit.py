@@ -12,7 +12,7 @@ from typing import List, Dict
 
 
 class AuditLogger:
-    def __init__(self, max_entries: int = 100):
+    def __init__(self, max_entries: int = 2000):
         self.max_entries = max_entries
         self.logs: List[Dict] = []
         self.lock = threading.Lock()
