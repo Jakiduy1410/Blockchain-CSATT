@@ -4,6 +4,7 @@ Miner & Consensus Engine
 
 import threading
 import time
+from copy import deepcopy
 from typing import Optional
 
 try:
@@ -31,10 +32,12 @@ class Miner:
         self.audit = audit_logger or (ledger.audit if hasattr(ledger, 'audit') else AuditLogger())
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._mining_lock = threading.Lock()
 
-    def proof_of_work(self, candidate_txs: list) -> int:
-        last_block = self.ledger.get_last_block()
-        last_hash = calculate_block_hash(last_block)
+    def proof_of_work(self, candidate_txs: list, previous_hash: Optional[str] = None) -> int:
+        last_hash = previous_hash
+        if last_hash is None:
+            last_hash = calculate_block_hash(self.ledger.get_last_block())
 
         self.audit.log(
             category="MINER",
@@ -56,26 +59,38 @@ class Miner:
         return nonce
 
     def mine_block(self, max_txs: int = 5) -> Optional[dict]:
-        reward_tx = Transaction(
-            sender_address=self.ledger.mining_sender,
-            recipient_address=self.ledger.node_id,
-            value=str(self.ledger.mining_reward),
-            signature=""
-        )
-        self.ledger.submit_transaction(reward_tx)
-
-        with self.ledger.lock:
-            txs_to_mine = list(self.ledger.transactions[:max_txs])
-
-        txs_for_pow = [tx for tx in txs_to_mine if tx.get('sender_address') != self.ledger.mining_sender]
-        nonce = self.proof_of_work(txs_for_pow)
-
-        last_block = self.ledger.get_last_block()
-        previous_hash = calculate_block_hash(last_block)
-        block = self.ledger.create_block(nonce, previous_hash, max_txs=max_txs)
-
-        self.network.broadcast_block(block)
-        return block
+        if max_txs < 1:
+            raise ValueError("max_txs must reserve at least one slot for the reward")
+        # Serialize local mining calls, but allow peer blocks during PoW.
+        with self._mining_lock:
+            while True:
+                # Freeze the parent and transactions together. New arrivals must
+                # remain pending rather than changing the solved PoW input.
+                with self.ledger.lock:
+                    previous_hash = calculate_block_hash(self.ledger.chain[-1])
+                    txs_for_pow = deepcopy([
+                        tx for tx in self.ledger.transactions
+                        if tx.get('sender_address') != self.ledger.mining_sender
+                    ][:max_txs - 1])
+                reward = Transaction(
+                    self.ledger.mining_sender, self.ledger.node_id,
+                    str(self.ledger.mining_reward), signature=""
+                ).to_full_dict()
+                candidate = txs_for_pow + [reward]
+                nonce = self.proof_of_work(txs_for_pow, previous_hash)
+                block = self.ledger.create_block(
+                    nonce, previous_hash, max_txs=max_txs,
+                    candidate_transactions=candidate
+                )
+                if block is None:
+                    self.audit.log(
+                        category="MINER",
+                        title="Mining restart: chain or pending transactions changed",
+                        status="INFO"
+                    )
+                    continue
+                self.network.broadcast_block(block)
+                return block
 
     def start_auto_miner(self):
         if not self.auto_mine or self._running:

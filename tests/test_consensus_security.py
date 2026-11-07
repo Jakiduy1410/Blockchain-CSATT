@@ -68,7 +68,11 @@ class TestConsensusSecurity(unittest.TestCase):
         # Đào block chứa tx1
         last_block = self.ledger.get_last_block()
         prev_hash = calculate_block_hash(last_block)
-        block = self.ledger.create_block(nonce=123, previous_hash=prev_hash)
+        nonce = 0
+        while not Block.valid_proof(self.ledger.get_mempool(), prev_hash,
+                                    nonce, self.ledger.difficulty):
+            nonce += 1
+        block = self.ledger.create_block(nonce=nonce, previous_hash=prev_hash)
         self.assertEqual(len(self.ledger.chain), 2)
         self.assertEqual(len(self.ledger.transactions), 0)
 

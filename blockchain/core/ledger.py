@@ -3,6 +3,7 @@ Ledger & Blockchain State Manager
 """
 
 import threading
+from copy import deepcopy
 from time import time
 from typing import List, Dict, Optional
 from uuid import uuid4
@@ -272,12 +273,24 @@ class BlockchainLedger:
             )
             return True
 
-    def create_block(self, nonce: int, previous_hash: str, max_txs: int = 5) -> dict:
+    def create_block(self, nonce: int, previous_hash: str, max_txs: int = 5,
+                     candidate_transactions: Optional[List[dict]] = None) -> Optional[dict]:
         with self.lock:
-            # Lấy tối đa max_txs giao dịch vào block
-            txs_to_mine = self.transactions[:max_txs]
-            # Giữ lại các giao dịch còn lại trong Mempool cho các block sau
-            self.transactions = self.transactions[max_txs:]
+            # Check and commit under one lock: never attach old PoW to a new tip.
+            if calculate_block_hash(self.chain[-1]) != previous_hash:
+                return None
+            txs_to_mine = deepcopy(
+                self.transactions[:max_txs]
+                if candidate_transactions is None else candidate_transactions
+            )
+            if len(txs_to_mine) > max_txs:
+                raise ValueError("Candidate exceeds max_txs")
+            user_txs = [tx for tx in txs_to_mine
+                        if tx.get('sender_address') != self.mining_sender]
+            if any(tx not in self.transactions for tx in user_txs):
+                return None
+            if not Block.valid_proof(user_txs, previous_hash, nonce, self.difficulty):
+                raise ValueError("Invalid Proof-of-Work for the candidate block")
 
             block = {
                 'block_number': len(self.chain) + 1,
@@ -288,6 +301,10 @@ class BlockchainLedger:
             }
 
             self.chain.append(block)
+            # Remove only included transactions; preserve arrivals during PoW.
+            self.transactions = [
+                tx for tx in self.transactions if tx not in txs_to_mine
+            ]
 
             self.audit.log(
                 category="CONSENSUS",
