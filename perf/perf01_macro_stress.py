@@ -24,7 +24,6 @@ import argparse
 import concurrent.futures
 import csv
 import json
-import os
 import subprocess
 import sys
 import threading
@@ -646,10 +645,10 @@ def run_full_macro_round(algo_id: str, algo_name: str, tx_dataset: list, batch_s
 
 
 def plot_macro_chart(macro_results: List[dict], out_path: Path):
-    fig, axes = plt.subplots(1, 3, figsize=(23, 7.2), dpi=300)
+    fig, axes = plt.subplots(2, 2, figsize=(21, 14), dpi=300)
     fig.suptitle("PERF-01: MACRO-BENCHMARK - SINGLE DUT TRONG MẠNG LIVE MESH (1 DUT + 5 BACKGROUND NODES)\n"
-                 "Đánh Giá Thực Nghiệm: ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 Qua WebSocket TLS 1.3 Mesh",
-                 fontsize=13.5, fontweight='bold', y=0.98)
+                 "Đánh Giá Thực Nghiệm Toàn Diện: ECDSA vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 Qua WebSocket TLS 1.3 Mesh",
+                 fontsize=15.5, fontweight='bold', y=0.985)
 
     def format_algo_label(name: str) -> str:
         if "ECDSA" in name:
@@ -677,156 +676,258 @@ def plot_macro_chart(macro_results: List[dict], out_path: Path):
     raw_labels = [r['algorithm_name'] for r in macro_results]
     labels = [format_algo_label(l) for l in raw_labels]
     x = np.arange(len(labels))
-    width = 0.26
+    width = 0.25
 
-    # 1. Panel 1: DUT Block Commit Latency (ms) - Độ trễ lan truyền + thẩm định khối
-    ax1 = axes[0]
-    server_v = [get_node_stat(r, 'server', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
-    edge_v = [get_node_stat(r, 'edge', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
-    iot_v = [get_node_stat(r, 'iot', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
+    # =========================================================================
+    # Panel 1 (Góc trên trái): Thời Gian Cam Kết Khối Bóc Tách (Stacked Bar)
+    # =========================================================================
+    ax1 = axes[0, 0]
+    srv_verify = [get_node_stat(r, 'server', 'dut_block_verify_ms') for r in macro_results]
+    srv_transit = [get_node_stat(r, 'server', 'block_transit_ms') for r in macro_results]
+    srv_total = [get_node_stat(r, 'server', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
 
-    b1 = ax1.bar(x - width, server_v, width, label='Server DUT (4.0 vCPU)', color='#1f77b4')
-    b2 = ax1.bar(x, edge_v, width, label='Edge DUT (1.0 vCPU)', color='#2ca02c')
-    b3 = ax1.bar(x + width, iot_v, width, label='IoT DUT (0.5 vCPU)', color='#d62728')
+    edg_verify = [get_node_stat(r, 'edge', 'dut_block_verify_ms') for r in macro_results]
+    edg_transit = [get_node_stat(r, 'edge', 'block_transit_ms') for r in macro_results]
+    edg_total = [get_node_stat(r, 'edge', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
 
-    for b in b1:
-        h = b.get_height()
-        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
-    for b in b2:
-        h = b.get_height()
-        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
-    for b in b3:
-        h = b.get_height()
-        ax1.annotate(f"{h:.1f}ms", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+    iot_verify = [get_node_stat(r, 'iot', 'dut_block_verify_ms') for r in macro_results]
+    iot_transit = [get_node_stat(r, 'iot', 'block_transit_ms') for r in macro_results]
+    iot_total = [get_node_stat(r, 'iot', 'commit_latency_ms', 'dut_block_verify_ms') for r in macro_results]
 
-    max_y1 = max(server_v + edge_v + iot_v) if (server_v + edge_v + iot_v) else 100
-    ax1.set_ylim(0, max(50, max_y1 * 1.30))
-    ax1.set_ylabel("Thời gian cam kết khối (ms)", fontsize=11, fontweight='bold')
-    ax1.set_title("1. Thời Gian Cam Kết Khối Của DUT (Wire Transit + Verify)", fontsize=11.5, fontweight='bold')
+    # Stacked bars: Chân cột là CPU Verify (màu đậm), phần trên là Transit Delay (màu nhạt gạch chéo)
+    b1_base = ax1.bar(x - width, srv_verify, width, color='#1d4ed8', edgecolor='#1e3a8a')
+    b1_top = ax1.bar(x - width, srv_transit, width, bottom=srv_verify, color='#93c5fd', hatch='//', edgecolor='#3b82f6')
+
+    b2_base = ax1.bar(x, edg_verify, width, color='#15803d', edgecolor='#14532d')
+    b2_top = ax1.bar(x, edg_transit, width, bottom=edg_verify, color='#86efac', hatch='//', edgecolor='#22c55e')
+
+    b3_base = ax1.bar(x + width, iot_verify, width, color='#b91c1c', edgecolor='#7f1d1d')
+    b3_top = ax1.bar(x + width, iot_transit, width, bottom=iot_verify, color='#fca5a5', hatch='//', edgecolor='#ef4444')
+
+    for idx, h in enumerate(srv_total):
+        ax1.annotate(f"{h:.1f}ms", xy=(x[idx] - width, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
+    for idx, h in enumerate(edg_total):
+        ax1.annotate(f"{h:.1f}ms", xy=(x[idx], h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
+    for idx, h in enumerate(iot_total):
+        ax1.annotate(f"{h:.1f}ms", xy=(x[idx] + width, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
+
+    max_y1 = max(srv_total + edg_total + iot_total) if (srv_total + edg_total + iot_total) else 100
+    ax1.set_ylim(0, max_y1 * 1.32)
+    ax1.set_ylabel("Thời gian cam kết khối (ms)", fontsize=11.5, fontweight='bold')
+    ax1.set_title("1. Thời Gian Cam Kết Khối Bóc Tách (Stacked: Verify CPU + Wire Transit)\n"
+                  "[Chân cột đậm: Verify CPU | Gạch chéo: Transit Delay TLS 1.3]",
+                  fontsize=12.2, fontweight='bold', pad=8)
     ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
-    ax1.legend(loc='upper left', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
+    ax1.set_xticklabels(labels, fontweight='bold', fontsize=10.0)
+    ax1.tick_params(axis='y', labelsize=10.0)
+    ax1.legend([b1_base, b2_base, b3_base], ['Server DUT (4.0 vCPU)', 'Edge DUT (1.0 vCPU)', 'IoT DUT (0.5 vCPU)'],
+               loc='upper left', fontsize=9.5, framealpha=0.9, edgecolor='#ccc')
     ax1.grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 2. Panel 2: Wire Payload Size (100 Txs vs Block Wire Size)
-    ax2 = axes[1]
-    w2 = 0.35
-    block_sizes = [r.get('block_wire_kb', 0.0) for r in macro_results]
-    txs_sizes = [r.get('total_wire_txs_kb', 0.0) for r in macro_results]
+    # =========================================================================
+    # Panel 2 (Góc trên phải): Thông Lượng Nạp Mempool & Tải Trọng Khối
+    # =========================================================================
+    ax2 = axes[0, 1]
+    srv_tps = [get_node_stat(r, 'server', 'ingest_throughput_tps') for r in macro_results]
+    edg_tps = [get_node_stat(r, 'edge', 'ingest_throughput_tps') for r in macro_results]
+    iot_tps = [get_node_stat(r, 'iot', 'ingest_throughput_tps') for r in macro_results]
 
-    b4 = ax2.bar(x - w2/2, txs_sizes, w2, label='100 Txs Gossip Batch (KB)', color='#0284c7')
-    b5 = ax2.bar(x + w2/2, block_sizes, w2, label='Forged Block Wire Size (KB)', color='#ea580c')
+    b4 = ax2.bar(x - width, srv_tps, width, label='Server Ingest TPS', color='#2563eb', edgecolor='#1e40af')
+    b5 = ax2.bar(x, edg_tps, width, label='Edge Ingest TPS', color='#16a34a', edgecolor='#15803d')
+    b6 = ax2.bar(x + width, iot_tps, width, label='IoT Ingest TPS', color='#dc2626', edgecolor='#991b1b')
 
     for b in b4:
         h = b.get_height()
-        ax2.annotate(f"{h:.1f}KB", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(-3, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+        ax2.annotate(f"{h:.0f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
     for b in b5:
         h = b.get_height()
-        ax2.annotate(f"{h:.1f}KB", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(3, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
-
-    max_y2 = max(txs_sizes + block_sizes) if (txs_sizes + block_sizes) else 500
-    ax2.set_ylim(0, max(10, max_y2 * 1.25))
-    ax2.set_ylabel("Dung lượng qua dây mạng (KB)", fontsize=11, fontweight='bold')
-    ax2.set_title("2. Kích Thước Dữ Liệu Qua Mạng (Network Wire Payload)", fontsize=11.5, fontweight='bold')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
-    ax2.legend(loc='upper left', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
-    ax2.grid(axis='y', linestyle='--', alpha=0.5)
-
-    # 3. Panel 3: Normalized CPU (%) tren DUT (Server vs Edge vs IoT) khi chiu ap luc bao Gossip
-    ax3 = axes[2]
-    server_cpu = [min(100.0, get_node_stat(r, 'server', 'ingest_norm_cpu_pct') or get_node_stat(r, 'server', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
-    edge_cpu = [min(100.0, get_node_stat(r, 'edge', 'ingest_norm_cpu_pct') or get_node_stat(r, 'edge', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
-    iot_cpu = [min(100.0, get_node_stat(r, 'iot', 'ingest_norm_cpu_pct') or get_node_stat(r, 'iot', 'total_norm_cpu_pct', 'normalized_cpu_pct')) for r in macro_results]
-
-    b6 = ax3.bar(x - width, server_cpu, width, label='Server DUT Norm CPU (%)', color='#475569')
-    b7 = ax3.bar(x, edge_cpu, width, label='Edge DUT Norm CPU (%)', color='#059669')
-    b8 = ax3.bar(x + width, iot_cpu, width, label='IoT DUT Norm CPU (%)', color='#b91c1c')
-
+        ax2.annotate(f"{h:.0f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
     for b in b6:
         h = b.get_height()
-        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
-    for b in b7:
-        h = b.get_height()
-        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
-    for b in b8:
-        h = b.get_height()
-        ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h),
-                     xytext=(0, 4), textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
+        ax2.annotate(f"{h:.0f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.5, fontweight='bold')
 
-    max_y3 = max(server_cpu + edge_cpu + iot_cpu) if (server_cpu + edge_cpu + iot_cpu) else 100
-    ax3.set_ylim(0, max(100.0, max_y3 * 1.30))
-    ax3.set_ylabel("Normalized CPU (%) [Hạn mức cgroups - Max 100%]", fontsize=11, fontweight='bold')
-    ax3.set_title("3. Mức Bão Hòa CPU Của DUT Dưới Áp Lực 5 Node (Gossip Storm)", fontsize=11.5, fontweight='bold')
+    max_tps = max(srv_tps + edg_tps + iot_tps) if (srv_tps + edg_tps + iot_tps) else 200
+    ax2.set_ylim(0, max_tps * 1.35)
+    ax2.set_ylabel("Thông lượng nạp Mempool (tx/s)", fontsize=11.5, fontweight='bold')
+    ax2.set_title("2. Thông Lượng Nạp Mempool (Gossip Ingest TPS) & Tải Trọng Khối", fontsize=12.2, fontweight='bold', pad=8)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, fontweight='bold', fontsize=10.0)
+    ax2.tick_params(axis='y', labelsize=10.0)
+    ax2.grid(axis='y', linestyle='--', alpha=0.5)
+
+    # Trục phụ biểu diễn kích thước khối qua dây mạng (Block Wire Size - KB)
+    ax2_twin = ax2.twinx()
+    block_sizes = [r.get('block_wire_kb', 0.0) for r in macro_results]
+    line2 = ax2_twin.plot(x, block_sizes, color='#c2410c', marker='D', linewidth=2.8, markersize=8.0,
+                          markeredgecolor='white', markeredgewidth=1.8, label='Block Wire Size (KB)', zorder=6)
+
+    # Bỏ [JSON+Hex] theo yêu cầu người dùng
+    ax2_twin.set_ylabel("Dung lượng khối qua dây mạng (KB)", fontsize=11.5, fontweight='bold', color='#c2410c')
+    ax2_twin.set_ylim(-30, max(block_sizes) * 1.35)
+    ax2_twin.tick_params(axis='y', labelcolor='#c2410c', labelsize=10.0)
+
+    # Nâng cấp nhãn Block Wire Size thành badge nền trắng viền cam nổi bật, tránh bị che khuất
+    for idx, sz in enumerate(block_sizes):
+        offset_y = 10 if idx > 0 else 14
+        ax2_twin.annotate(f"Khối: {sz:.1f} KB", xy=(x[idx], sz), xytext=(0, offset_y), textcoords="offset points",
+                          ha='center', va='bottom', fontsize=9.5, fontweight='bold', color='#9a3412',
+                          bbox=dict(boxstyle='round,pad=0.28', facecolor='#ffffff', edgecolor='#ea580c', linewidth=1.2, alpha=0.98),
+                          zorder=7)
+
+    handles_2 = [b4, b5, b6, line2[0]]
+    labels_2 = ['Server Ingest TPS', 'Edge Ingest TPS', 'IoT Ingest TPS', 'Block Wire Size (KB)']
+    ax2.legend(handles_2, labels_2, loc='upper right', fontsize=9.5, framealpha=0.9, edgecolor='#ccc')
+
+    # =========================================================================
+    # Panel 3 (Góc dưới trái): Áp Lực Bóp Nghẽn CPU cgroups v2 (CFS Throttled)
+    # =========================================================================
+    ax3 = axes[1, 0]
+    srv_thr = [get_node_stat(r, 'server', 'total_throttled_ms') for r in macro_results]
+    edg_thr = [get_node_stat(r, 'edge', 'total_throttled_ms') for r in macro_results]
+    iot_thr = [get_node_stat(r, 'iot', 'total_throttled_ms') for r in macro_results]
+
+    edg_rat = [get_node_stat(r, 'edge', 'throttling_ratio_pct') for r in macro_results]
+    iot_rat = [get_node_stat(r, 'iot', 'throttling_ratio_pct') for r in macro_results]
+
+    b7 = ax3.bar(x - width, srv_thr, width, label='Server DUT (4.0 vCPU)', color='#475569', edgecolor='#334155')
+    b8 = ax3.bar(x, edg_thr, width, label='Edge DUT (1.0 vCPU)', color='#0d9488', edgecolor='#0f766e')
+    b9 = ax3.bar(x + width, iot_thr, width, label='IoT DUT (0.5 vCPU)', color='#b91c1c', edgecolor='#7f1d1d')
+
+    for idx, b in enumerate(b7):
+        ax3.annotate("0ms", xy=(b.get_x() + b.get_width() / 2, 0), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold', color='#475569')
+    for idx, b in enumerate(b8):
+        h = b.get_height()
+        ax3.annotate(f"{h:.0f}ms\n({edg_rat[idx]:.0f}%)", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold')
+    for idx, b in enumerate(b9):
+        h = b.get_height()
+        ax3.annotate(f"{h:.0f}ms\n({iot_rat[idx]:.0f}%)", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold')
+
+    max_y3 = max(srv_thr + edg_thr + iot_thr) if (srv_thr + edg_thr + iot_thr) else 1000
+    ax3.set_ylim(0, max_y3 * 1.30)
+    ax3.set_ylabel("Thời gian CPU bị bóp nghẽn CFS (ms)", fontsize=11.5, fontweight='bold')
+    ax3.set_title("3. Áp Lực Bóp Nghẽn CPU cgroups v2 Dưới Bão Gossip (CFS Throttled Duration)\n"
+                  "[Nhãn trên cột: Thời gian bị bóp (ms) + (% Chu kỳ quota bị ngắt nhịp)]",
+                  fontsize=12.2, fontweight='bold', pad=8)
     ax3.set_xticks(x)
-    ax3.set_xticklabels(labels, fontweight='bold', fontsize=9.0)
-    ax3.legend(loc='upper right', fontsize=8.5, framealpha=0.9, edgecolor='#ccc')
+    ax3.set_xticklabels(labels, fontweight='bold', fontsize=10.0)
+    ax3.tick_params(axis='y', labelsize=10.0)
+    ax3.legend(loc='upper left', fontsize=9.5, framealpha=0.9, edgecolor='#ccc')
     ax3.grid(axis='y', linestyle='--', alpha=0.5)
 
-    plt.tight_layout(rect=[0, 0.02, 1, 0.95])
+    # =========================================================================
+    # Panel 4 (Góc dưới phải): Đỉnh Bộ Nhớ RAM & Ngưỡng Trần IoT 128MB
+    # =========================================================================
+    ax4 = axes[1, 1]
+    srv_ram = [get_node_stat(r, 'server', 'peak_ram_mb') for r in macro_results]
+    edg_ram = [get_node_stat(r, 'edge', 'peak_ram_mb') for r in macro_results]
+    iot_ram = [get_node_stat(r, 'iot', 'peak_ram_mb') for r in macro_results]
+    iot_ram_util = [get_node_stat(r, 'iot', 'ram_utilization_pct') for r in macro_results]
+
+    b10 = ax4.bar(x - width, srv_ram, width, label='Server DUT (Trần 4096MB)', color='#3b82f6', edgecolor='#1d4ed8')
+    b11 = ax4.bar(x, edg_ram, width, label='Edge DUT (Trần 512MB)', color='#10b981', edgecolor='#047857')
+    b12 = ax4.bar(x + width, iot_ram, width, label='IoT DUT (Trần 128MB)', color='#ef4444', edgecolor='#b91c1c')
+
+    for b in b10:
+        h = b.get_height()
+        ax4.annotate(f"{h:.1f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold')
+    for b in b11:
+        h = b.get_height()
+        ax4.annotate(f"{h:.1f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold')
+    for idx, b in enumerate(b12):
+        h = b.get_height()
+        ax4.annotate(f"{h:.1f}MB\n({iot_ram_util[idx]:.0f}%)", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 4), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=9.0, fontweight='bold', color='#7f1d1d')
+
+    line_limit = ax4.axhline(128.0, color='#991b1b', linestyle='--', linewidth=2.0, label='Hạn mức trần cứng IoT RAM (128 MB)')
+    ax4.set_ylim(0, 155.0)
+    ax4.set_ylabel("Bộ nhớ RAM đỉnh đạt tới (MB)", fontsize=11.5, fontweight='bold')
+    ax4.set_title("4. Đỉnh Bộ Nhớ RAM Chiếm Dụng Trên DUT (Peak RAM vs Ngưỡng 128MB)\n"
+                  "[Đường đỏ: Ngưỡng trần cứng cgroups 128MB của thiết bị IoT]",
+                  fontsize=12.2, fontweight='bold', pad=8)
+    ax4.set_xticks(x)
+    ax4.set_xticklabels(labels, fontweight='bold', fontsize=10.0)
+    ax4.tick_params(axis='y', labelsize=10.0)
+    handles_4 = [b10, b11, b12, line_limit]
+    labels_4 = ['Server (4096MB)', 'Edge (512MB)', 'IoT (128MB)', 'Trần Cứng IoT (128MB)']
+    ax4.legend(handles_4, labels_4, loc='upper left', fontsize=9.5, framealpha=0.9, edgecolor='#ccc')
+    ax4.grid(axis='y', linestyle='--', alpha=0.5)
+
+    plt.tight_layout(rect=[0, 0.02, 1, 0.955])
     plt.savefig(out_path, bbox_inches='tight')
     plt.close()
-    print(f"[+] Da xuat bieu do Macro Benchmark: {out_path}")
+    print(f"[+] Da xuat bieu do Macro Benchmark Dashboard 4-Panel: {out_path}")
 
 
 def save_macro_csv(macro_results: List[dict], out_path: Path):
+    """
+    Xuat bang CSV Macro-Benchmark tinh gon tap trung vao 8 Nhom Chi So Vang:
+    1. Tai trong mang: Tx Wire Bytes, Block Wire Size (KB)
+    2. Hieu nang mat ma don le: Server / Edge / IoT Tx Verify (ms)
+    3. Toan ven dong thuan: Server / Edge / IoT Block Verify (ms), Block Transit (ms), Commit Latency (ms)
+    4. Suc chiu tai bao Gossip: Server / Edge / IoT Ingest (TPS), Ingress BW (KB/s), WS Dups Filtered
+    5. Ap luc bop nghen CPU cgroups v2: Server / Edge / IoT Throttled (ms), Throttling Ratio (%)
+    6. Dinh bo nho RAM & % Tran cung: Server / Edge / IoT Peak RAM (MB), RAM Util (%)
+    7. Trang thai kiem thu: Server / Edge / IoT Status
+    """
+    rows = []
+    rows.append([
+        "Algorithm", "Tx Wire Bytes", "Block Wire Size (KB)",
+        # 1. Hieu nang Mat ma don le
+        "Server Tx Verify (ms)", "Edge Tx Verify (ms)", "IoT Tx Verify (ms)",
+        # 2. Toan ven Dong thuan
+        "Server Block Verify (ms)", "Edge Block Verify (ms)", "IoT Block Verify (ms)",
+        "Server Block Transit (ms)", "Edge Block Transit (ms)", "IoT Block Transit (ms)",
+        "Server Commit Latency (ms)", "Edge Commit Latency (ms)", "IoT Commit Latency (ms)",
+        # 3. Suc chiu tai bao Gossip
+        "Server Ingest (TPS)", "Edge Ingest (TPS)", "IoT Ingest (TPS)",
+        "Server Ingress BW (KB/s)", "Edge Ingress BW (KB/s)", "IoT Ingress BW (KB/s)",
+        "Server WS Dups Filtered", "Edge WS Dups Filtered", "IoT WS Dups Filtered",
+        # 4. Ap luc Bop nghen CPU cgroups v2
+        "Server Throttling Ratio (%)", "Edge Throttling Ratio (%)", "IoT Throttling Ratio (%)",
+        "Server Throttled (ms)", "Edge Throttled (ms)", "IoT Throttled (ms)",
+        # 5. Dinh Bo nho RAM & % Tran cung
+        "Server Peak RAM (MB)", "Edge Peak RAM (MB)", "IoT Peak RAM (MB)",
+        "Server RAM Util (%)", "Edge RAM Util (%)", "IoT RAM Util (%)",
+        # 6. Trang thai Kiem thu
+        "Server Status", "Edge Status", "IoT Status"
+    ])
+    for r in macro_results:
+        srv = r['nodes'].get('server', {})
+        edg = r['nodes'].get('edge', {})
+        iot = r['nodes'].get('iot', {})
+
+        rows.append([
+            r['algorithm_name'], r.get('wire_tx_bytes', 0), r.get('block_wire_kb', 0.0),
+            srv.get('dut_tx_verify_ms', 0.0), edg.get('dut_tx_verify_ms', 0.0), iot.get('dut_tx_verify_ms', 0.0),
+            srv.get('dut_block_verify_ms', 0.0), edg.get('dut_block_verify_ms', 0.0), iot.get('dut_block_verify_ms', 0.0),
+            srv.get('block_transit_ms', 0.0), edg.get('block_transit_ms', 0.0), iot.get('block_transit_ms', 0.0),
+            srv.get('commit_latency_ms', 'NA'), edg.get('commit_latency_ms', 'NA'), iot.get('commit_latency_ms', 'NA'),
+            srv.get('ingest_throughput_tps', 0.0), edg.get('ingest_throughput_tps', 0.0), iot.get('ingest_throughput_tps', 0.0),
+            srv.get('ingress_bandwidth_kbps', 0.0), edg.get('ingress_bandwidth_kbps', 0.0), iot.get('ingress_bandwidth_kbps', 0.0),
+            srv.get('ws_dups_filtered', 0), edg.get('ws_dups_filtered', 0), iot.get('ws_dups_filtered', 0),
+            srv.get('throttling_ratio_pct', 0.0), edg.get('throttling_ratio_pct', 0.0), iot.get('throttling_ratio_pct', 0.0),
+            srv.get('total_throttled_ms', 0.0), edg.get('total_throttled_ms', 0.0), iot.get('total_throttled_ms', 0.0),
+            srv.get('peak_ram_mb', 0.0), edg.get('peak_ram_mb', 0.0), iot.get('peak_ram_mb', 0.0),
+            srv.get('ram_utilization_pct', 0.0), edg.get('ram_utilization_pct', 0.0), iot.get('ram_utilization_pct', 0.0),
+            srv.get('status', 'UNKNOWN'), edg.get('status', 'UNKNOWN'), iot.get('status', 'UNKNOWN')
+        ])
+
+    transposed = list(zip(*rows))
     with open(out_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "Algorithm", "Batch Size", "Tx Wire Bytes", "100 Txs Wire (KB)", "Block Wire Size (KB)",
-            # 1. Hieu nang Mat ma
-            "Server Tx Verify (ms)", "Edge Tx Verify (ms)", "IoT Tx Verify (ms)",
-            "Server Verify Capacity (TPS)", "Edge Verify Capacity (TPS)", "IoT Verify Capacity (TPS)",
-            "Server TLS Handshake (ms)", "Edge TLS Handshake (ms)", "IoT TLS Handshake (ms)",
-            # 2. Toan ven Dong thuan
-            "Server Block Verify (ms)", "Edge Block Verify (ms)", "IoT Block Verify (ms)",
-            "Server Commit Latency (ms)", "Edge Commit Latency (ms)", "IoT Commit Latency (ms)",
-            # 3. Tinh San sang & DoS
-            "Server Ingest (TPS)", "Edge Ingest (TPS)", "IoT Ingest (TPS)",
-            "Server Ingest Norm CPU (%)", "Edge Ingest Norm CPU (%)", "IoT Ingest Norm CPU (%)",
-            "Server Active Norm CPU (%)", "Edge Active Norm CPU (%)", "IoT Active Norm CPU (%)",
-            "Server Total Norm CPU (%)", "Edge Total Norm CPU (%)", "IoT Total Norm CPU (%)",
-            "Server Throttling Ratio (%)", "Edge Throttling Ratio (%)", "IoT Throttling Ratio (%)",
-            "Server Throttled (ms)", "Edge Throttled (ms)", "IoT Throttled (ms)",
-            "Server Peak RAM (MB)", "Edge Peak RAM (MB)", "IoT Peak RAM (MB)",
-            "Server Delta Anon RAM (MB)", "Edge Delta Anon RAM (MB)", "IoT Delta Anon RAM (MB)",
-            # 4. On dinh Mang P2P
-            "Server Ingress BW (KB/s)", "Edge Ingress BW (KB/s)", "IoT Ingress BW (KB/s)",
-            "Server WS Dups Filtered", "Edge WS Dups Filtered", "IoT WS Dups Filtered",
-            "Server Status", "Edge Status", "IoT Status"
-        ])
-        for r in macro_results:
-            srv = r['nodes'].get('server', {})
-            edg = r['nodes'].get('edge', {})
-            iot = r['nodes'].get('iot', {})
-
-            writer.writerow([
-                r['algorithm_name'], r['batch_size'], r.get('wire_tx_bytes', 0), r.get('total_wire_txs_kb', 0.0), r.get('block_wire_kb', 0.0),
-                srv.get('dut_tx_verify_ms', 0.0), edg.get('dut_tx_verify_ms', 0.0), iot.get('dut_tx_verify_ms', 0.0),
-                srv.get('dut_verify_capacity_tps', 0.0), edg.get('dut_verify_capacity_tps', 0.0), iot.get('dut_verify_capacity_tps', 0.0),
-                srv.get('avg_tls_handshake_ms', 0.0), edg.get('avg_tls_handshake_ms', 0.0), iot.get('avg_tls_handshake_ms', 0.0),
-                srv.get('dut_block_verify_ms', 0.0), edg.get('dut_block_verify_ms', 0.0), iot.get('dut_block_verify_ms', 0.0),
-                srv.get('commit_latency_ms', 'NA'), edg.get('commit_latency_ms', 'NA'), iot.get('commit_latency_ms', 'NA'),
-                srv.get('ingest_throughput_tps', 0.0), edg.get('ingest_throughput_tps', 0.0), iot.get('ingest_throughput_tps', 0.0),
-                srv.get('ingest_norm_cpu_pct', srv.get('total_norm_cpu_pct', 0.0)), edg.get('ingest_norm_cpu_pct', edg.get('total_norm_cpu_pct', 0.0)), iot.get('ingest_norm_cpu_pct', iot.get('total_norm_cpu_pct', 0.0)),
-                srv.get('active_norm_cpu_pct', srv.get('total_norm_cpu_pct', 0.0)), edg.get('active_norm_cpu_pct', edg.get('total_norm_cpu_pct', 0.0)), iot.get('active_norm_cpu_pct', iot.get('total_norm_cpu_pct', 0.0)),
-                srv.get('total_norm_cpu_pct', 0.0), edg.get('total_norm_cpu_pct', 0.0), iot.get('total_norm_cpu_pct', 0.0),
-                srv.get('throttling_ratio_pct', 0.0), edg.get('throttling_ratio_pct', 0.0), iot.get('throttling_ratio_pct', 0.0),
-                srv.get('total_throttled_ms', 0.0), edg.get('total_throttled_ms', 0.0), iot.get('total_throttled_ms', 0.0),
-                srv.get('peak_ram_mb', 0.0), edg.get('peak_ram_mb', 0.0), iot.get('peak_ram_mb', 0.0),
-                srv.get('delta_anon_mb', 0.0), edg.get('delta_anon_mb', 0.0), iot.get('delta_anon_mb', 0.0),
-                srv.get('ingress_bandwidth_kbps', 0.0), edg.get('ingress_bandwidth_kbps', 0.0), iot.get('ingress_bandwidth_kbps', 0.0),
-                srv.get('ws_dups_filtered', 0), edg.get('ws_dups_filtered', 0), iot.get('ws_dups_filtered', 0),
-                srv.get('status', 'UNKNOWN'), edg.get('status', 'UNKNOWN'), iot.get('status', 'UNKNOWN')
-            ])
-    print(f"[+] Da xuat bang CSV Macro-Benchmark: {out_path}")
+        writer.writerows(transposed)
+    print(f"[+] Da xuat bang CSV Macro-Benchmark tinh gon: {out_path}")
 
 
 def main():
@@ -839,7 +940,10 @@ def main():
     if args.plot_only:
         p = RESULTS_DIR / "perf01_macro_results.json"
         if p.exists():
-            plot_macro_chart(json.load(open(p, encoding='utf-8')), RESULTS_DIR / "perf01_macro_chart.png")
+            with open(p, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            plot_macro_chart(data, RESULTS_DIR / "perf01_macro_chart.png")
+            save_macro_csv(data, RESULTS_DIR / "perf01_macro_matrix.csv")
             return
 
     print("=" * 80)
@@ -857,10 +961,14 @@ def main():
         print("[!] Thieu dataset. Chay perf/generate_perf01_txs.py truoc.")
         return
 
-    ecdsa_txs = json.load(open(ecdsa_file, 'r', encoding='utf-8'))
-    mldsa44_txs = json.load(open(mldsa44_file, 'r', encoding='utf-8'))
-    mldsa65_txs = json.load(open(mldsa65_file, 'r', encoding='utf-8'))
-    mldsa87_txs = json.load(open(mldsa87_file, 'r', encoding='utf-8'))
+    with open(ecdsa_file, 'r', encoding='utf-8') as f:
+        ecdsa_txs = json.load(f)
+    with open(mldsa44_file, 'r', encoding='utf-8') as f:
+        mldsa44_txs = json.load(f)
+    with open(mldsa65_file, 'r', encoding='utf-8') as f:
+        mldsa65_txs = json.load(f)
+    with open(mldsa87_file, 'r', encoding='utf-8') as f:
+        mldsa87_txs = json.load(f)
 
     batch_size = args.batch_size
     macro_results = []

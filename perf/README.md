@@ -1,6 +1,6 @@
 # Module PERF-01: DevOps, Docker & Hardware Benchmark
 
-Thư mục này chứa toàn bộ cấu hình **Docker**, bộ dữ liệu tải thực nghiệm, mã nguồn đo lường giới hạn tài nguyên phần cứng (**PERF-01 Stress Test & Macro-Benchmark**) và báo cáo kỹ thuật chuyên sâu.
+Thư mục này chứa toàn bộ cấu hình **Docker**, bộ dữ liệu tải thực nghiệm, mã nguồn đo lường giới hạn tài nguyên phần cứng (**PERF-01 Stress Test & Macro-Benchmark**) và tài liệu hướng dẫn kỹ thuật chuyên sâu.
 
 ---
 
@@ -12,10 +12,8 @@ perf/
 ├── docker-compose.yml          # Định nghĩa 3 profile phần cứng: Server, Edge, IoT
 ├── generate_perf01_txs.py      # Sinh dữ liệu tải 500 txs (chuẩn) & 2,000 txs (cực hạn)
 ├── perf01_stress_test.py       # Engine kiểm thử vi mô ma trận 3x4 & Extreme OOM Hunt (60MB RAM)
-├── perf01_macro_stress.py      # Engine kiểm thử vĩ mô mạng P2P 3 node phân cấp (Server -> Edge -> IoT)
+├── perf01_macro_stress.py      # Engine kiểm thử vĩ mô mạng P2P Single DUT Mesh (1 DUT + 5 Background Nodes)
 ├── note.md                     # Cẩm nang hỏi - đáp chuyên sâu và bảo vệ đồ án
-├── PERF01_BENCHMARK_REPORT.md  # Báo cáo kỹ thuật chi tiết theo chuẩn học thuật
-├── PERF_FILES_EXPLANATION.md   # Hướng dẫn chi tiết từng file dữ liệu, bảng số liệu và biểu đồ (JSON/CSV/PNG)
 ├── data/                       # Chứa các bộ dataset giao dịch chuẩn hóa (.json)
 │   ├── txs_500_ecdsa.json
 │   ├── txs_500_mldsa44.json
@@ -37,7 +35,6 @@ perf/
 ```
 
 > 📄 **Bản báo cáo trực tuyến trên Google Docs:** [Báo Cáo Kỹ Thuật PERF-01 (Google Docs)](https://docs.google.com/document/d/11TLElp3ceeBPXwJGntcr8gvw5fgNlUeG/edit#heading=h.m3dzhewaqa7b)  
-> 📋 **Bản xuất Markdown sẵn sàng dán vào Google Docs:** [`perf/PERF01_GOOGLE_DOCS_EXPORT.md`](file:///c:/Feixiao/Code/btl/Blockchain-CSATT/perf/PERF01_GOOGLE_DOCS_EXPORT.md)  
 
 ---
 
@@ -65,11 +62,21 @@ python perf/perf01_stress_test.py
 ```
 *Script sẽ tự động khởi động các container theo từng profile phần cứng (Server / Edge / IoT), bắn tải 500 giao dịch (ECDSA / ML-DSA-44 / ML-DSA-65 / ML-DSA-87), giám sát RAM / CPU qua cgroups v2 và kích hoạt Extreme OOM Hunt (60MB RAM).*
 
-### Bước 4: Chạy Kịch Bản Macro-Benchmark P2P 3 Nodes
+Để chỉ xuất lại biểu đồ và bảng CSV từ kết quả đã có mà không cần chạy lại container:
+```powershell
+python perf/perf01_stress_test.py --plot-only
+```
+
+### Bước 4: Chạy Kịch Bản Macro-Benchmark P2P 6 Nodes (1 DUT + 5 Background Nodes)
 ```powershell
 python perf/perf01_macro_stress.py
 ```
-*Script sẽ khởi chạy cụm 3 node mạng phân cấp Server (4 vCPU/4GB) -> Edge (1 vCPU/512MB) -> IoT (0.5 vCPU/128MB), đo độ trễ lan truyền khối, wire payload và bão hòa CPU.*
+*Script sẽ khởi chạy cụm 6 node mạng Mesh qua WebSocket TLS 1.3 (1 DUT phân cấp Server/Edge/IoT + 5 Background Nodes), đo độ trễ lan truyền khối, lọc trùng bão gossip, wire payload và bão hòa CPU.*
+
+Để chỉ vẽ lại biểu đồ Macro và xuất bảng CSV từ kết quả có sẵn:
+```powershell
+python perf/perf01_macro_stress.py --plot-only
+```
 
 ### Bước 5: Chạy Độc Lập 1 Profile Cụ Thể (Tùy Chọn)
 Nếu muốn tự tay bật 1 node với cấu hình bị ép để tương tác:

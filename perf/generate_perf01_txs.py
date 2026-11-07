@@ -8,11 +8,8 @@ Sinh san tap du lieu giao dich da ky hop le:
 Toi uu: Chi sinh dung so luong can chay theo yeu cau, dung chung khoa de dam bao so du hop le.
 """
 
-import binascii
 import json
-import os
 import sys
-import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -28,26 +25,27 @@ try:
 except ImportError:
     OQS_AVAILABLE = False
 
+RECIPIENT_HEX = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
+
 
 def generate_ecdsa_transactions(n: int = 2000) -> list:
     print(f"[*] Dang sinh {n} giao dich ECDSA (secp256k1)...")
     sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
     vk = sk.verifying_key
     pub_hex = vk.to_string().hex()
-    recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
 
     txs = []
     for i in range(1, n + 1):
         tx_dict = OrderedDict([
             ('sender_address', pub_hex),
-            ('recipient_address', recipient_hex),
+            ('recipient_address', RECIPIENT_HEX),
             ('value', "1.0"),
             ('nonce', str(i))
         ])
         sig = sk.sign(str(tx_dict).encode('utf-8'))
         txs.append({
             'sender_address': pub_hex,
-            'recipient_address': recipient_hex,
+            'recipient_address': RECIPIENT_HEX,
             'amount': "1.0",
             'nonce': i,
             'signature': sig.hex(),
@@ -57,94 +55,45 @@ def generate_ecdsa_transactions(n: int = 2000) -> list:
     return txs
 
 
-def generate_mldsa44_transactions(n: int = 2000) -> list:
+def _generate_mldsa_by_level(alg_name: str, label: str, n: int = 2000) -> list:
     if not OQS_AVAILABLE:
-        print("[!] Can chay qua Docker de co thu vien liboqs sinh ML-DSA-44")
+        print(f"[!] Can chay qua Docker de co thu vien liboqs sinh {alg_name}")
         return []
-    print(f"[*] Dang sinh {n} giao dich Hau luong tu ML-DSA-44 (NIST FIPS 204 Level 2)...")
-    recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
+    print(f"[*] Dang sinh {n} giao dich Hau luong tu {alg_name} ({label})...")
 
     txs = []
-    with oqs.Signature('ML-DSA-44') as signer:
+    with oqs.Signature(alg_name) as signer:
         pub_bytes = signer.generate_keypair()
         pub_hex = pub_bytes.hex()
         for i in range(1, n + 1):
             tx_dict = OrderedDict([
                 ('sender_address', pub_hex),
-                ('recipient_address', recipient_hex),
+                ('recipient_address', RECIPIENT_HEX),
                 ('value', "1.0")
             ])
             sig_bytes = signer.sign(str(tx_dict).encode('utf-8'))
             txs.append({
                 'sender_address': pub_hex,
-                'recipient_address': recipient_hex,
+                'recipient_address': RECIPIENT_HEX,
                 'amount': "1.0",
                 'nonce': i,
                 'signature': sig_bytes.hex(),
-                'algorithm': 'ML-DSA-44'
+                'algorithm': alg_name
             })
-    print(f"    -> Da sinh xong {len(txs)} txs ML-DSA-44. Size: PK={len(pub_hex)//2}B, Sig={len(txs[0]['signature'])//2}B (Total Payload: {(len(pub_hex)+len(txs[0]['signature']))//2}B/tx)")
+    print(f"    -> Da sinh xong {len(txs)} txs {alg_name}. Size: PK={len(pub_hex)//2}B, Sig={len(txs[0]['signature'])//2}B (Total Payload: {(len(pub_hex)+len(txs[0]['signature']))//2}B/tx)")
     return txs
+
+
+def generate_mldsa44_transactions(n: int = 2000) -> list:
+    return _generate_mldsa_by_level('ML-DSA-44', 'NIST FIPS 204 Level 2', n)
 
 
 def generate_mldsa65_transactions(n: int = 2000) -> list:
-    if not OQS_AVAILABLE:
-        print("[!] Can chay qua Docker de co thu vien liboqs sinh ML-DSA-65")
-        return []
-    print(f"[*] Dang sinh {n} giao dich Hau luong tu ML-DSA-65 (NIST FIPS 204 Level 3 - Sweet Spot)...")
-    recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
-
-    txs = []
-    with oqs.Signature('ML-DSA-65') as signer:
-        pub_bytes = signer.generate_keypair()
-        pub_hex = pub_bytes.hex()
-        for i in range(1, n + 1):
-            tx_dict = OrderedDict([
-                ('sender_address', pub_hex),
-                ('recipient_address', recipient_hex),
-                ('value', "1.0")
-            ])
-            sig_bytes = signer.sign(str(tx_dict).encode('utf-8'))
-            txs.append({
-                'sender_address': pub_hex,
-                'recipient_address': recipient_hex,
-                'amount': "1.0",
-                'nonce': i,
-                'signature': sig_bytes.hex(),
-                'algorithm': 'ML-DSA-65'
-            })
-    print(f"    -> Da sinh xong {len(txs)} txs ML-DSA-65. Size: PK={len(pub_hex)//2}B, Sig={len(txs[0]['signature'])//2}B (Total Payload: {(len(pub_hex)+len(txs[0]['signature']))//2}B/tx)")
-    return txs
+    return _generate_mldsa_by_level('ML-DSA-65', 'NIST FIPS 204 Level 3 - Sweet Spot', n)
 
 
 def generate_mldsa87_transactions(n: int = 2000) -> list:
-    if not OQS_AVAILABLE:
-        print("[!] Can chay qua Docker de co thu vien liboqs sinh ML-DSA-87")
-        return []
-    print(f"[*] Dang sinh {n} giao dich Hau luong tu ML-DSA-87 (NIST FIPS 204 Level 5)...")
-    recipient_hex = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"
-
-    txs = []
-    with oqs.Signature('ML-DSA-87') as signer:
-        pub_bytes = signer.generate_keypair()
-        pub_hex = pub_bytes.hex()
-        for i in range(1, n + 1):
-            tx_dict = OrderedDict([
-                ('sender_address', pub_hex),
-                ('recipient_address', recipient_hex),
-                ('value', "1.0")
-            ])
-            sig_bytes = signer.sign(str(tx_dict).encode('utf-8'))
-            txs.append({
-                'sender_address': pub_hex,
-                'recipient_address': recipient_hex,
-                'amount': "1.0",
-                'nonce': i,
-                'signature': sig_bytes.hex(),
-                'algorithm': 'ML-DSA-87'
-            })
-    print(f"    -> Da sinh xong {len(txs)} txs ML-DSA-87. Size: PK={len(pub_hex)//2}B, Sig={len(txs[0]['signature'])//2}B (Total Payload: {(len(pub_hex)+len(txs[0]['signature']))//2}B/tx)")
-    return txs
+    return _generate_mldsa_by_level('ML-DSA-87', 'NIST FIPS 204 Level 5', n)
 
 
 def main():
