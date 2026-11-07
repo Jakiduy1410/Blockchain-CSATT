@@ -894,6 +894,7 @@ def save_macro_csv(macro_results: List[dict], out_path: Path):
         "Server Ingress BW (KB/s)", "Edge Ingress BW (KB/s)", "IoT Ingress BW (KB/s)",
         "Server WS Dups Filtered", "Edge WS Dups Filtered", "IoT WS Dups Filtered",
         # 4. Ap luc Bop nghen CPU cgroups v2
+        "Server Active Norm CPU (%)", "Edge Active Norm CPU (%)", "IoT Active Norm CPU (%)",
         "Server Throttling Ratio (%)", "Edge Throttling Ratio (%)", "IoT Throttling Ratio (%)",
         "Server Throttled (ms)", "Edge Throttled (ms)", "IoT Throttled (ms)",
         # 5. Dinh Bo nho RAM & % Tran cung
@@ -916,6 +917,7 @@ def save_macro_csv(macro_results: List[dict], out_path: Path):
             srv.get('ingest_throughput_tps', 0.0), edg.get('ingest_throughput_tps', 0.0), iot.get('ingest_throughput_tps', 0.0),
             srv.get('ingress_bandwidth_kbps', 0.0), edg.get('ingress_bandwidth_kbps', 0.0), iot.get('ingress_bandwidth_kbps', 0.0),
             srv.get('ws_dups_filtered', 0), edg.get('ws_dups_filtered', 0), iot.get('ws_dups_filtered', 0),
+            srv.get('active_norm_cpu_pct', srv.get('total_norm_cpu_pct', 0.0)), edg.get('active_norm_cpu_pct', edg.get('total_norm_cpu_pct', 0.0)), iot.get('active_norm_cpu_pct', iot.get('total_norm_cpu_pct', 0.0)),
             srv.get('throttling_ratio_pct', 0.0), edg.get('throttling_ratio_pct', 0.0), iot.get('throttling_ratio_pct', 0.0),
             srv.get('total_throttled_ms', 0.0), edg.get('total_throttled_ms', 0.0), iot.get('total_throttled_ms', 0.0),
             srv.get('peak_ram_mb', 0.0), edg.get('peak_ram_mb', 0.0), iot.get('peak_ram_mb', 0.0),

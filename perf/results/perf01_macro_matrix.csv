@@ -22,6 +22,9 @@ IoT Ingress BW (KB/s),351.54,4294.99,5869.79,5600.29
 Server WS Dups Filtered,800,600,800,900
 Edge WS Dups Filtered,800,800,800,800
 IoT WS Dups Filtered,600,800,900,881
+Server Active Norm CPU (%),28.64,30.41,40.89,41.8
+Edge Active Norm CPU (%),100.0,100.0,100.0,100.0
+IoT Active Norm CPU (%),100.0,100.0,100.0,100.0
 Server Throttling Ratio (%),0.0,0.0,0.0,0.0
 Edge Throttling Ratio (%),46.15,57.14,56.25,58.82
 IoT Throttling Ratio (%),68.75,73.91,76.0,79.41
