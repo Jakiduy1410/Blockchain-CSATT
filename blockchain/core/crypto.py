@@ -39,6 +39,14 @@ except (ImportError, Exception):
     oqs = None
 
 try:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+    from cryptography.exceptions import InvalidSignature
+except (ImportError, Exception):
+    ec = None
+
+try:
     from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
 except (ImportError, Exception):
     VerifyingKey = None
@@ -85,34 +93,72 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
 
 
 def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
-    """Xác thực chữ ký số ECDSA (đường cong secp256k1)."""
-    if VerifyingKey is None:
+    """
+    Xác thực chữ ký số ECDSA (đường cong secp256k1) sử dụng C-backend (OpenSSL qua cryptography).
+    Tối ưu hóa hiệu năng native C, đảm bảo so sánh ngang hàng công bằng với PQC (liboqs C-core).
+    """
+    if not sender_public_key_hex or not signature_hex:
         return False
-    try:
-        if not sender_public_key_hex or not signature_hex:
+
+    ordered_tx = OrderedDict([
+        ('sender_address', str(transaction_dict.get('sender_address', ''))),
+        ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
+        ('value', str(transaction_dict.get('value', '')))
+    ])
+    if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
+        ordered_tx['nonce'] = str(transaction_dict['nonce'])
+
+    tx_bytes = str(ordered_tx).encode('utf-8')
+
+    # 1. Thẩm định qua OpenSSL C-Engine (cryptography)
+    if ec is not None:
+        try:
+            public_key_bytes = bytes.fromhex(sender_public_key_hex)
+            signature_bytes = bytes.fromhex(signature_hex)
+
+            # Đọc Public Key: hỗ trợ raw uncompressed 64B (x||y), compressed 33B, hoặc 65B (0x04)
+            if len(public_key_bytes) == 64:
+                pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
+            elif len(public_key_bytes) in (33, 65):
+                pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
+            else:
+                pk = serialization.load_der_public_key(public_key_bytes)
+
+            # Chuyển raw r||s 64B sang DER nếu cần
+            if len(signature_bytes) == 64:
+                r = int.from_bytes(signature_bytes[:32], 'big')
+                s = int.from_bytes(signature_bytes[32:], 'big')
+                der_sig = encode_dss_signature(r, s)
+            else:
+                der_sig = signature_bytes
+
+            try:
+                pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA256()))
+                return True
+            except InvalidSignature:
+                try:
+                    pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA1()))
+                    return True
+                except InvalidSignature:
+                    return False
+        except Exception:
+            pass
+
+    # 2. Fallback sang pure-python ecdsa nếu gặp format ngoại lệ
+    if VerifyingKey is not None:
+        try:
+            public_key_bytes = bytes.fromhex(sender_public_key_hex)
+            signature_bytes = bytes.fromhex(signature_hex)
+            vk = VerifyingKey.from_string(public_key_bytes, curve=SECP256k1)
+            try:
+                return vk.verify(signature_bytes, tx_bytes)
+            except Exception:
+                import ecdsa.util
+                return vk.verify(signature_bytes, tx_bytes, sigdecode=ecdsa.util.sigdecode_der)
+        except Exception:
             return False
 
-        public_key_bytes = bytes.fromhex(sender_public_key_hex)
-        signature_bytes = bytes.fromhex(signature_hex)
-        vk = VerifyingKey.from_string(public_key_bytes, curve=SECP256k1)
-
-        ordered_tx = OrderedDict([
-            ('sender_address', str(transaction_dict.get('sender_address', ''))),
-            ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
-            ('value', str(transaction_dict.get('value', '')))
-        ])
-        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
-            ordered_tx['nonce'] = str(transaction_dict['nonce'])
-
-        tx_bytes = str(ordered_tx).encode('utf-8')
-        try:
-            return vk.verify(signature_bytes, tx_bytes)
-        except Exception:
-            # Fallback thu verify voi DER format
-            import ecdsa.util
-            return vk.verify(signature_bytes, tx_bytes, sigdecode=ecdsa.util.sigdecode_der)
-    except Exception:
-        return False
+    return False
 
 
 def verify_rsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:

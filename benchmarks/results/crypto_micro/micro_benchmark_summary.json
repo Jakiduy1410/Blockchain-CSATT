@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-03 15:19:20",
+  "timestamp": "2026-11-08 00:10:44",
   "iterations": 100,
   "warmup_cycles": 20,
   "signatures": [
@@ -8,25 +8,25 @@
       "type": "signature",
       "security_level": "Classical 128-bit",
       "keygen_ms": {
-        "mean": 0.7711,
-        "median": 0.693,
-        "std": 0.2982,
-        "ci_95_low": 0.7219,
-        "ci_95_high": 0.8376
+        "mean": 0.345,
+        "median": 0.3079,
+        "std": 0.0947,
+        "ci_95_low": 0.3273,
+        "ci_95_high": 0.3646
       },
       "sign_ms": {
-        "mean": 0.879,
-        "median": 0.7449,
-        "std": 0.3421,
-        "ci_95_low": 0.8167,
-        "ci_95_high": 0.9491
+        "mean": 0.3551,
+        "median": 0.3109,
+        "std": 0.1119,
+        "ci_95_low": 0.3359,
+        "ci_95_high": 0.3787
       },
       "verify_ms": {
-        "mean": 0.7102,
-        "median": 0.6405,
-        "std": 0.2131,
-        "ci_95_low": 0.6733,
-        "ci_95_high": 0.756
+        "mean": 0.3299,
+        "median": 0.2868,
+        "std": 0.1239,
+        "ci_95_low": 0.3077,
+        "ci_95_high": 0.3571
       },
       "pk_bytes": {
         "mean": 33.0,
@@ -48,25 +48,25 @@
       "type": "signature",
       "security_level": "NIST Category 2 (AES-128 / SHA-256 equivalent)",
       "keygen_ms": {
-        "mean": 0.2866,
-        "median": 0.221,
-        "std": 0.1727,
-        "ci_95_low": 0.2551,
-        "ci_95_high": 0.323
+        "mean": 0.0941,
+        "median": 0.0931,
+        "std": 0.0054,
+        "ci_95_low": 0.0932,
+        "ci_95_high": 0.0953
       },
       "sign_ms": {
-        "mean": 0.6204,
-        "median": 0.5217,
-        "std": 0.3341,
-        "ci_95_low": 0.5612,
-        "ci_95_high": 0.6893
+        "mean": 0.1901,
+        "median": 0.1636,
+        "std": 0.0791,
+        "ci_95_low": 0.1753,
+        "ci_95_high": 0.2064
       },
       "verify_ms": {
-        "mean": 0.1377,
-        "median": 0.1165,
-        "std": 0.0508,
-        "ci_95_low": 0.1283,
-        "ci_95_high": 0.1481
+        "mean": 0.0499,
+        "median": 0.0497,
+        "std": 0.0006,
+        "ci_95_low": 0.0498,
+        "ci_95_high": 0.05
       },
       "pk_bytes": {
         "mean": 1312.0,
@@ -88,25 +88,25 @@
       "type": "signature",
       "security_level": "NIST Category 3 (AES-192 equivalent)",
       "keygen_ms": {
-        "mean": 0.3711,
-        "median": 0.3065,
-        "std": 0.1517,
-        "ci_95_low": 0.3435,
-        "ci_95_high": 0.4016
+        "mean": 0.1453,
+        "median": 0.1352,
+        "std": 0.0375,
+        "ci_95_low": 0.1388,
+        "ci_95_high": 0.154
       },
       "sign_ms": {
-        "mean": 0.8099,
-        "median": 0.6742,
-        "std": 0.4187,
-        "ci_95_low": 0.7344,
-        "ci_95_high": 0.8981
+        "mean": 0.2983,
+        "median": 0.2575,
+        "std": 0.1297,
+        "ci_95_low": 0.2742,
+        "ci_95_high": 0.3247
       },
       "verify_ms": {
-        "mean": 0.2136,
-        "median": 0.1835,
-        "std": 0.0856,
-        "ci_95_low": 0.1989,
-        "ci_95_high": 0.2328
+        "mean": 0.0815,
+        "median": 0.0782,
+        "std": 0.026,
+        "ci_95_low": 0.0784,
+        "ci_95_high": 0.0871
       },
       "pk_bytes": {
         "mean": 1952.0,
@@ -128,25 +128,25 @@
       "type": "signature",
       "security_level": "NIST Category 5 (AES-256 equivalent)",
       "keygen_ms": {
-        "mean": 0.4681,
-        "median": 0.4042,
-        "std": 0.2243,
-        "ci_95_low": 0.4301,
-        "ci_95_high": 0.5159
+        "mean": 0.1762,
+        "median": 0.1705,
+        "std": 0.0126,
+        "ci_95_low": 0.1738,
+        "ci_95_high": 0.1787
       },
       "sign_ms": {
-        "mean": 1.0953,
-        "median": 0.8505,
-        "std": 0.7981,
-        "ci_95_low": 0.958,
-        "ci_95_high": 1.2588
+        "mean": 0.361,
+        "median": 0.3085,
+        "std": 0.1993,
+        "ci_95_low": 0.3268,
+        "ci_95_high": 0.403
       },
       "verify_ms": {
-        "mean": 0.3209,
-        "median": 0.2965,
-        "std": 0.0739,
-        "ci_95_low": 0.3075,
-        "ci_95_high": 0.3361
+        "mean": 0.1315,
+        "median": 0.1254,
+        "std": 0.026,
+        "ci_95_low": 0.1276,
+        "ci_95_high": 0.1374
       },
       "pk_bytes": {
         "mean": 2592.0,
@@ -170,25 +170,25 @@
       "type": "kem",
       "security_level": "Classical 128-bit (RFC 7748)",
       "keygen_ms": {
-        "mean": 0.0776,
-        "median": 0.0562,
-        "std": 0.0663,
-        "ci_95_low": 0.0666,
-        "ci_95_high": 0.0918
+        "mean": 0.0281,
+        "median": 0.0274,
+        "std": 0.0037,
+        "ci_95_low": 0.0275,
+        "ci_95_high": 0.0289
       },
       "encap_ms": {
-        "mean": 0.1477,
-        "median": 0.1032,
-        "std": 0.1309,
-        "ci_95_low": 0.1252,
-        "ci_95_high": 0.1771
+        "mean": 0.0525,
+        "median": 0.052,
+        "std": 0.0031,
+        "ci_95_low": 0.0521,
+        "ci_95_high": 0.0533
       },
       "decap_ms": {
-        "mean": 0.0618,
-        "median": 0.0468,
-        "std": 0.0521,
-        "ci_95_low": 0.0536,
-        "ci_95_high": 0.0731
+        "mean": 0.0252,
+        "median": 0.0248,
+        "std": 0.003,
+        "ci_95_low": 0.0248,
+        "ci_95_high": 0.0258
       },
       "pk_bytes": {
         "mean": 32.0,
@@ -217,25 +217,25 @@
       "type": "kem",
       "security_level": "NIST Category 1 (AES-128 equivalent)",
       "keygen_ms": {
-        "mean": 0.1699,
-        "median": 0.1418,
-        "std": 0.0909,
-        "ci_95_low": 0.1551,
-        "ci_95_high": 0.1883
+        "mean": 0.064,
+        "median": 0.0615,
+        "std": 0.0079,
+        "ci_95_low": 0.0626,
+        "ci_95_high": 0.0658
       },
       "encap_ms": {
-        "mean": 0.1788,
-        "median": 0.1487,
-        "std": 0.1166,
-        "ci_95_low": 0.1601,
-        "ci_95_high": 0.2051
+        "mean": 0.067,
+        "median": 0.0649,
+        "std": 0.0093,
+        "ci_95_low": 0.0655,
+        "ci_95_high": 0.069
       },
       "decap_ms": {
-        "mean": 0.0564,
-        "median": 0.0482,
-        "std": 0.0259,
-        "ci_95_low": 0.0522,
-        "ci_95_high": 0.0623
+        "mean": 0.022,
+        "median": 0.0215,
+        "std": 0.0025,
+        "ci_95_low": 0.0216,
+        "ci_95_high": 0.0226
       },
       "pk_bytes": {
         "mean": 800.0,
@@ -264,25 +264,25 @@
       "type": "kem",
       "security_level": "NIST Category 3 (AES-192 equivalent)",
       "keygen_ms": {
-        "mean": 0.1977,
-        "median": 0.1649,
-        "std": 0.1261,
-        "ci_95_low": 0.1769,
-        "ci_95_high": 0.2265
+        "mean": 0.0769,
+        "median": 0.0713,
+        "std": 0.0229,
+        "ci_95_low": 0.0729,
+        "ci_95_high": 0.0819
       },
       "encap_ms": {
-        "mean": 0.2015,
-        "median": 0.1713,
-        "std": 0.0994,
-        "ci_95_low": 0.184,
-        "ci_95_high": 0.2223
+        "mean": 0.0809,
+        "median": 0.0745,
+        "std": 0.0347,
+        "ci_95_low": 0.0755,
+        "ci_95_high": 0.0883
       },
       "decap_ms": {
-        "mean": 0.0844,
-        "median": 0.0702,
-        "std": 0.0576,
-        "ci_95_low": 0.0751,
-        "ci_95_high": 0.0975
+        "mean": 0.0324,
+        "median": 0.0311,
+        "std": 0.0057,
+        "ci_95_low": 0.0314,
+        "ci_95_high": 0.0336
       },
       "pk_bytes": {
         "mean": 1184.0,
@@ -311,25 +311,25 @@
       "type": "kem",
       "security_level": "Hybrid Dual-Defense (RFC 7748 + FIPS 203 Level 3)",
       "keygen_ms": {
-        "mean": 0.2793,
-        "median": 0.2411,
-        "std": 0.1295,
-        "ci_95_low": 0.2574,
-        "ci_95_high": 0.306
+        "mean": 0.11,
+        "median": 0.1015,
+        "std": 0.0368,
+        "ci_95_low": 0.1038,
+        "ci_95_high": 0.1176
       },
       "encap_ms": {
-        "mean": 0.3519,
-        "median": 0.3054,
-        "std": 0.1364,
-        "ci_95_low": 0.3291,
-        "ci_95_high": 0.3804
+        "mean": 0.1351,
+        "median": 0.1314,
+        "std": 0.0114,
+        "ci_95_low": 0.1331,
+        "ci_95_high": 0.1375
       },
       "decap_ms": {
-        "mean": 0.1521,
-        "median": 0.1324,
-        "std": 0.0555,
-        "ci_95_low": 0.1424,
-        "ci_95_high": 0.164
+        "mean": 0.0619,
+        "median": 0.0589,
+        "std": 0.0141,
+        "ci_95_low": 0.0596,
+        "ci_95_high": 0.0648
       },
       "pk_bytes": {
         "mean": 1216.0,
