@@ -257,7 +257,8 @@ def build_test_suite(
     client_pairs: list[tuple[dict, dict]],
     count_per_scenario: int,
     seed: int,
-    ports: list[int] | None = None
+    ports: list[int] | None = None,
+    scenario: str = "all"
 ) -> tuple[list[TestCase], list[TestCase]]:
     """
     Sinh ma trận kiểm thử đối chứng Multi-Client:
@@ -293,126 +294,129 @@ def build_test_suite(
     num_pairs = len(client_pairs)
 
     # 1. Kịch bản 1: Toàn vẹn Chữ ký số (Bit-Flipping Integrity)
-    print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 1: {SCENARIO_BITFLIP} ({half} Chuẩn vs {half} Lật 1-4 bit)...")
-    bit_plan = [1, 2, 3, 4] * ((half // 4) + 1)
-    rng.shuffle(bit_plan)
-    for i in range(half):
-        sender, recipient = client_pairs[i % num_pairs]
-        s_name, r_name = sender["name"], recipient["name"]
+    if scenario in ("all", "bitflip"):
+        print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 1: {SCENARIO_BITFLIP} ({half} Chuẩn vs {half} Lật 1-4 bit)...")
+        bit_plan = [1, 2, 3, 4] * ((half // 4) + 1)
+        rng.shuffle(bit_plan)
+        for i in range(half):
+            sender, recipient = client_pairs[i % num_pairs]
+            s_name, r_name = sender["name"], recipient["name"]
 
-        # Benign: giao dịch chữ ký chuẩn
-        nonce_b = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
-        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
-        independent_cases.append(TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_BITFLIP,
-            is_attack=False,
-            label=f"Benign ({s_name} -> {r_name})",
-            wire_payload=valid_tx,
-            sender_name=s_name,
-            recipient_name=r_name
-        ))
-        case_counter += 1
+            # Benign: giao dịch chữ ký chuẩn
+            nonce_b = sender_nonces[s_name]
+            sender_nonces[s_name] += 1
+            valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
+            independent_cases.append(TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_BITFLIP,
+                is_attack=False,
+                label=f"Benign ({s_name} -> {r_name})",
+                wire_payload=valid_tx,
+                sender_name=s_name,
+                recipient_name=r_name
+            ))
+            case_counter += 1
 
-        # Malicious: giao dịch bị lật bit chữ ký (1..4 bit)
-        # Sử dụng Nonce độc lập để kiểm tra đúng năng lực phát hiện chữ ký hỏng tầng CRYPTO,
-        # tránh bị bộ lọc Replay Attack ở tầng Ingress ngắt sớm trước khi verify chữ ký.
-        nonce_m = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
-        tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
-        flips = bit_plan[i]
-        mutated_tx, _ = mutate_signature_bits(tx_to_mutate, rng, num_flips=flips)
-        independent_cases.append(TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_BITFLIP,
-            is_attack=True,
-            label=f"Malicious (Lật {flips} bit chữ ký - {s_name})",
-            wire_payload=mutated_tx,
-            sender_name=s_name,
-            recipient_name=r_name,
-            bit_flips=flips
-        ))
-        case_counter += 1
+            # Malicious: giao dịch bị lật bit chữ ký (1..4 bit)
+            # Sử dụng Nonce độc lập để kiểm tra đúng năng lực phát hiện chữ ký hỏng tầng CRYPTO,
+            # tránh bị bộ lọc Replay Attack ở tầng Ingress ngắt sớm trước khi verify chữ ký.
+            nonce_m = sender_nonces[s_name]
+            sender_nonces[s_name] += 1
+            tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
+            flips = bit_plan[i]
+            mutated_tx, _ = mutate_signature_bits(tx_to_mutate, rng, num_flips=flips)
+            independent_cases.append(TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_BITFLIP,
+                is_attack=True,
+                label=f"Malicious (Lật {flips} bit chữ ký - {s_name})",
+                wire_payload=mutated_tx,
+                sender_name=s_name,
+                recipient_name=r_name,
+                bit_flips=flips
+            ))
+            case_counter += 1
 
     # 2. Kịch bản 2: Chống Giả mạo Dữ liệu (Payload Mutation / Anti-Tampering)
-    print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 2: {SCENARIO_MUTATION} ({half} Chuẩn vs {half} Giả mạo Payload: Amount / Recipient / Sender)...")
-    mut_fields = ["amount", "recipient_address", "sender_address"]
-    for i in range(half):
-        sender, recipient = client_pairs[(i + half) % num_pairs]
-        s_name, r_name = sender["name"], recipient["name"]
+    if scenario in ("all", "mutation"):
+        print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 2: {SCENARIO_MUTATION} ({half} Chuẩn vs {half} Giả mạo Payload: Amount / Recipient / Sender)...")
+        mut_fields = ["amount", "recipient_address", "sender_address"]
+        for i in range(half):
+            sender, recipient = client_pairs[(i + half) % num_pairs]
+            s_name, r_name = sender["name"], recipient["name"]
 
-        # Benign: giao dịch chữ ký chuẩn
-        nonce_b = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
-        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
-        independent_cases.append(TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_MUTATION,
-            is_attack=False,
-            label=f"Benign ({s_name} -> {r_name})",
-            wire_payload=valid_tx,
-            sender_name=s_name,
-            recipient_name=r_name
-        ))
-        case_counter += 1
+            # Benign: giao dịch chữ ký chuẩn
+            nonce_b = sender_nonces[s_name]
+            sender_nonces[s_name] += 1
+            valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_b)
+            independent_cases.append(TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_MUTATION,
+                is_attack=False,
+                label=f"Benign ({s_name} -> {r_name})",
+                wire_payload=valid_tx,
+                sender_name=s_name,
+                recipient_name=r_name
+            ))
+            case_counter += 1
 
-        # Malicious: Nonce độc lập để kiểm tra đúng năng lực phát hiện sửa đổi Payload ở tầng CRYPTO
-        nonce_m = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
-        tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
-        mut_field = mut_fields[i % 3]
-        mutated_tx = mutate_payload_data(tx_to_mutate, rng, field_to_mutate=mut_field, alternate_sender=recipient["public_key"])
-        if mut_field == "amount":
-            sub_label = f"Malicious (Sửa Amount x100 - {s_name})"
-        elif mut_field == "recipient_address":
-            sub_label = f"Malicious (Sửa Recipient - {s_name})"
-        else:
-            sub_label = f"Malicious (Sửa Sender Spoofing - {s_name})"
+            # Malicious: Nonce độc lập để kiểm tra đúng năng lực phát hiện sửa đổi Payload ở tầng CRYPTO
+            nonce_m = sender_nonces[s_name]
+            sender_nonces[s_name] += 1
+            tx_to_mutate = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce_m)
+            mut_field = mut_fields[i % 3]
+            mutated_tx = mutate_payload_data(tx_to_mutate, rng, field_to_mutate=mut_field, alternate_sender=recipient["public_key"])
+            if mut_field == "amount":
+                sub_label = f"Malicious (Sửa Amount x100 - {s_name})"
+            elif mut_field == "recipient_address":
+                sub_label = f"Malicious (Sửa Recipient - {s_name})"
+            else:
+                sub_label = f"Malicious (Sửa Sender Spoofing - {s_name})"
 
-        independent_cases.append(TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_MUTATION,
-            is_attack=True,
-            label=sub_label,
-            wire_payload=mutated_tx,
-            sender_name=s_name,
-            recipient_name=r_name,
-            mutation_field=mut_field
-        ))
-        case_counter += 1
+            independent_cases.append(TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_MUTATION,
+                is_attack=True,
+                label=sub_label,
+                wire_payload=mutated_tx,
+                sender_name=s_name,
+                recipient_name=r_name,
+                mutation_field=mut_field
+            ))
+            case_counter += 1
 
     # 3. Kịch bản 3: Chống Tấn công Phát lại (Anti-Replay Defense)
-    print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 3: {SCENARIO_REPLAY} ({half} Gốc vs {half} Phát lại lặp)...")
-    for i in range(half):
-        sender, recipient = client_pairs[i % num_pairs]
-        s_name, r_name = sender["name"], recipient["name"]
-        nonce = sender_nonces[s_name]
-        sender_nonces[s_name] += 1
+    if scenario in ("all", "replay"):
+        print(f"[*] Đang sinh {count_per_scenario} ca kiểm thử Multi-Client cho Kịch bản 3: {SCENARIO_REPLAY} ({half} Gốc vs {half} Phát lại lặp)...")
+        for i in range(half):
+            sender, recipient = client_pairs[i % num_pairs]
+            s_name, r_name = sender["name"], recipient["name"]
+            nonce = sender_nonces[s_name]
+            sender_nonces[s_name] += 1
 
-        valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce)
-        benign_case = TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_REPLAY,
-            is_attack=False,
-            label=f"Benign (Giao dịch mới - {s_name} -> {r_name})",
-            wire_payload=valid_tx,
-            sender_name=s_name,
-            recipient_name=r_name
-        )
-        case_counter += 1
+            valid_tx = wallet_mgr.sign_transaction(sender, recipient["public_key"], amount=0.01, nonce=nonce)
+            benign_case = TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_REPLAY,
+                is_attack=False,
+                label=f"Benign (Giao dịch mới - {s_name} -> {r_name})",
+                wire_payload=valid_tx,
+                sender_name=s_name,
+                recipient_name=r_name
+            )
+            case_counter += 1
 
-        replay_case = TestCase(
-            case_id=case_counter,
-            scenario=SCENARIO_REPLAY,
-            is_attack=True,
-            label=f"Malicious (Phát lại Nonce/Chữ ký cũ - {s_name})",
-            wire_payload=valid_tx,
-            sender_name=s_name,
-            recipient_name=r_name
-        )
-        case_counter += 1
-        replay_pairs.append((benign_case, replay_case))
+            replay_case = TestCase(
+                case_id=case_counter,
+                scenario=SCENARIO_REPLAY,
+                is_attack=True,
+                label=f"Malicious (Phát lại Nonce/Chữ ký cũ - {s_name})",
+                wire_payload=valid_tx,
+                sender_name=s_name,
+                recipient_name=r_name
+            )
+            case_counter += 1
+            replay_pairs.append((benign_case, replay_case))
 
     return independent_cases, replay_pairs
 
@@ -612,7 +616,7 @@ def write_replay_chart(path: Path, replay_samples: list[float], alg_name: str) -
         return False
 
 
-def fetch_audit_trail_sample(ports: list[int]) -> list[dict]:
+def fetch_audit_trail_sample(ports: list[int], since_time: str | None = None) -> list[dict]:
     """Trích xuất nhật ký Hộp đen kiểm toán từ các Node đang chạy."""
     collected_logs = []
     for p in ports:
@@ -621,6 +625,8 @@ def fetch_audit_trail_sample(ports: list[int]) -> list[dict]:
             if r.status_code == 200:
                 logs = r.json().get("logs", [])
                 for log in logs:
+                    if since_time and log.get("timestamp", "") < since_time:
+                        continue
                     log["node_port"] = p
                     collected_logs.append(log)
         except Exception:
@@ -975,7 +981,7 @@ def run(args: argparse.Namespace) -> int:
 
     # 2. Sinh ma trận dữ liệu kiểm thử đối chứng Multi-Client
     independent_cases, replay_pairs = build_test_suite(
-        mgr, client_pairs, args.count_per_scenario, args.seed, ports=args.ports
+        mgr, client_pairs, args.count_per_scenario, args.seed, ports=args.ports, scenario=args.scenario
     )
 
     rng = random.Random(args.seed)
@@ -1015,6 +1021,7 @@ def run(args: argparse.Namespace) -> int:
     session.mount("https://", adapter)
 
     node_locks = {p: threading.Lock() for p in args.ports}
+    test_start_time = datetime.now().strftime("%H:%M:%S")
 
     print(f"\n[*] Giai đoạn 1 & 2: Phát sóng đồng thời {len(independent_cases)} giao dịch (Bit-flip & Mutation) qua {args.workers} workers...")
     completed_counter = 0
@@ -1072,7 +1079,7 @@ def run(args: argparse.Namespace) -> int:
         classify_observation(r_case)
 
     # 4. Thu thập mẫu Hộp đen kiểm toán từ các Node
-    audit_samples = fetch_audit_trail_sample(args.ports)
+    audit_samples = fetch_audit_trail_sample(args.ports, since_time=test_start_time)
 
     # 5. Kích hoạt Đóng Block để kiểm tra tính Toàn vẹn của Sổ Cái & Đối soát số lượng
     mining_info = {}
@@ -1187,6 +1194,11 @@ def parse_args() -> argparse.Namespace:
         help="Thuật toán chữ ký số độc lập cần kiểm thử: ecdsa, mldsa44 (mặc định), mldsa65, mldsa87"
     )
     parser.add_argument("--wallet", type=str, default=None, help="Tùy chọn chỉ định ví xuất phát")
+    parser.add_argument(
+        "--scenario", type=str, default="all",
+        choices=["all", "bitflip", "mutation", "replay"],
+        help="Chọn riêng 1 kịch bản để kiểm thử: bitflip, mutation, replay, hoặc all (mặc định)"
+    )
     parser.add_argument("--count-per-scenario", type=int, default=300, help="Số giao dịch mỗi kịch bản (mặc định 300 = 150 Benign + 150 Malicious)")
     parser.add_argument("--ports", nargs="+", type=int, default=DEFAULT_PORTS, help="Danh sách cổng node mục tiêu (mặc định 5000-5005)")
     parser.add_argument("--workers", type=int, default=6, help="Số luồng gửi đồng thời (mặc định: 6 luồng)")
