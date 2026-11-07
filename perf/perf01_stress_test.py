@@ -461,15 +461,15 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
             h = b.get_height()
             if h > 0:
                 ax1.annotate(f"{h:.1f}M", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
+                             textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
 
     ax1.axhline(y=128, color='crimson', linestyle='--', linewidth=1.8, label='IoT Ceiling (128 MB)')
-    ax1.axhline(y=512, color='darkorange', linestyle=':', linewidth=1.5, label='Edge Ceiling (512 MB)')
+    ax1.set_ylim(0, 145)
     ax1.set_ylabel("Peak RAM (MB)", fontsize=11, fontweight='bold')
     ax1.set_title("1. Đỉnh Trần Bộ Nhớ (Peak RAM) & Vùng OOM", fontsize=12, fontweight='bold')
     ax1.set_xticks(x)
     ax1.set_xticklabels(profile_labels, fontweight='bold', fontsize=9)
-    ax1.legend(loc='upper left', fontsize=8)
+    ax1.legend(loc='upper left', fontsize=8, framealpha=0.9, edgecolor='#ccc')
     ax1.grid(axis='y', linestyle='--', alpha=0.5)
 
     # 2. Ingestion TPS
@@ -485,7 +485,7 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
             h = b.get_height()
             if h > 0:
                 ax2.annotate(f"{h:.0f}", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
+                             textcoords="offset points", ha='center', va='bottom', fontsize=8, fontweight='bold')
 
     ax2.set_ylabel("Ingestion TPS (tx/s)", fontsize=11, fontweight='bold')
     ax2.set_title("2. Thông Lượng Tiếp Nhận (Ingestion TPS)", fontsize=12, fontweight='bold')
@@ -496,25 +496,25 @@ def plot_oom_risk_chart(results: List[dict], out_path: Path):
     ax2.legend(loc='upper left', fontsize=8, framealpha=0.9, edgecolor='#ccc')
     ax2.grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 3. CPU Saturation
+    # 3. CPU CFS Throttled Duration
     ax3 = axes[2]
     for idx, alg in enumerate(algos):
-        cpu_vals = []
+        thr_vals = []
         for p in profiles:
             match = [r for r in results if r['profile_key'] == p and r['algorithm_id'] == alg]
-            cpu_vals.append(match[0]['avg_cpu_pct'] if match else 0.0)
+            thr_vals.append(match[0].get('throttled_ms', 0.0) if match else 0.0)
         offset = (idx - 1.5) * width
-        bars = ax3.bar(x + offset, cpu_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
+        bars = ax3.bar(x + offset, thr_vals, width, label=algo_names[idx], color=colors[idx], alpha=0.9)
         for b in bars:
             h = b.get_height()
-            if h > 0:
-                ax3.annotate(f"{h:.1f}%", xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
-                             textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
+            txt = f"{h:.0f}ms" if h > 0 else "0ms"
+            ax3.annotate(txt, xy=(b.get_x() + b.get_width() / 2, h), xytext=(0, 3),
+                         textcoords="offset points", ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
-    max_cpu = max((r.get('avg_cpu_pct', 0) for r in results), default=140)
-    ax3.set_ylim(0, max_cpu * 1.30)
-    ax3.set_ylabel("Average CPU (%)", fontsize=11, fontweight='bold')
-    ax3.set_title("3. Mức Độ Bão Hòa CPU (CPU Saturation)", fontsize=12, fontweight='bold')
+    max_thr = max((r.get('throttled_ms', 0) for r in results), default=6000)
+    ax3.set_ylim(0, max_thr * 1.25)
+    ax3.set_ylabel("Thời gian bóp CPU (ms)", fontsize=11, fontweight='bold')
+    ax3.set_title("3. Áp Lực Quá Tải CPU (CFS Throttled ms)", fontsize=12, fontweight='bold')
     ax3.set_xticks(x)
     ax3.set_xticklabels(profile_labels, fontweight='bold', fontsize=9)
     ax3.legend(loc='upper right', fontsize=8, framealpha=0.9, edgecolor='#ccc')
