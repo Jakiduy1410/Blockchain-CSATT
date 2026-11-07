@@ -90,6 +90,15 @@ class TestSec03SignatureIntegrity(unittest.TestCase):
             tx_tampered_recipient
         ), "Tampered recipient with original signature must be rejected")
 
+        # 3. Tamper sender (Sender Spoofing / Impersonation)
+        tx_tampered_sender = copy.deepcopy(base_tx)
+        tx_tampered_sender['sender_address'] = "1" * 128
+        self.assertFalse(verify_ecdsa_signature(
+            tx_tampered_sender['sender_address'],
+            tx_tampered_sender['signature'],
+            tx_tampered_sender
+        ), "Tampered sender address with original signature must be rejected")
+
     def test_replay_attack_rejection(self):
         """SEC-03: Replaying the same transaction/nonce must be rejected 100% by the ledger."""
         tx_data = self._create_signed_tx(amount="5.0", nonce=1)
