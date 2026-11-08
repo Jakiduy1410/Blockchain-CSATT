@@ -8,32 +8,18 @@ from flask import Flask, jsonify, request, render_template
 # Sử dụng chuẩn ECDSA (secp256k1) bằng C-backend OpenSSL qua cryptography
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 try:
-    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
-        dll_dirs = [
-            os.path.abspath('.'),
-            os.path.abspath('liboqs'),
-            os.path.abspath('liboqs/build/bin'),
-            os.path.abspath('liboqs/build/bin/Release'),
-            os.path.abspath('liboqs/build/bin/Debug'),
-            os.path.abspath('build/bin/Release'),
-            os.path.abspath('build/bin'),
-            os.path.expanduser('~/_oqs/bin')
-        ]
-        liboqs_env = os.environ.get('LIBOQS_DIR')
-        if liboqs_env:
-            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
-        for d in dll_dirs:
-            if os.path.isdir(d):
-                try:
-                    os.add_dll_directory(d)
-                except Exception:
-                    pass
-    import oqs
-    OQS_AVAILABLE = True
-except (ImportError, Exception):
+    if os.name == 'nt' and not (
+        os.path.exists(os.path.expanduser('~/_oqs/bin/oqs.dll')) or os.path.exists('oqs.dll')
+    ):
+        OQS_AVAILABLE = False
+        oqs = None
+    else:
+        import oqs
+        OQS_AVAILABLE = True
+except (ImportError, Exception, SystemExit):
     OQS_AVAILABLE = False
     oqs = None
 
@@ -71,7 +57,7 @@ class Transaction:
                 sk_len = len(private_key_bytes)
                 if sk_len >= 4800:
                     alg = "ML-DSA-87"
-                elif sk_len >= 3500:
+                elif sk_len >= 4000:
                     alg = "ML-DSA-65"
                 else:
                     alg = "ML-DSA-44"

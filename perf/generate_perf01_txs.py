@@ -9,6 +9,7 @@ Toi uu: Chi sinh dung so luong can chay theo yeu cau, dung chung khoa de dam bao
 """
 
 import json
+import os
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -22,9 +23,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 try:
-    import oqs
-    OQS_AVAILABLE = True
-except (ImportError, Exception):
+    if os.name == 'nt' and not (
+        os.path.exists(os.path.expanduser('~/_oqs/bin/oqs.dll')) or os.path.exists('oqs.dll')
+    ):
+        OQS_AVAILABLE = False
+    else:
+        import oqs
+        OQS_AVAILABLE = True
+except (ImportError, Exception, SystemExit):
     OQS_AVAILABLE = False
 
 RECIPIENT_HEX = "4d67538820a505b42abfa966b3c652ab041535045ab791dbc33711df832f428c453406314349fc98c4448c1e4b4ad85d049009bda5a29e66f7d26006403b6aae"

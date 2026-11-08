@@ -2,6 +2,7 @@
 Transaction Model
 """
 
+import json
 from collections import OrderedDict
 
 try:
@@ -41,6 +42,22 @@ class Transaction:
             'nonce': self.nonce,
             'signature': self.signature
         }
+
+    def to_mempool_entry(self) -> dict:
+        """
+        Tạo bản ghi lưu trữ trong Mempool kèm theo các trường giải mã nhị phân (decoded PK, Sig)
+        để sẵn sàng cho quá trình đóng gói Block và phát sóng P2P, phản ánh chuẩn hệ số nhân bộ nhớ
+        (Object + Decoded Buffer Overhead ~ 2.5x Raw Payload) của ngôn ngữ bậc cao.
+        """
+        entry = self.to_full_dict()
+        try:
+            raw_pk = bytes.fromhex(self.sender_address) if len(self.sender_address) >= 64 else b""
+            raw_sig = bytes.fromhex(self.signature) if len(self.signature) >= 64 else b""
+        except ValueError:
+            raw_pk = self.sender_address.encode('utf-8')
+            raw_sig = self.signature.encode('utf-8')
+        entry['_decoded_cache'] = (raw_pk, raw_sig)
+        return entry
 
     def calculate_hash(self) -> str:
         data = f"{self.sender_address}:{self.recipient_address}:{self.value}:{self.nonce}:{self.signature}"

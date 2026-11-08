@@ -204,29 +204,33 @@ class P2PNetwork:
             data = msg.get("data")
 
             if msg_type == "TRANSACTION" and data:
-                self.ws_tx_received_count += 1
+                with self.seen_lock:
+                    self.ws_tx_received_count += 1
                 tx = Transaction.from_dict(data)
                 self.gossip_transaction(tx)
             elif msg_type == "BLOCK" and data:
-                self.ws_block_received_count += 1
+                with self.seen_lock:
+                    self.ws_block_received_count += 1
                 send_epoch_ms = msg.get("send_epoch_ms")
                 self.handle_incoming_block(data, send_epoch_ms=send_epoch_ms)
         except Exception as e:
             logger.debug(f"Lỗi xử lý gói tin P2P: {e}")
 
     def _send_ws_payload(self, payload: dict):
-        """Gửi gói tin song song qua toàn bộ các kết nối WebSocket đang mở (loại trừ gửi trùng lặp)"""
-        msg_str = json.dumps(payload)
-
-        # Lấy danh sách socket duy nhất (tránh gửi 2 lần cho cùng một peer do kết nối 2 chiều)
+        """
+        Gửi gói tin song song tới mỗi Peer đúng 1 lần qua kênh outgoing_sockets (hoặc fallback incoming_sockets
+        nếu chưa có outgoing_sockets), triệt tiêu lỗi gửi trùng 2 lần trên kết nối 2 chiều.
+        """
         with self.conn_lock:
-            target_socks = list(self.outgoing_sockets.values())
-            for s in self.incoming_sockets:
-                if s not in target_socks:
-                    target_socks.append(s)
+            if self.outgoing_sockets:
+                target_socks = list(self.outgoing_sockets.values())
+            else:
+                target_socks = list(self.incoming_sockets)
 
         if not target_socks:
             return
+
+        msg_str = json.dumps(payload)
 
         def send_to_sock(sock):
             try:
@@ -247,20 +251,16 @@ class P2PNetwork:
                 self.incoming_sockets = {s for s in self.incoming_sockets if s not in dead}
 
     def gossip_transaction(self, tx: Transaction) -> bool:
-        # 0. Kiểm tra chống Replay Attack: nếu giao dịch đã có trong Blockchain -> Từ chối ngay
+        # 0. Kiểm tra chống Replay Attack O(1): nếu giao dịch đã có trong Blockchain -> Từ chối ngay
+        tx_nonce = int(getattr(tx, 'nonce', 0) or 0)
         with self.ledger.lock:
-            for blk in self.ledger.chain:
-                for past_tx in blk.get('transactions', []):
-                    if past_tx.get('signature') and past_tx.get('signature') == tx.signature:
-                        return False
-                    if tx.sender_address != self.ledger.mining_sender and \
-                       past_tx.get('sender_address') == tx.sender_address and \
-                       past_tx.get('nonce') is not None and \
-                       int(past_tx.get('nonce', 0)) == int(getattr(tx, 'nonce', 0)) and \
-                       int(getattr(tx, 'nonce', 0)) > 0:
-                        return False
+            if tx.signature and tx.signature in self.ledger.confirmed_sigs:
+                return False
+            if tx.sender_address != self.ledger.mining_sender and tx_nonce > 0:
+                if (tx.sender_address, tx_nonce) in self.ledger.confirmed_nonces:
+                    return False
 
-        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Bỏ qua
+        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Bỏ qua ngay
         with self.seen_lock:
             if tx.tx_id in self.seen_tx_hashes:
                 self.ws_dups_filtered_count += 1
@@ -272,21 +272,15 @@ class P2PNetwork:
         if not success:
             return False
 
-        # 3. Lan truyền sang các peer qua Persistent WebSocket pipeline
-        payload = {
-            'type': 'TRANSACTION',
-            'data': tx.to_full_dict(),
-            'origin': self.my_address
-        }
-        self.executor.submit(self._send_ws_payload, payload)
+        # 3. Lan truyền sang các peer qua Persistent WebSocket pipeline (chỉ khi có peers)
+        if self.peers:
+            payload = {
+                'type': 'TRANSACTION',
+                'data': tx.to_full_dict(),
+                'origin': self.my_address
+            }
+            self.executor.submit(self._send_ws_payload, payload)
 
-        active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
-        self.audit.log(
-            category="P2P",
-            title=f"Gossip P2P (WebSocket TLS ECDHE): Phat song giao dich qua {active_conn_count} ket noi wss://",
-            details={'tx_id': f"{tx.tx_id[:16]}...", 'nonce': getattr(tx, 'nonce', 0)},
-            status="SUCCESS"
-        )
         return True
 
     def broadcast_block(self, block: dict):
@@ -312,14 +306,15 @@ class P2PNetwork:
             status="SUCCESS"
         )
 
-        payload = {
-            'type': 'BLOCK',
-            'data': block,
-            'origin': self.my_address,
-            'send_epoch_ms': send_epoch_ms
-        }
-        # Phat song Block uu tien ngay lap tuc qua luong rieng (khong cho hang doi Gossip)
-        threading.Thread(target=self._send_ws_payload, args=(payload,), daemon=True).start()
+        if self.peers:
+            payload = {
+                'type': 'BLOCK',
+                'data': block,
+                'origin': self.my_address,
+                'send_epoch_ms': send_epoch_ms
+            }
+            # Phat song Block uu tien ngay lap tuc qua luong rieng (khong cho hang doi Gossip)
+            threading.Thread(target=self._send_ws_payload, args=(payload,), daemon=True).start()
 
     def handle_incoming_block(self, block: dict, send_epoch_ms: Optional[float] = None) -> bool:
         block_hash = calculate_block_hash(block)
@@ -329,7 +324,7 @@ class P2PNetwork:
             self.seen_block_hashes.add(block_hash)
 
         recv_epoch_ms = round(time.time() * 1000.0, 3)
-        transit_delay_ms = round(recv_epoch_ms - send_epoch_ms, 2) if send_epoch_ms else None
+        transit_delay_ms = round(max(0.5, recv_epoch_ms - send_epoch_ms), 2) if send_epoch_ms else None
 
         self.audit.log(
             category="P2P",
@@ -383,6 +378,7 @@ class P2PNetwork:
                     tx for tx in self.ledger.transactions
                     if tx.get('signature') not in all_chain_signatures
                 ]
+                self.ledger._rebuild_indexes_unlocked()
 
             self.audit.log(
                 category="CONSENSUS",

@@ -2,10 +2,11 @@
 Audit Logger Module
 Trách nhiệm An ninh mạng:
 - Ghi nhận lịch sử kiểm toán an ninh (Security Audit Trail) theo thời gian thực
-- Chi tiết hóa quá trình thẩm định chữ ký số RSA PKCS#1 v1.5
+- Chi tiết hóa quá trình thẩm định chữ ký số ML-DSA / ECDSA / RSA
 - Chi tiết hóa quá trình thẩm định PoW, Consensus và Merge Block
 """
 
+from collections import deque
 from datetime import datetime
 import threading
 import time
@@ -13,9 +14,9 @@ from typing import List, Dict
 
 
 class AuditLogger:
-    def __init__(self, max_entries: int = 1000):
+    def __init__(self, max_entries: int = 200):
         self.max_entries = max_entries
-        self.logs: List[Dict] = []
+        self.logs = deque(maxlen=max_entries)
         self.lock = threading.Lock()
 
     def log(self, category: str, title: str, details: dict = None, status: str = "INFO"):
@@ -35,10 +36,8 @@ class AuditLogger:
             'details': details or {}
         }
         with self.lock:
-            self.logs.insert(0, entry)  # Mới nhất ở trên cùng
-            if len(self.logs) > self.max_entries:
-                self.logs.pop()
+            self.logs.appendleft(entry)
 
     def get_logs(self, limit: int = 50) -> List[Dict]:
         with self.lock:
-            return list(self.logs[:limit])
+            return list(self.logs)[:limit]
