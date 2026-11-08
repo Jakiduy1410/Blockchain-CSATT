@@ -240,14 +240,10 @@ def run_single_dut_benchmark(algo_id: str, algo_name: str, tx_dataset: list, dut
     register_and_wait_mesh()
     time.sleep(0.5)
 
-    # Do baseline cua DUT qua /metrics/light
+    # Do baseline cua DUT qua /metrics/light (doc truc tiep tu /sys/fs/cgroup)
     init_data = get_dut_light_telemetry(dut_port)
     init_cg = init_data.get('cgroup', {})
-    p2p_init = init_data.get('p2p', {})
-    # Baseline Mesh Node (co 5 ket noi Outgoing + 5 ket noi Incoming TLS 1.3 WebSocket dang mo)
-    mesh_conns = max(10, p2p_init.get('total_ws_conns', 10))
-    mesh_ws_overhead_mb = round(mesh_conns * 1.45, 2)
-    baseline_ram_mb = round(init_cg.get('working_ram_mb', 41.40) + mesh_ws_overhead_mb, 2)
+    baseline_ram_mb = round(init_cg.get('working_ram_mb', 38.50), 2)
     print(f"        [+] DUT san sang. Baseline Mesh RAM: {baseline_ram_mb} MB / Limit: {dut_info['mem_limit_mb']} MB")
 
     txs_to_send = tx_dataset[:batch_size]
@@ -315,12 +311,10 @@ def run_single_dut_benchmark(algo_id: str, algo_name: str, tx_dataset: list, dut
         time.sleep(0.05)
 
     cgroup_ingest_end = latest_st.get('cgroup', {})
-    # Tinh Peak RAM khi Mempool dang giu du 100 giao dich + bo dem Gossip WebSocket
-    mempool_heap_mb = cgroup_ingest_end.get('mempool_heap_mb', 0.0)
-    # Bo dem khung WebSocket Gossip (500 ban tin nhan vao tren 5 ket noi TLS)
-    ws_buffer_overhead_mb = round((total_wire_txs_kb * 5.0) / 1024.0 * 1.35, 2)
-    peak_ram_mb = round(baseline_ram_mb + mempool_heap_mb + ws_buffer_overhead_mb, 2)
-    delta_anon_mb = round(mempool_heap_mb + ws_buffer_overhead_mb, 2)
+    # Doc Peak Working RAM thuc te tu thanh ghi cgroups v2 cua DUT
+    ingest_working_mb = cgroup_ingest_end.get('working_ram_mb', baseline_ram_mb)
+    peak_ram_mb = round(max(baseline_ram_mb, ingest_working_mb), 2)
+    delta_anon_mb = round(max(0.0, peak_ram_mb - baseline_ram_mb), 2)
 
     ingest_wall_s = max(0.001, t_ingest_end - t_ingest_start)
     ingest_throughput_tps = round(batch_size / ingest_wall_s, 2)

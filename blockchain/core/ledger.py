@@ -47,7 +47,6 @@ class BlockchainLedger:
         # Record initial cgroup memory limit and baseline anon memory
         self.cgroup_limit_mb: float = self._read_cgroup_limit_mb()
         self.baseline_anon_mb: float = self._read_cgroup_anon_mb()
-        self.baseline_working_mb: float = 41.40
 
         self.node_id = str(uuid4()).replace('-', '')
         self.lock = threading.Lock()
@@ -87,33 +86,33 @@ class BlockchainLedger:
 
     def get_working_memory_mb(self) -> float:
         """
-        Tính toán bộ nhớ làm việc thực tế (Working Set RAM) của Node:
-        = Baseline Working Set (Python VM + Shared Libs + Genesis State) + Mempool & Chain Heap Footprint.
-        Loại bỏ hoàn toàn sai số dao động do Linux Kernel thu hồi Page Cache (active_file/inactive_file).
+        Đọc trực tiếp dung lượng bộ nhớ Working Set thực tế của container từ nhân Linux
+        (/sys/fs/cgroup/memory.stat: anon + kernel + sock + shmem) trong một lần đọc nguyên tử.
         """
-        heap_mb = self.mempool_heap_bytes / 1048576.0
-        return round(self.baseline_working_mb + heap_mb, 2)
-
-    @staticmethod
-    def _estimate_tx_heap_bytes(tx: Transaction) -> int:
-        """
-        Tính dung lượng bộ nhớ Heap thực tế của một giao dịch trong Mempool Python
-        (gồm Python dict, PyUnicodeObject, Decoded PK/Sig buffer và Pre-serialized Wire frame,
-        hệ số nhân cấu trúc ngôn ngữ bậc cao ~2.5x so với Raw PK + Sig):
-        - ECDSA (secp256k1): Raw ~0.13 KB -> Python Mempool Footprint ~720 Bytes
-        - ML-DSA-44 (L2):    Raw ~3.73 KB -> Python Mempool Footprint ~9,850 Bytes
-        - ML-DSA-65 (L3):    Raw ~5.26 KB -> Python Mempool Footprint ~14,750 Bytes
-        - ML-DSA-87 (L5):    Raw ~7.22 KB -> Python Mempool Footprint ~19,200 Bytes
-        """
-        raw_crypto_bytes = (len(tx.sender_address) + len(tx.signature)) // 2
-        if raw_crypto_bytes >= 6500:      # ML-DSA-87 (7,219 B raw)
-            return int(raw_crypto_bytes * 2.72)
-        elif raw_crypto_bytes >= 4500:    # ML-DSA-65 (5,261 B raw)
-            return int(raw_crypto_bytes * 2.86)
-        elif raw_crypto_bytes >= 3000:    # ML-DSA-44 (3,732 B raw)
-            return int(raw_crypto_bytes * 2.64)
-        else:                             # ECDSA secp256k1 (~128 B raw)
-            return 720
+        try:
+            if os.path.exists('/sys/fs/cgroup/memory.stat'):
+                anon_b = 0
+                kernel_b = 0
+                sock_b = 0
+                shmem_b = 0
+                with open('/sys/fs/cgroup/memory.stat', 'r') as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            k = parts[0]
+                            if k == 'anon':
+                                anon_b = int(parts[1])
+                            elif k == 'kernel':
+                                kernel_b = int(parts[1])
+                            elif k == 'sock':
+                                sock_b = int(parts[1])
+                            elif k == 'shmem':
+                                shmem_b = int(parts[1])
+                if anon_b > 0:
+                    return round((anon_b + kernel_b + sock_b + shmem_b) / 1048576.0, 2)
+        except Exception:
+            pass
+        return self._read_cgroup_anon_mb()
 
     def _rebuild_indexes_unlocked(self):
         self.confirmed_balances = dict(self.initial_balances)
@@ -294,7 +293,6 @@ class BlockchainLedger:
 
         # Chuẩn bị bản ghi Mempool kèm bộ đệm nhị phân
         mempool_entry = tx.to_mempool_entry()
-        tx_heap_bytes = self._estimate_tx_heap_bytes(tx)
 
         with self.lock:
             self.verified_tx_count += 1
@@ -322,19 +320,6 @@ class BlockchainLedger:
                 self.pending_debits[tx.sender_address] = self.pending_debits.get(tx.sender_address, 0.0) + amount
             elif tx.sender_address != self.mining_sender:
                 self.pending_debits[tx.sender_address] = self.pending_debits.get(tx.sender_address, 0.0) + amount
-
-            if tx.sender_address != self.mining_sender:
-                self.mempool_heap_bytes += tx_heap_bytes
-
-            # Nếu Working Set RAM chạm ngưỡng giới hạn cứng 60.0 MB trên node IoT Constrained,
-            # cấp phát trực tiếp vùng nhớ tương đương phần Page Cache để nhân Linux kích hoạt
-            # OOM-Killer (SIGKILL Exit 137) ngay tại đỉnh 60.0 MB thay vì thrashing đĩa I/O.
-            if self.cgroup_limit_mb <= 68.0 and self.get_working_memory_mb() >= 60.0:
-                while True:
-                    buf = bytearray(4 * 1024 * 1024)
-                    for i in range(0, len(buf), 4096):
-                        buf[i] = 1
-                    self._page_cache_claim.append(buf)
 
             return True
 

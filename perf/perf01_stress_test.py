@@ -107,7 +107,7 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
     print(f"  GIOI HAN: CPU={cpus} vCPU, RAM Limit={memory} (Memswap={memory})")
     print(f"{'='*75}")
 
-    subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     cmd = [
         "docker", "run", "-d",
@@ -127,7 +127,7 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
     print(f"[*] Dang khoi tao Node va kiem tra trang thai Healthcheck...")
     if not check_node_health(url):
         print(f"[!] Node khong san sang tren port {port}!")
-        subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {}
 
     time.sleep(0.6)
@@ -202,7 +202,7 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
             oom_killed = True
     oom_killed = oom_killed or (final_cg.get('oom_kill', 0) > 0)
 
-    subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     peak_ram = round(peak_ram, 2)
     ram_util_pct = round((peak_ram / mem_limit_mb) * 100.0, 2)
@@ -273,7 +273,7 @@ def _run_single_oom_trial(algo_label: str, tx_filename: str, port: int, containe
     subprocess.run([
         "docker", "run", "-d", "--name", container_name,
         "-v", f"{BASE_DIR}:/app",
-        "--cpus=0.5", "-m=64m", "--memory-swap=64m",
+        "--cpus=0.5", "-m=60m", "--memory-swap=60m",
         "-p", f"{port}:5000", "blockchain-node:perf"
     ], check=True, stdout=subprocess.DEVNULL)
 
@@ -667,7 +667,7 @@ def plot_extreme_oom_chart(stress_data: Optional[dict] = None, out_path: Optiona
     ax.set_title("PERF-01: BÀI TEST TẢI CỰC HẠN & SỰ KIỆN TRÀN BỘ NHỚ LINUX OOM\n(Thử Nghiệm Giới Hạn: ML-DSA-87 vs ML-DSA-65 vs ML-DSA-44 vs ECDSA trên Node IoT 60MB RAM)",
                  fontsize=12, fontweight='bold', pad=12)
 
-    ax.set_ylim(38, 71.5)
+    ax.set_ylim(34.5, 71.5)
     ax.set_xlim(0, 1550)
     ax.legend(loc='upper left', fontsize=8.6, framealpha=0.92, edgecolor='#ccc')
     ax.grid(True, linestyle=':', alpha=0.6)

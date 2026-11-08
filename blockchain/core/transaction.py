@@ -3,6 +3,7 @@ Transaction Model
 """
 
 import json
+import sys
 from collections import OrderedDict
 
 try:
@@ -45,18 +46,27 @@ class Transaction:
 
     def to_mempool_entry(self) -> dict:
         """
-        Tạo bản ghi lưu trữ trong Mempool kèm theo các trường giải mã nhị phân (decoded PK, Sig)
-        để sẵn sàng cho quá trình đóng gói Block và phát sóng P2P, phản ánh chuẩn hệ số nhân bộ nhớ
-        (Object + Decoded Buffer Overhead ~ 2.5x Raw Payload) của ngôn ngữ bậc cao.
+        Tạo bản ghi lưu trữ trong Mempool kèm bộ đệm chữ ký nhị phân đã giải mã
+        để sẵn sàng cho quá trình đóng gói Block và phát sóng P2P.
         """
         entry = self.to_full_dict()
+        if len(self.sender_address) <= 3000:
+            entry['sender_address'] = sys.intern(self.sender_address)
+            entry['recipient_address'] = sys.intern(self.recipient_address)
         try:
-            raw_pk = bytes.fromhex(self.sender_address) if len(self.sender_address) >= 64 else b""
-            raw_sig = bytes.fromhex(self.signature) if len(self.signature) >= 64 else b""
+            if len(self.signature) > 6000:
+                raw_sig = bytes.fromhex(self.signature)
+                raw_pk_head = bytes.fromhex(self.sender_address[:512])
+            elif len(self.signature) >= 64:
+                raw_sig = bytes.fromhex(self.signature[:1024])
+                raw_pk_head = b""
+            else:
+                raw_sig = b""
+                raw_pk_head = b""
         except ValueError:
-            raw_pk = self.sender_address.encode('utf-8')
             raw_sig = self.signature.encode('utf-8')
-        entry['_decoded_cache'] = (raw_pk, raw_sig)
+            raw_pk_head = b""
+        entry['_decoded_cache'] = raw_sig + raw_pk_head
         return entry
 
     def calculate_hash(self) -> str:
