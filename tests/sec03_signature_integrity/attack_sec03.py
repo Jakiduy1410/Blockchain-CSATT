@@ -285,8 +285,27 @@ def build_test_suite(
                     try:
                         resp = requests.get(f"http://127.0.0.1:{p}/accounts/nonce?address={s['public_key']}", timeout=1.0)
                         if resp.status_code == 200:
-                            initial_nonce = int(resp.json().get("next_nonce", 1))
-                            break
+                            initial_nonce = max(initial_nonce, int(resp.json().get("next_nonce", 1)))
+                        # Quét thêm trực tiếp /chain để đảm bảo initial_nonce lớn hơn mọi nonce từng được đào
+                        chain_resp = requests.get(f"http://127.0.0.1:{p}/chain", timeout=1.0)
+                        if chain_resp.status_code == 200:
+                            for blk in chain_resp.json().get("chain", []):
+                                for past_tx in blk.get("transactions", []):
+                                    if past_tx.get("sender_address") == s["public_key"]:
+                                        try:
+                                            initial_nonce = max(initial_nonce, int(past_tx.get("nonce", 0)) + 1)
+                                        except (ValueError, TypeError):
+                                            pass
+                        # Quét thêm mempool từ /status nếu có giao dịch đang chờ
+                        st_resp = requests.get(f"http://127.0.0.1:{p}/status", timeout=1.0)
+                        if st_resp.status_code == 200:
+                            for p_tx in st_resp.json().get("mempool", []):
+                                if p_tx.get("sender_address") == s["public_key"]:
+                                    try:
+                                        initial_nonce = max(initial_nonce, int(p_tx.get("nonce", 0)) + 1)
+                                    except (ValueError, TypeError):
+                                        pass
+                        break
                     except Exception:
                         pass
             sender_nonces[s_name] = initial_nonce
@@ -514,6 +533,8 @@ def calc_latency_stats(latencies: list[float]) -> dict:
 
 def write_bit_chart(path: Path, bit_samples: list[tuple[int, float]], alg_name: str) -> bool:
     """Vẽ biểu đồ độ trễ chặn theo số bit bị lật (1, 2, 3, 4 bit)."""
+    if not bit_samples:
+        return False
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -546,6 +567,8 @@ def write_bit_chart(path: Path, bit_samples: list[tuple[int, float]], alg_name: 
 
 def write_mutation_chart(path: Path, mutation_samples: list[tuple[str, float]], alg_name: str) -> bool:
     """Vẽ biểu đồ độ trễ chặn theo 3 trường Payload bị sửa (Amount, Recipient, Sender)."""
+    if not mutation_samples:
+        return False
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -1087,93 +1110,96 @@ def run(args: argparse.Namespace) -> int:
         expected_benign = sum(1 for c in final_cases if not c.is_attack and c.classified_result == "PASSED")
         mining_info = verify_block_mining(args.ports, expected_benign_count=expected_benign, initial_chain_len=initial_chain_len)
 
-    # 6. Ghi log JSONL chi tiết
-    log_path: Path = args.log
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("w", encoding="utf-8") as f:
-        for tc in final_cases:
-            rec = {
-                "case_id": tc.case_id,
-                "scenario": tc.scenario,
-                "is_attack": tc.is_attack,
-                "label": tc.label,
-                "sender_name": tc.sender_name,
-                "recipient_name": tc.recipient_name,
-                "target_port": tc.target_port,
-                "status_code": tc.observation.status if tc.observation else None,
-                "elapsed_ms": tc.observation.elapsed_ms if tc.observation else None,
-                "classified_result": tc.classified_result,
-                "reason": tc.reason,
-                "mutation_field": tc.mutation_field,
-                "bit_flips": tc.bit_flips
-            }
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-
-    print(f"\n[+] Log chi tiết {total_cases} ca kiểm thử đã được lưu tại: {log_path}")
+    # 6. Ghi log JSONL chi tiết (Bỏ qua hoàn toàn nếu bật cờ --no-log)
+    if not args.no_log:
+        log_path: Path = args.log
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("w", encoding="utf-8") as f:
+            for tc in final_cases:
+                rec = {
+                    "case_id": tc.case_id,
+                    "scenario": tc.scenario,
+                    "is_attack": tc.is_attack,
+                    "label": tc.label,
+                    "sender_name": tc.sender_name,
+                    "recipient_name": tc.recipient_name,
+                    "target_port": tc.target_port,
+                    "status_code": tc.observation.status if tc.observation else None,
+                    "elapsed_ms": tc.observation.elapsed_ms if tc.observation else None,
+                    "classified_result": tc.classified_result,
+                    "reason": tc.reason,
+                    "mutation_field": tc.mutation_field,
+                    "bit_flips": tc.bit_flips
+                }
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        print(f"\n[+] Log chi tiết {total_cases} ca kiểm thử đã được lưu tại: {log_path}")
 
     # 7. In Bảng Báo Cáo Tổng Hợp Khoa Học & Lưu Terminal Log
     terminal_text = print_summary_report(final_cases, alg_name, client_names, mining_info, audit_samples, workers=args.workers)
-    term_log_path = log_path.with_suffix(".terminal.log")
-    try:
-        term_log_path.write_text(terminal_text, encoding="utf-8")
-        print(f"[+] Nhật ký Terminal đã được lưu tại: {term_log_path}")
-    except Exception as e:
-        print(f"[!] Không thể lưu nhật ký terminal: {e}")
+    if not args.no_log:
+        term_log_path = log_path.with_suffix(".terminal.log")
+        try:
+            term_log_path.write_text(terminal_text, encoding="utf-8")
+            print(f"[+] Nhật ký Terminal đã được lưu tại: {term_log_path}")
+        except Exception as e:
+            print(f"[!] Không thể lưu nhật ký terminal: {e}")
 
     # 8. Sinh tệp JSON Tóm tắt (.summary.json)
     bit_samples = [(c.bit_flips, c.observation.elapsed_ms) for c in final_cases if c.is_attack and c.scenario == SCENARIO_BITFLIP and c.observation and c.classified_result == "BLOCKED"]
     mut_samples = [(c.mutation_field, c.observation.elapsed_ms) for c in final_cases if c.is_attack and c.scenario == SCENARIO_MUTATION and c.observation and c.classified_result == "BLOCKED"]
     rep_samples = [c.observation.elapsed_ms for c in final_cases if c.is_attack and c.scenario == SCENARIO_REPLAY and c.observation and c.classified_result == "BLOCKED"]
 
-    all_attack_lats = [c.observation.elapsed_ms for c in final_cases if c.is_attack and c.observation and c.observation.elapsed_ms is not None]
-    all_benign_lats = [c.observation.elapsed_ms for c in final_cases if not c.is_attack and c.observation and c.observation.elapsed_ms is not None]
+    if not args.no_log:
+        all_attack_lats = [c.observation.elapsed_ms for c in final_cases if c.is_attack and c.observation and c.observation.elapsed_ms is not None]
+        all_benign_lats = [c.observation.elapsed_ms for c in final_cases if not c.is_attack and c.observation and c.observation.elapsed_ms is not None]
 
-    summary_data = {
-        "algorithm": alg_name,
-        "scheme": scheme_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "workers": args.workers,
-        "total_cases": total_cases,
-        "benign_cases": len(all_benign_lats),
-        "attack_cases": len(all_attack_lats),
-        "breach_count": sum(1 for c in final_cases if c.classified_result == "BREACH"),
-        "latency_stats": {
-            "all_attack": calc_latency_stats(all_attack_lats),
-            "all_benign": calc_latency_stats(all_benign_lats),
-            "bitflip": calc_latency_stats([s[1] for s in bit_samples]),
-            "mutation": calc_latency_stats([s[1] for s in mut_samples]),
-            "replay": calc_latency_stats(rep_samples)
-        },
-        "bit_flip_detail": {
-            str(b): calc_latency_stats([lat for bits, lat in bit_samples if bits == b])
-            for b in range(1, 5)
-        },
-        "mutation_detail": {
-            fld: calc_latency_stats([lat for f, lat in mut_samples if f == fld])
-            for fld in ("amount", "recipient_address", "sender_address")
-        },
-        "mining_reconciliation": mining_info,
-        "log_path": str(log_path)
-    }
+        summary_data = {
+            "algorithm": alg_name,
+            "scheme": scheme_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "workers": args.workers,
+            "total_cases": total_cases,
+            "benign_cases": len(all_benign_lats),
+            "attack_cases": len(all_attack_lats),
+            "breach_count": sum(1 for c in final_cases if c.classified_result == "BREACH"),
+            "latency_stats": {
+                "all_attack": calc_latency_stats(all_attack_lats),
+                "all_benign": calc_latency_stats(all_benign_lats),
+                "bitflip": calc_latency_stats([s[1] for s in bit_samples]),
+                "mutation": calc_latency_stats([s[1] for s in mut_samples]),
+                "replay": calc_latency_stats(rep_samples)
+            },
+            "bit_flip_detail": {
+                str(b): calc_latency_stats([lat for bits, lat in bit_samples if bits == b])
+                for b in range(1, 5)
+            },
+            "mutation_detail": {
+                fld: calc_latency_stats([lat for f, lat in mut_samples if f == fld])
+                for fld in ("amount", "recipient_address", "sender_address")
+            },
+            "mining_reconciliation": mining_info,
+            "log_path": str(log_path)
+        }
 
-    summary_path = log_path.with_suffix(".summary.json")
-    try:
-        summary_path.write_text(json.dumps(summary_data, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[+] Tóm tắt định lượng (.summary.json) đã được lưu tại: {summary_path}")
-    except Exception as e:
-        print(f"[!] Không thể lưu summary json: {e}")
+        summary_path = log_path.with_suffix(".summary.json")
+        try:
+            summary_path.write_text(json.dumps(summary_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[+] Tóm tắt định lượng (.summary.json) đã được lưu tại: {summary_path}")
+        except Exception as e:
+            print(f"[!] Không thể lưu summary json: {e}")
 
-    # 9. Vẽ và lưu 3 biểu đồ trực quan hóa (.png)
-    bit_png_path = log_path.with_suffix(".bits.png")
-    mut_png_path = log_path.with_suffix(".mutation.png")
-    rep_png_path = log_path.with_suffix(".replay.png")
+        # 9. Vẽ và lưu các biểu đồ (.png) nếu không bật cờ --no-chart và có dữ liệu
+        if not args.no_chart:
+            bit_png_path = log_path.with_suffix(".bits.png")
+            mut_png_path = log_path.with_suffix(".mutation.png")
+            rep_png_path = log_path.with_suffix(".replay.png")
 
-    if write_bit_chart(bit_png_path, bit_samples, alg_name):
-        print(f"[+] Biểu đồ Lật bit: {bit_png_path}")
-    if write_mutation_chart(mut_png_path, mut_samples, alg_name):
-        print(f"[+] Biểu đồ Sửa Payload: {mut_png_path}")
-    if write_replay_chart(rep_png_path, rep_samples, alg_name):
-        print(f"[+] Biểu đồ Chống phát lại: {rep_png_path}")
+            if bit_samples and write_bit_chart(bit_png_path, bit_samples, alg_name):
+                print(f"[+] Biểu đồ Lật bit: {bit_png_path}")
+            if mut_samples and write_mutation_chart(mut_png_path, mut_samples, alg_name):
+                print(f"[+] Biểu đồ Sửa Payload: {mut_png_path}")
+            if rep_samples and write_replay_chart(rep_png_path, rep_samples, alg_name):
+                print(f"[+] Biểu đồ Chống phát lại: {rep_png_path}")
 
     # Xác định mã thoát: 0 nếu không có vi phạm an ninh (Breach = 0)
     has_breach = any(c.classified_result == "BREACH" for c in final_cases)
@@ -1207,6 +1233,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Seed ngẫu nhiên")
     parser.add_argument("--mine-after", action="store_true", default=True, help="Tự động gọi /mine để kiểm tra giao dịch vào Block")
     parser.add_argument("--no-mine", dest="mine_after", action="store_false", help="Không tự động gọi /mine")
+    parser.add_argument("--no-log", action="store_true", default=False, help="Chế độ chạy thử nghiệm / debug: xem trên terminal, hoàn toàn KHÔNG xuất bất kỳ file log/json/png nào")
+    parser.add_argument("--no-chart", action="store_true", default=False, help="Không vẽ và xuất biểu đồ hình ảnh (.png)")
     parser.add_argument("--log", type=Path, default=default_log_dir / f"sec03_{stamp}_{uuid.uuid4().hex[:8]}.jsonl", help="Đường dẫn lưu log JSONL")
 
     return parser.parse_args()

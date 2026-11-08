@@ -102,7 +102,8 @@ class P2PNetwork:
                     self._handle_incoming_connection,
                     host="0.0.0.0",
                     port=self.ws_port,
-                    ssl=self.server_ssl_ctx
+                    ssl=self.server_ssl_ctx,
+                    max_size=32 * 1024 * 1024
                 )
                 self.audit.log(
                     category="P2P",
@@ -177,7 +178,7 @@ class P2PNetwork:
                 if not has_conn:
                     ws_url = self._peer_to_ws_url(peer)
                     try:
-                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=1.5)
+                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=1.5, max_size=32 * 1024 * 1024)
                         with self.conn_lock:
                             self.outgoing_sockets[peer] = sock
 

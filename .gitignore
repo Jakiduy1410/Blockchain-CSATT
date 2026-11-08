@@ -10,3 +10,6 @@ sslkeys.log
 configs/certs/*.crt
 configs/certs/*.key
 .agent
+
+# SEC-03 Benchmark test runs and artifacts
+benchmarks/results/sec03_tamper/sec03_*

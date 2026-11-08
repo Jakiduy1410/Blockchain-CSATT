@@ -138,18 +138,23 @@ class BlockchainLedger:
         )
 
     def get_next_nonce(self, address: str) -> int:
-        """Trả về nonce tiếp theo dự kiến của ví (số tx đã xác nhận + pending trong mempool + 1)"""
+        """Trả về nonce tiếp theo dự kiến của ví: max(nonce trong chain & mempool) + 1"""
         with self.lock:
-            confirmed_count = sum(
-                1 for block in self.chain
-                for tx in block.get('transactions', [])
-                if tx.get('sender_address') == address
-            )
-            mempool_count = sum(
-                1 for tx in self.transactions
-                if tx.get('sender_address') == address
-            )
-            return confirmed_count + mempool_count + 1
+            max_nonce = 0
+            for block in self.chain:
+                for tx in block.get('transactions', []):
+                    if tx.get('sender_address') == address:
+                        try:
+                            max_nonce = max(max_nonce, int(tx.get('nonce', 0)))
+                        except (ValueError, TypeError):
+                            pass
+            for tx in self.transactions:
+                if tx.get('sender_address') == address:
+                    try:
+                        max_nonce = max(max_nonce, int(tx.get('nonce', 0)))
+                    except (ValueError, TypeError):
+                        pass
+            return max_nonce + 1
 
     def submit_transaction(self, tx: Transaction) -> bool:
         with self.lock:

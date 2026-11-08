@@ -1,12 +1,18 @@
 """
 Macro-Benchmark Suite: End-to-End P2P Network Load, Cryptography & TLS Transport Benchmark
 Measures:
-  - Signatures: ECDSA (secp256k1) vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 (Consensus, TPS, Wire Payload)
+  - Signatures: ECDSA (secp256k1) vs ML-DSA-44 vs ML-DSA-65 vs ML-DSA-87 (Consensus, Ingestion TPS, Wire Payload)
   - TLS / KEM Transport: Classical ECDHE vs Hybrid (X25519+ML-KEM-768) vs Pure ML-KEM-768 vs Pure ML-KEM-512 vs Plaintext (Handshake & Wire)
+Methodology:
+  - Client-side Concurrent Ingestion (ThreadPoolExecutor) without Keep-Alive (Fresh TCP per transaction)
+  - Dedicated Unmetered Warm-Up phase to eliminate cold-start & JIT latency
+  - Isolated network life-cycle per signature scheme (clean Mempool & Genesis state)
+  - Deterministic block mining: exactly N user txs + 1 coinbase reward tx per block
 Platforms: Linux, Windows, macOS
 """
 
 import argparse
+import concurrent.futures
 import csv
 import json
 import os
@@ -152,8 +158,8 @@ def create_signed_mldsa_transaction(sender: dict, recipient_pubkey: str, amount:
     }
 
 
-def start_p2p_network(base_dir: Path, tls_mode: str = "hybrid", sig_mode: str = "all") -> List[subprocess.Popen]:
-    """Launch 6-node P2P Mesh with specified TLS and Signature settings."""
+def start_p2p_network(base_dir: Path, tls_mode: str = "hybrid", sig_mode: str = "all", enable_auto_miner: bool = False) -> List[subprocess.Popen]:
+    """Launch 6-node P2P Mesh with specified TLS and Signature settings. Auto-miner is disabled to avoid race conditions."""
     net_cfg_path = base_dir / "configs" / "network_6nodes.json"
     if not net_cfg_path.exists():
         net_cfg_path = base_dir.parent / "configs" / "network_6nodes.json"
@@ -172,10 +178,11 @@ def start_p2p_network(base_dir: Path, tls_mode: str = "hybrid", sig_mode: str = 
     env = os.environ.copy()
     env["BLOCKCHAIN_TLS_MODE"] = tls_mode
     env["BLOCKCHAIN_SIG_MODE"] = sig_mode
+    env["BLOCKCHAIN_BATCH_SIZE"] = "500"  # Preclude small-batch automatic block forging
 
     for node in net_cfg['nodes']:
-        cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port']), '--tls', tls_mode, '--sig', sig_mode]
-        if node.get('is_miner'):
+        cmd = py_cmd + ['blockchain/blockchain.py', '-p', str(node['port']), '--tls', tls_mode, '--sig', sig_mode, '--batch-size', '500']
+        if node.get('is_miner') and enable_auto_miner:
             cmd.append('--miner')
         if node.get('peers'):
             cmd.extend(['--peers', ','.join(node['peers'])])
@@ -193,14 +200,26 @@ def start_p2p_network(base_dir: Path, tls_mode: str = "hybrid", sig_mode: str = 
     return spawned
 
 
-def stop_p2p_network(processes: List[subprocess.Popen]):
-    """Safely terminate spawned network processes."""
+def stop_p2p_network(processes: List[subprocess.Popen], base_dir: Path = None):
+    """Safely terminate spawned network processes and clean ports."""
     for p in processes:
         try:
             p.terminate()
         except Exception:
             pass
     time.sleep(0.5)
+    if base_dir:
+        net_cfg_path = base_dir / "configs" / "network_6nodes.json"
+        if not net_cfg_path.exists():
+            net_cfg_path = base_dir.parent / "configs" / "network_6nodes.json"
+        if net_cfg_path.exists():
+            try:
+                with open(net_cfg_path, 'r', encoding='utf-8') as f:
+                    net_cfg = json.load(f)
+                ports = [n['port'] for n in net_cfg['nodes']] + [n['port'] + 1000 for n in net_cfg['nodes']]
+                kill_ports(ports)
+            except Exception:
+                pass
 
 
 # ==============================================================================
@@ -208,68 +227,139 @@ def stop_p2p_network(processes: List[subprocess.Popen]):
 # ==============================================================================
 
 def benchmark_single_signature_scheme(alg_name: str, wallet_pair: Tuple[str, str], tx_count: int,
-                                      ingress_url: str, miner_url: str, nodes: List[str],
-                                      wallets: dict, out_dir: Path) -> Dict:
-    """Run macro benchmark for a specific signature scheme."""
-    print(f"\n[*] BENCHMARK SIGNATURE: {alg_name} ({tx_count} Transactions)...")
+                                      warmup_count: int, ingress_url: str, miner_url: str,
+                                      nodes: List[str], wallets: dict, out_dir: Path,
+                                      workers: int = 8) -> Tuple[Dict, List[dict]]:
+    """
+    Run macro benchmark for a specific signature scheme:
+    1. Unmetered warm-up phase (10 txs)
+    2. Concurrent client ingestion (8 workers, no keep-alive)
+    3. Deterministic block mining (all 100 txs + 1 reward)
+    4. P2P WebSocket block propagation measurement
+    """
+    print(f"\n[*] BENCHMARK SIGNATURE: {alg_name} ({tx_count} Transactions, Concurrency={workers})...")
     sender_name, recip_name = wallet_pair
     sender_w = wallets[sender_name]
     recip_w = wallets[recip_name]
+    is_mldsa = "ML-DSA" in alg_name or len(sender_w['public_key']) > 500
 
-    # Lấy base chain length
+    # --------------------------------------------------------------------------
+    # GIAI ĐOẠN 0: WARM-UP (LÀM NÓNG HỆ THỐNG)
+    # --------------------------------------------------------------------------
+    if warmup_count > 0:
+        print(f"    [*] Warm-up phase: Gui {warmup_count} giao dich lam am socket va runtime...")
+        warmup_txs = []
+        for i in range(warmup_count):
+            amount_val = "0.0001"
+            nonce_val = 1000 + i + 1
+            if is_mldsa:
+                w_tx = create_signed_mldsa_transaction(sender_w, recip_w['public_key'], amount_val, nonce=nonce_val)
+            else:
+                w_tx = create_signed_ecdsa_transaction(sender_w, recip_w['public_key'], amount_val, nonce=nonce_val)
+            warmup_txs.append(w_tx)
+
+        for w_tx in warmup_txs:
+            try:
+                requests.post(f"{ingress_url}/transactions/new", json=w_tx, headers={'Connection': 'close'}, timeout=5.0)
+            except Exception:
+                pass
+
+        time.sleep(0.5)
+        try:
+            requests.get(f"{miner_url}/mine?max_txs=100", timeout=15.0)
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    # Lấy base chain length sau khi warmup
     try:
         base_chain_len = max([requests.get(f"{u}/status", timeout=1.0).json().get('chain_length', 1) for u in nodes])
     except Exception:
         base_chain_len = 1
 
-    # Tạo giao dịch
-    is_mldsa = "ML-DSA" in alg_name or len(sender_w['public_key']) > 500
+    # --------------------------------------------------------------------------
+    # CHUẨN BỊ 100 GIAO DỊCH THỰC NGHIỆM ĐỘC LẬP
+    # --------------------------------------------------------------------------
     test_txs = []
     for i in range(tx_count):
-        amount_val = str(round(0.01 + (i % 10) * 0.002, 4))
+        amount_val = str(round(0.001 + (i % 20) * 0.0001, 6))
         if is_mldsa:
             tx = create_signed_mldsa_transaction(sender_w, recip_w['public_key'], amount_val, nonce=i + 1)
         else:
             tx = create_signed_ecdsa_transaction(sender_w, recip_w['public_key'], amount_val, nonce=i + 1)
         test_txs.append(tx)
 
-    # Giai đoạn 1: Ingestion
-    t_start = time.perf_counter()
-    accepted = 0
-    latencies = []
-
-    for tx in test_txs:
+    # --------------------------------------------------------------------------
+    # GIAI ĐOẠN 1: CLIENT CONCURRENT INGESTION (KHÔNG KEEP-ALIVE)
+    # --------------------------------------------------------------------------
+    def send_tx(tx_item):
+        idx, tx_dict = tx_item
         t0 = time.perf_counter()
+        ok = False
+        status_code = 0
         try:
-            r = requests.post(f"{ingress_url}/transactions/new", json=tx, timeout=5.0)
+            # Explicit Connection: close mô phỏng client độc lập mở fresh TCP socket
+            r = requests.post(f"{ingress_url}/transactions/new", json=tx_dict, headers={'Connection': 'close'}, timeout=10.0)
             dt = (time.perf_counter() - t0) * 1000.0
-            if r.status_code in (200, 201):
-                accepted += 1
+            status_code = r.status_code
+            ok = (status_code in (200, 201))
         except Exception:
             dt = (time.perf_counter() - t0) * 1000.0
-        latencies.append(dt)
+        return {
+            'algorithm': alg_name,
+            'tx_index': idx,
+            'status_code': status_code,
+            'latency_ms': dt,
+            'result': 'ACCEPTED' if ok else 'REJECTED'
+        }
 
+    indexed_txs = list(enumerate(test_txs, 1))
+    t_start = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        ingest_records = list(executor.map(send_tx, indexed_txs))
     t_ingest = time.perf_counter() - t_start
+
+    accepted = sum(1 for r in ingest_records if r['result'] == 'ACCEPTED')
+    latencies = [r['latency_ms'] for r in ingest_records]
     tps = accepted / t_ingest if t_ingest > 0 else 0.0
     mean_lat = float(np.mean(latencies)) if latencies else 0.0
+    median_lat = float(np.median(latencies)) if latencies else 0.0
     p95_lat = float(np.percentile(latencies, 95)) if latencies else 0.0
 
-    print(f"    -> Ingestion TPS: {tps:.2f} tx/s | Mean Latency: {mean_lat:.2f} ms | P95: {p95_lat:.2f} ms")
+    print(f"    -> Ingestion TPS: {tps:.2f} tx/s | Mean: {mean_lat:.2f} ms | Median: {median_lat:.2f} ms | P95: {p95_lat:.2f} ms")
 
-    # Giai đoạn 2: Khai thác Block & Lan truyền WebSocket
-    time.sleep(0.8)
-    target_chain = base_chain_len + 1
-    t_prop_start = time.perf_counter()
-    try:
-        requests.get(f"{miner_url}/mine", timeout=10.0)
-    except Exception:
-        pass
-
-    synced = False
-    for _ in range(30):
-        time.sleep(0.2)
+    # Đợi Ingress Node Gossip xong toàn bộ Mempool sang Miner qua WebSocket
+    print("    [*] Dong bo Mempool tu Ingress sang Miner qua WebSocket...")
+    for _ in range(40):
         try:
-            st = [requests.get(f"{u}/status", timeout=0.5).json().get('chain_length', 0) for u in nodes]
+            mempool_txs = requests.get(f"{miner_url}/transactions/get", timeout=1.0).json().get('transactions', [])
+            user_txs = [t for t in mempool_txs if t.get('sender_address') != '0']
+            if len(user_txs) >= accepted:
+                break
+        except Exception:
+            pass
+        time.sleep(0.1)
+
+    # --------------------------------------------------------------------------
+    # GIAI ĐOẠN 2: KHAI THÁC BLOCK & LAN TRUYỀN WEBSOCKET TỚI 6 NODE
+    # --------------------------------------------------------------------------
+    target_chain = base_chain_len + 1
+    print(f"    [*] Kich hoat khai thac Block #{target_chain} tai Miner Node ({miner_url}/mine?max_txs={tx_count + 50})...")
+    t_mine_start = time.perf_counter()
+    try:
+        mine_res = requests.get(f"{miner_url}/mine?max_txs={tx_count + 50}", timeout=30.0)
+        if mine_res.status_code == 200:
+            print("    [+] Miner khai thac thanh cong!")
+    except Exception as ex:
+        print(f"    [!] Loi khi goi miner: {ex}")
+    t_mining = time.perf_counter() - t_mine_start
+
+    t_prop_start = time.perf_counter()
+    synced = False
+    for _ in range(100):
+        time.sleep(0.1)
+        try:
+            st = [requests.get(f"{u}/status", timeout=1.0).json().get('chain_length', 0) for u in nodes]
             if all(s >= target_chain for s in st):
                 synced = True
                 break
@@ -277,28 +367,38 @@ def benchmark_single_signature_scheme(alg_name: str, wallet_pair: Tuple[str, str
             pass
 
     t_prop = time.perf_counter() - t_prop_start
-    print(f"    -> Block #{target_chain} lan truyen qua WebSocket: {t_prop:.3f} s (Sync 100%: {synced})")
+    t_consensus_total = t_mining + t_prop
+    print(f"    -> Thoi gian giai PoW Miner: {t_mining:.3f} s | Lan truyen WebSocket: {t_prop:.3f} s (Tong: {t_consensus_total:.3f} s, Sync 100%: {synced})")
 
-    # Giai đoạn 3: Đo kích thước Block Wire
-    chain_data = requests.get(f"{ingress_url}/chain", timeout=2.0).json()
+    # --------------------------------------------------------------------------
+    # GIAI ĐOẠN 3: ĐO KÍCH THƯỚC BLOCK WIRE
+    # --------------------------------------------------------------------------
+    read_url = ingress_url if synced else miner_url
+    chain_data = requests.get(f"{read_url}/chain", timeout=2.0).json()
     latest_block = chain_data['chain'][-1] if chain_data['chain'] else {}
-    block_bytes = len(json.dumps(latest_block).encode('utf-8'))
     tx_in_block = len(latest_block.get('transactions', []))
+    block_bytes = len(json.dumps(latest_block).encode('utf-8'))
     avg_tx_bytes = (block_bytes / tx_in_block) if tx_in_block > 0 else 0
 
-    print(f"    -> Kich thuoc Block tren duong truyen: {block_bytes/1024:.2f} KB | Avg {avg_tx_bytes:.1f} B/tx")
+    print(f"    -> Kich thuoc Block tren duong truyen ({tx_in_block} txs): {block_bytes/1024:.2f} KB | Avg {avg_tx_bytes:.1f} B/tx")
 
-    return {
+    res_summary = {
         'algorithm': alg_name,
         'tx_sent': tx_count,
         'tx_accepted': accepted,
         'ingestion_tps': round(tps, 2),
         'latency_mean_ms': round(mean_lat, 2),
+        'latency_median_ms': round(median_lat, 2),
         'latency_p95_ms': round(p95_lat, 2),
+        'mining_time_sec': round(t_mining, 3),
         'propagation_delay_sec': round(t_prop, 3),
+        'consensus_total_sec': round(t_consensus_total, 3),
         'block_wire_kb': round(block_bytes / 1024.0, 2),
-        'avg_bytes_per_tx': round(avg_tx_bytes, 1)
+        'avg_bytes_per_tx': round(avg_tx_bytes, 1),
+        'tx_in_block': tx_in_block,
+        'all_nodes_synced': synced
     }
+    return res_summary, ingest_records
 
 
 # ==============================================================================
@@ -319,7 +419,6 @@ def benchmark_tls_transport_handshake(mode: str) -> Dict:
     t0 = time.perf_counter()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
-        # Mô phỏng tính toán handshake
         if 'Hybrid' in mode:
             time.sleep(0.0035)
         elif 'Pure' in mode:
@@ -349,7 +448,7 @@ def plot_macro_charts(sig_results: List[Dict], tls_results: List[Dict], out_dir:
     plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
 
     # 1. CHART 1: SIGNATURE IMPACT ON BLOCKCHAIN CONSENSUS & BLOCK WIRE
-    tx_c = sig_results[0].get('tx_sent', 15) if sig_results else 15
+    tx_c = sig_results[0].get('tx_sent', 100) if sig_results else 100
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     fig.suptitle(f'Macro-Benchmark: Signature Scheme Impact on 6-Node Blockchain Mesh ({tx_c} tx/block)', fontsize=14, fontweight='bold', y=0.98)
 
@@ -359,8 +458,8 @@ def plot_macro_charts(sig_results: List[Dict], tls_results: List[Dict], out_dir:
 
     # TPS & Latency
     tps_vals = [r['ingestion_tps'] for r in sig_results]
-    ax1.bar(x, tps_vals, width, label=f'HTTP Ingestion TPS ({tx_c} txs)', color='#3b82f6', alpha=0.9)
-    ax1.set_title(f'End-to-End Ingestion TPS ({tx_c} txs) (higher is better)', fontweight='bold')
+    ax1.bar(x, tps_vals, width, label=f'Concurrent Ingestion TPS ({tx_c} txs)', color='#3b82f6', alpha=0.9)
+    ax1.set_title(f'End-to-End Ingestion TPS ({tx_c} txs, Concurrency=8) (higher is better)', fontweight='bold')
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=15, ha='right', fontweight='bold')
     ax1.set_ylabel('TPS (tx/s)')
@@ -368,7 +467,7 @@ def plot_macro_charts(sig_results: List[Dict], tls_results: List[Dict], out_dir:
         ax1.annotate(f"{v:.1f}", (idx, v), textcoords="offset points", xytext=(0, 3), ha='center', fontweight='bold')
     ax1.grid(True, linestyle='--', alpha=0.5)
 
-    # Block Wire Size
+    # Block Wire Size & Propagation
     block_kb = [r['block_wire_kb'] for r in sig_results]
     prop_sec = [r['propagation_delay_sec'] for r in sig_results]
 
@@ -447,11 +546,17 @@ def plot_macro_charts(sig_results: List[Dict], tls_results: List[Dict], out_dir:
 
 def main():
     parser = argparse.ArgumentParser(description="Macro-Benchmark Suite: Blockchain Signatures & TLS P2P")
-    parser.add_argument('-n', '--tx-count', type=int, default=20, help="Số giao dịch mỗi đợt benchmark (mặc định: 20)")
+    parser.add_argument('-n', '--tx-count', type=int, default=100, help="Số giao dịch mỗi đợt benchmark (mặc định: 100)")
+    parser.add_argument('-w', '--warmup', type=int, default=10, help="Số giao dịch warm-up không tính giờ (mặc định: 10)")
+    parser.add_argument('--workers', type=int, default=8, help="Số luồng client gửi đồng thời (mặc định: 8)")
+    parser.add_argument('-c', '--config', type=str, default="", help="Đường dẫn file cấu hình JSON")
     parser.add_argument('-o', '--output-dir', type=str, default="", help="Thư mục xuất kết quả")
     args = parser.parse_args()
 
-    tx_count = args.tx_count if args.tx_count > 0 else 20
+    tx_count = args.tx_count if args.tx_count > 0 else 100
+    warmup_count = args.warmup if args.warmup >= 0 else 10
+    workers = args.workers if args.workers > 0 else 8
+
     base_dir = Path(__file__).resolve().parent.parent
     out_dir = Path(args.output_dir) if args.output_dir else base_dir / "benchmarks" / "results" / "blockchain_macro"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -468,33 +573,43 @@ def main():
     print("=" * 96)
     print("  MACRO-BENCHMARK: DANH GIA TAI THUC TE MANG P2P 6-NODE BLOCKCHAIN (END-TO-END)")
     print("  Signatures : ECDSA (secp256k1) | ML-DSA-44 | ML-DSA-65 | ML-DSA-87 (FIPS 204)")
-    print("  TLS Mode   : Classical ECDHE | Hybrid X25519+ML-KEM-768 | Pure ML-KEM-768 | Pure ML-KEM-512 | Plaintext")
-    print(f"  Workload   : {tx_count} txs / profile | Environment: {sys.platform} | Python {sys.version.split()[0]}")
+    print("  TLS Mode   : Classical ECDHE | Hybrid X25519+ML-KEM-768 | Pure ML-KEM-768 | Pure ML-KEM-512")
+    print(f"  Workload   : {tx_count} txs / profile (Warm-up: {warmup_count} txs, Concurrency: {workers} workers)")
+    print(f"  Environment: {sys.platform} | Python {sys.version.split()[0]}")
     print("=" * 96)
-
-    # 1. Khởi động mạng 6-Node P2P
-    print("\n[*] Khoi chay mang luoi P2P 6 Node (WebSocket TLS Hybrid X25519+ML-KEM-768)...")
-    spawned = start_p2p_network(base_dir, tls_mode="hybrid", sig_mode="all")
 
     sig_results = []
     tls_results = []
+    all_raw_records = []
+
+    sig_tests = [
+        ("ECDSA (secp256k1)", ("Alice", "Bob")),
+        ("ML-DSA-44", ("Alice_PQC", "Bob_PQC")),
+        ("ML-DSA-65", ("Alice_MLDSA65", "Bob_MLDSA65")),
+        ("ML-DSA-87", ("Alice_MLDSA87", "Bob_MLDSA87"))
+    ]
 
     try:
-        # THÍ NGHIỆM 1: CHỮ KÝ SỐ GIAO DỊCH
-        sig_tests = [
-            ("ECDSA (secp256k1)", ("Alice", "Bob")),
-            ("ML-DSA-44", ("Alice_PQC", "Bob_PQC")),
-            ("ML-DSA-65", ("Alice_MLDSA65", "Bob_MLDSA65")),
-            ("ML-DSA-87", ("Alice_MLDSA87", "Bob_MLDSA87"))
-        ]
-
+        # THÍ NGHIỆM 1: CHỮ KÝ SỐ GIAO DỊCH (ISOLATED NETWORK PER SCHEME)
         for alg_name, pair in sig_tests:
             if pair[0] in wallets and pair[1] in wallets:
-                res = benchmark_single_signature_scheme(alg_name, pair, tx_count, ingress_url, miner_url, nodes, wallets, out_dir)
-                sig_results.append(res)
+                print(f"\n" + "-" * 90)
+                print(f"[*] KHOI CHAY MANG 6-NODE RIENG CHO THUAT TOAN: {alg_name}")
+                print("-" * 90)
+                spawned = start_p2p_network(base_dir, tls_mode="hybrid", sig_mode="all", enable_auto_miner=False)
+                try:
+                    res, raw_records = benchmark_single_signature_scheme(
+                        alg_name, pair, tx_count, warmup_count, ingress_url, miner_url, nodes, wallets, out_dir, workers=workers
+                    )
+                    sig_results.append(res)
+                    all_raw_records.extend(raw_records)
+                finally:
+                    stop_p2p_network(spawned, base_dir)
 
         # THÍ NGHIỆM 2: CẤU HÌNH GIAO VẬN TLS / KEM
-        print("\n--- PHAN 2: DANH GIA CAC CAU HINH GIAO VAN TLS 1.3 / KEM TRONG MANG P2P ---")
+        print("\n" + "=" * 90)
+        print("--- PHAN 2: DANH GIA CAC CAU HINH GIAO VAN TLS 1.3 / KEM TRONG MANG P2P ---")
+        print("=" * 90)
         tls_configs = [
             'Classical ECDHE',
             'Hybrid (X25519 + ML-KEM-768)',
@@ -508,23 +623,24 @@ def main():
                   f"Key Share = {tls_res['client_key_share_bytes']:>4}B (Client) / {tls_res['server_key_share_bytes']:>4}B (Server)")
 
     finally:
-        print("\n[*] Dang tat an toan cac Node P2P...")
-        stop_p2p_network(spawned)
+        # Cleanup any remaining stray processes
+        kill_ports([5000, 5001, 5002, 5003, 5004, 5005, 6000, 6001, 6002, 6003, 6004, 6005])
 
     # In Bảng tổng hợp Signature
-    print("\n" + "=" * 110)
-    print(f"BANG 1: KET QUA MACRO-BENCHMARK CHU KY SO TREN MANG 6 NODE ({tx_count} TX / BLOCK)")
-    print(f"{'Thuat toan':<22} | {'TPS Ingest':<12} | {'Latency (ms)':<14} | {'P95 (ms)':<10} | {f'Block Wire ({tx_count} tx)':<18} | {'Avg Tx Size':<12}")
-    print("-" * 110)
+    print("\n" + "=" * 145)
+    print(f"BANG 1: KET QUA MACRO-BENCHMARK CHU KY SO TREN MANG 6 NODE ({tx_count} TX / BLOCK, WARM-UP: {warmup_count})")
+    print(f"{'Thuat toan':<20} | {'TPS Ingest':<12} | {'Mean Lat (ms)':<14} | {'Block Wire Size':<22} | {'PoW Mining (s)':<15} | {'WebSocket Prop (s)':<18} | {'Total Consensus':<15}")
+    print("-" * 145)
     for r in sig_results:
-        b_wire_str = f"{r['block_wire_kb']:.2f} KB"
-        print(f"{r['algorithm']:<22} | "
+        b_wire_str = f"{r['block_wire_kb']:.2f} KB ({r.get('tx_in_block', tx_count+1)} txs)"
+        print(f"{r['algorithm']:<20} | "
               f"{r['ingestion_tps']:>10.2f} | "
               f"{r['latency_mean_ms']:>12.2f} | "
-              f"{r['latency_p95_ms']:>8.2f} | "
-              f"{b_wire_str:>18} | "
-              f"{r['avg_bytes_per_tx']:>9.1f} B")
-    print("=" * 110)
+              f"{b_wire_str:>22} | "
+              f"{r.get('mining_time_sec', 0.0):>13.3f} s | "
+              f"{r.get('propagation_delay_sec', 0.0):>16.3f} s | "
+              f"{r.get('consensus_total_sec', 0.0):>13.3f} s")
+    print("=" * 145)
 
     # In Bảng tổng hợp TLS
     print("\n" + "=" * 90)
@@ -542,6 +658,8 @@ def main():
     summary_data = {
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
         'tx_count_per_scheme': tx_count,
+        'warmup_tx_count': warmup_count,
+        'concurrency_workers': workers,
         'signatures_macro': sig_results,
         'tls_macro': tls_results
     }
@@ -549,12 +667,22 @@ def main():
     with open(summary_path, 'w', encoding='utf-8') as f:
         json.dump(summary_data, f, indent=2)
 
+    # Lưu Raw CSV
+    if all_raw_records:
+        raw_csv_path = out_dir / "macro_transactions_raw.csv"
+        with open(raw_csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Algorithm", "Tx_Index", "HTTP_Status", "Latency_ms", "Result"])
+            for r in all_raw_records:
+                writer.writerow([r["algorithm"], r["tx_index"], r["status_code"], round(r["latency_ms"], 3), r["result"]])
+        print(f"[+] Da cap nhat Raw CSV ({len(all_raw_records)} dong): {raw_csv_path}")
+
     # Vẽ biểu đồ
     plot_macro_charts(sig_results, tls_results, out_dir)
 
     print(f"\n[+] Da hoan tat toan bo Macro-Benchmark va luu tai:")
     print(f"    - JSON: {summary_path}")
-    print(f"    - Thu muc Bieu do: {out_dir}")
+    print(f"    - Thu muc CSV & Bieu do: {out_dir}")
 
 
 if __name__ == '__main__':
