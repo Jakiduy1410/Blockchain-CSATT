@@ -5,13 +5,35 @@ import binascii
 import requests
 from flask import Flask, jsonify, request, render_template
 
-# Sử dụng chuẩn ECDSA (secp256k1) cho giao dịch theo cấu hình tinh gọn
-import ecdsa
+# Sử dụng chuẩn ECDSA (secp256k1) bằng C-backend OpenSSL qua cryptography
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
 
 try:
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        dll_dirs = [
+            os.path.abspath('.'),
+            os.path.abspath('liboqs'),
+            os.path.abspath('liboqs/build/bin'),
+            os.path.abspath('liboqs/build/bin/Release'),
+            os.path.abspath('liboqs/build/bin/Debug'),
+            os.path.abspath('build/bin/Release'),
+            os.path.abspath('build/bin'),
+            os.path.expanduser('~/_oqs/bin')
+        ]
+        liboqs_env = os.environ.get('LIBOQS_DIR')
+        if liboqs_env:
+            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
+        for d in dll_dirs:
+            if os.path.isdir(d):
+                try:
+                    os.add_dll_directory(d)
+                except Exception:
+                    pass
     import oqs
     OQS_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     OQS_AVAILABLE = False
     oqs = None
 
@@ -42,14 +64,14 @@ class Transaction:
     def sign_transaction(self):
         """Ký số giao dịch bằng ECDSA (secp256k1) hoặc ML-DSA nếu khóa dài"""
         try:
-            # Nếu khóa có độ dài lớn (> 1000) và oqs khả dụng -> ML-DSA
+            # Nếu khóa có độ dài lớn (> 1000) và oqs khả dụng -> ML-DSA (44 / 65 / 87)
             if len(self.sender_private_key) > 1000 and OQS_AVAILABLE:
                 private_key_bytes = bytes.fromhex(self.sender_private_key)
                 transaction_string = str(self.to_dict()).encode('utf8')
                 sk_len = len(private_key_bytes)
                 if sk_len >= 4800:
                     alg = "ML-DSA-87"
-                elif sk_len >= 4000:
+                elif sk_len >= 3500:
                     alg = "ML-DSA-65"
                 else:
                     alg = "ML-DSA-44"
@@ -57,12 +79,14 @@ class Transaction:
                     signature_bytes = signer.sign(transaction_string)
                 return signature_bytes.hex()
 
-            # Mặc định chuẩn: Ký số ECDSA (secp256k1)
-            sk_bytes = bytes.fromhex(self.sender_private_key)
-            sk = ecdsa.SigningKey.from_string(sk_bytes, curve=ecdsa.SECP256k1)
+            # Mặc định chuẩn: Ký số ECDSA (secp256k1) qua C-backend OpenSSL
+            priv_int = int(self.sender_private_key, 16)
+            sk = ec.derive_private_key(priv_int, ec.SECP256K1())
             transaction_bytes = str(self.to_dict()).encode('utf-8')
-            signature_bytes = sk.sign(transaction_bytes)
-            return signature_bytes.hex()
+            der_sig = sk.sign(transaction_bytes, ec.ECDSA(hashes.SHA256()))
+            r, s = decode_dss_signature(der_sig)
+            sig_bytes = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
+            return sig_bytes.hex()
         except Exception as e:
             raise ValueError(f"Lỗi trong quá trình ký số giao dịch: {str(e)}")
 
@@ -87,13 +111,16 @@ def view_transaction():
 
 @app.route('/wallet/new', methods=['GET'])
 def new_wallet():
-    # Tạo cặp khóa ECDSA secp256k1
+    # Tạo cặp khóa ECDSA secp256k1 qua C-Engine OpenSSL
     try:
-        sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        vk = sk.verifying_key
+        sk = ec.generate_private_key(ec.SECP256K1())
+        priv_num = sk.private_numbers().private_value
+        priv_hex = f"{priv_num:064x}"
+        pub_num = sk.public_key().public_numbers()
+        pub_hex = f"{pub_num.x:064x}{pub_num.y:064x}"
         response = {
-            'private_key': sk.to_string().hex(),
-            'public_key': vk.to_string().hex(),
+            'private_key': priv_hex,
+            'public_key': pub_hex,
             'algorithm': 'ECDSA-secp256k1'
         }
         return jsonify(response), 200

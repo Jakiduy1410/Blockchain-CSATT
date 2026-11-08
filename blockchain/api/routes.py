@@ -106,8 +106,10 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
     def inspect_packet():
         import json, os, hashlib
         from collections import OrderedDict
-        import ecdsa
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         wallets_file = os.path.join(root_dir, 'configs', 'wallets.json')
@@ -133,8 +135,11 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
         ])
 
         try:
-            sk = ecdsa.SigningKey.from_string(bytes.fromhex(alice_priv), curve=ecdsa.SECP256k1)
-            sig = sk.sign(str(tx_dict).encode('utf-8')).hex()
+            priv_int = int(alice_priv, 16)
+            sk = ec.derive_private_key(priv_int, ec.SECP256K1())
+            der_sig = sk.sign(str(tx_dict).encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+            r, s = decode_dss_signature(der_sig)
+            sig = (r.to_bytes(32, 'big') + s.to_bytes(32, 'big')).hex()
         except Exception:
             sig = "3045022100" + "ab" * 30 + "0220" + "cd" * 31
 

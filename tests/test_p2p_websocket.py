@@ -12,7 +12,9 @@ from collections import OrderedDict
 # Thêm project root vào sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ecdsa
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from blockchain.core.ledger import BlockchainLedger
 from blockchain.core.transaction import Transaction
 from blockchain.network.p2p import P2PNetwork
@@ -21,14 +23,14 @@ from blockchain.network.p2p import P2PNetwork
 class TestP2PWebSocket(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Tạo cặp khóa ECDSA cho Alice và Bob
-        cls.alice_sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        cls.alice_vk = cls.alice_sk.verifying_key
-        cls.alice_pub = cls.alice_vk.to_string().hex()
+        # Tạo cặp khóa ECDSA cho Alice và Bob qua C OpenSSL
+        cls.alice_sk = ec.generate_private_key(ec.SECP256K1())
+        pub_a = cls.alice_sk.public_key().public_numbers()
+        cls.alice_pub = f"{pub_a.x:064x}{pub_a.y:064x}"
 
-        cls.bob_sk = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-        cls.bob_vk = cls.bob_sk.verifying_key
-        cls.bob_pub = cls.bob_vk.to_string().hex()
+        cls.bob_sk = ec.generate_private_key(ec.SECP256K1())
+        pub_b = cls.bob_sk.public_key().public_numbers()
+        cls.bob_pub = f"{pub_b.x:064x}{pub_b.y:064x}" 
 
     def setUp(self):
         # Node 1: HTTP 5080, WebSocket 6080
@@ -60,7 +62,9 @@ class TestP2PWebSocket(unittest.TestCase):
             ('value', str(value)),
             ('nonce', str(nonce))
         ])
-        sig = sk.sign(str(d).encode('utf-8'))
+        der = sk.sign(str(d).encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+        r, s = decode_dss_signature(der)
+        sig = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
         return Transaction(sender, recipient, str(value), sig.hex(), nonce=nonce)
 
     def test_p2p_gossip_transaction_over_websocket(self):

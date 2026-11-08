@@ -10,15 +10,41 @@ import hashlib
 import json
 from collections import OrderedDict
 
+import os
+import sys
+
 try:
+    if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+        dll_dirs = [
+            os.path.abspath('.'),
+            os.path.abspath('liboqs'),
+            os.path.abspath('liboqs/build/bin'),
+            os.path.abspath('liboqs/build/bin/Release'),
+            os.path.abspath('liboqs/build/bin/Debug'),
+            os.path.abspath('build/bin/Release'),
+            os.path.abspath('build/bin'),
+            os.path.expanduser('~/_oqs/bin')
+        ]
+        liboqs_env = os.environ.get('LIBOQS_DIR')
+        if liboqs_env:
+            dll_dirs.extend([liboqs_env, os.path.join(liboqs_env, 'bin')])
+        for dll_dir in dll_dirs:
+            if os.path.isdir(dll_dir):
+                try:
+                    os.add_dll_directory(dll_dir)
+                except Exception:
+                    pass
     import oqs
-except ImportError:
+except (ImportError, Exception):
     oqs = None
 
 try:
-    from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
-except ImportError:
-    VerifyingKey = None
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+    from cryptography.exceptions import InvalidSignature
+except (ImportError, Exception):
+    ec = None
 
 from Crypto.Hash import SHA
 from Crypto.PublicKey import RSA
@@ -44,6 +70,8 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
             ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
             ('value', str(transaction_dict.get('value', '')))
         ])
+        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
+            ordered_tx['nonce'] = str(transaction_dict['nonce'])
         tx_bytes = str(ordered_tx).encode('utf-8')
 
         if len(public_key_bytes) >= 2592 or len(signature_bytes) >= 4627:
@@ -60,17 +88,14 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
 
 
 def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
-    """Xác thực chữ ký số ECDSA (đường cong secp256k1)."""
-    if VerifyingKey is None:
+    """
+    Xác thực chữ ký số ECDSA (đường cong secp256k1) thuần túy bằng C-Engine (OpenSSL qua cryptography).
+    Tuyệt đối không sử dụng thư viện Pure-Python; đảm bảo tính minh bạch và công bằng 100% với PQC (liboqs C-core).
+    """
+    if ec is None or not sender_public_key_hex or not signature_hex:
         return False
+
     try:
-        if not sender_public_key_hex or not signature_hex:
-            return False
-
-        public_key_bytes = bytes.fromhex(sender_public_key_hex)
-        signature_bytes = bytes.fromhex(signature_hex)
-        vk = VerifyingKey.from_string(public_key_bytes, curve=SECP256k1)
-
         ordered_tx = OrderedDict([
             ('sender_address', str(transaction_dict.get('sender_address', ''))),
             ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
@@ -80,12 +105,35 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
             ordered_tx['nonce'] = str(transaction_dict['nonce'])
 
         tx_bytes = str(ordered_tx).encode('utf-8')
+        public_key_bytes = bytes.fromhex(sender_public_key_hex)
+        signature_bytes = bytes.fromhex(signature_hex)
+
+        # 1. Đọc Public Key bằng OpenSSL C-Engine (hỗ trợ raw 64B x||y, compressed 33B, hoặc 65B 0x04)
+        if len(public_key_bytes) == 64:
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
+        elif len(public_key_bytes) in (33, 65):
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
+        else:
+            pk = serialization.load_der_public_key(public_key_bytes)
+
+        # 2. Đọc Signature (chuẩn raw r||s 64B hoặc chuẩn DER ASN.1)
+        if len(signature_bytes) == 64:
+            r = int.from_bytes(signature_bytes[:32], 'big')
+            s = int.from_bytes(signature_bytes[32:], 'big')
+            der_sig = encode_dss_signature(r, s)
+        else:
+            der_sig = signature_bytes
+
+        # 3. Thẩm định hoàn toàn bằng C native OpenSSL (ưu tiên SHA-256, hỗ trợ SHA-1 legacy)
         try:
-            return vk.verify(signature_bytes, tx_bytes)
-        except Exception:
-            # Fallback thu verify voi DER format
-            import ecdsa.util
-            return vk.verify(signature_bytes, tx_bytes, sigdecode=ecdsa.util.sigdecode_der)
+            pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA256()))
+            return True
+        except InvalidSignature:
+            try:
+                pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA1()))
+                return True
+            except InvalidSignature:
+                return False
     except Exception:
         return False
 

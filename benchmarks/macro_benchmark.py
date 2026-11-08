@@ -58,9 +58,11 @@ def load_wallets(base_dir: Path) -> Dict[str, dict]:
     return {}
 
 def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount: str, nonce: int = 1) -> dict:
-    """Tạo và ký số giao dịch chuẩn ECDSA (secp256k1) kèm nonce chống Replay."""
+    """Tạo và ký số giao dịch chuẩn ECDSA (secp256k1) bằng C-backend OpenSSL (cryptography)."""
     from collections import OrderedDict
-    import ecdsa
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
     tx_dict = OrderedDict([
         ('sender_address', sender['public_key']),
@@ -69,9 +71,11 @@ def create_signed_ecdsa_transaction(sender: dict, recipient_pubkey: str, amount:
         ('nonce', str(nonce))
     ])
     tx_bytes = str(tx_dict).encode('utf-8')
-    sk_bytes = bytes.fromhex(sender['private_key'])
-    sk = ecdsa.SigningKey.from_string(sk_bytes, curve=ecdsa.SECP256k1)
-    sig_bytes = sk.sign(tx_bytes)
+    priv_int = int(sender['private_key'], 16)
+    sk = ec.derive_private_key(priv_int, ec.SECP256K1())
+    der_sig = sk.sign(tx_bytes, ec.ECDSA(hashes.SHA256()))
+    r, s = decode_dss_signature(der_sig)
+    sig_bytes = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
 
     return {
         'sender_address': sender['public_key'],

@@ -26,7 +26,7 @@
   "Perf_ECDSA": {
     "name": "Perf_ECDSA",
     "initial_balance": 5000000.0,
-    "public_key": "5ff35a3f1e8b12d6dd236b2e62a6b2478e3745ecbfeb700ba7284c70a63cf77524ac6ac63acec3e2fda885ce9f13e9849b7caa7f3cad9789961dcf34270553da",
+    "public_key": "67c7502ae7d701be5ad3f0aafeac1bd5fdcb3534c351d434aa02bb8b10d0bd349e5b75ab473dbd5e988b348932e0d1ce640769a0d72cd2d94b86a35c4dbe89e5",
     "private_key": ""
   },
   "Perf_MLDSA87": {
