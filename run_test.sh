@@ -25,4 +25,4 @@ fi
 
 source "$venv_dir/bin/activate"
 "$venv_dir/bin/python" -m pip install -r requirements.txt
-exec "$venv_dir/bin/python" tests/sec03_signature_integrity/run_all_attacks.py "$@"
+exec "$venv_dir/bin/python" run_all_attacks.py "$@"

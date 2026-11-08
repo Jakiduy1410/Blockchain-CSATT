@@ -1,0 +1,91 @@
+{
+  "platform": "Windows x86_64",
+  "validated_at_utc": "2026-11-08T13:57:20.707368+00:00",
+  "regression_tests_passed": 14,
+  "requests_total": 5800,
+  "attacks_blocked_total": 3200,
+  "normal_in_block_total": 2600,
+  "runs": [
+    {
+      "algorithm": "ECDSA",
+      "passed": true,
+      "requests": 1450,
+      "attack_blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ],
+      "mutation_field_counts": {
+        "amount": 100,
+        "recipient_address": 100,
+        "sender_address": 100
+      }
+    },
+    {
+      "algorithm": "ML-DSA-44",
+      "passed": true,
+      "requests": 1450,
+      "attack_blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ],
+      "mutation_field_counts": {
+        "amount": 100,
+        "recipient_address": 100,
+        "sender_address": 100
+      }
+    },
+    {
+      "algorithm": "ML-DSA-65",
+      "passed": true,
+      "requests": 1450,
+      "attack_blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ],
+      "mutation_field_counts": {
+        "sender_address": 100,
+        "amount": 100,
+        "recipient_address": 100
+      }
+    },
+    {
+      "algorithm": "ML-DSA-87",
+      "passed": true,
+      "requests": 1450,
+      "attack_blocked": [
+        300,
+        300,
+        200
+      ],
+      "normal_in_block": [
+        300,
+        300,
+        50
+      ],
+      "mutation_field_counts": {
+        "recipient_address": 100,
+        "amount": 100,
+        "sender_address": 100
+      }
+    }
+  ],
+  "note": "Fresh local validation of SEC03new; rerun to obtain report measurements on the target machine."
+}

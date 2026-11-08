@@ -32,7 +32,7 @@ call "%SEC03_VENV_BIN%\activate.bat"
 if errorlevel 1 goto failed
 "%SEC03_VENV_BIN%\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 goto failed
-"%SEC03_VENV_BIN%\python.exe" tests\sec03_signature_integrity\run_all_attacks.py %*
+"%SEC03_VENV_BIN%\python.exe" run_all_attacks.py %*
 set "SEC03_EXIT=%errorlevel%"
 goto finish
 
