@@ -1,0 +1,252 @@
+{
+  "runs": [
+    {
+      "algorithm": "ECDSA",
+      "project": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa",
+      "log": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/sec03_20261108T140026Z_860324.jsonl",
+      "node_logs": {
+        "5000": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5000.log",
+        "5001": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5001.log",
+        "5002": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5002.log",
+        "5003": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5003.log",
+        "5004": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5004.log",
+        "5005": "/home/kali/Desktop/test/Blockchain-CSATT-ecdsa/logs/sec03_20261108T140026Z_860324_node_5005.log"
+      },
+      "exit_code": 0,
+      "status": "passed",
+      "log_mtime_ns": 1794146472135657290
+    },
+    {
+      "algorithm": "ML-DSA-44",
+      "project": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44",
+      "log": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/sec03_20261108T140026Z_860324.jsonl",
+      "node_logs": {
+        "5000": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5000.log",
+        "5001": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5001.log",
+        "5002": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5002.log",
+        "5003": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5003.log",
+        "5004": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5004.log",
+        "5005": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa44/logs/sec03_20261108T140026Z_860324_node_5005.log"
+      },
+      "exit_code": 0,
+      "status": "passed",
+      "log_mtime_ns": 1794146536506281150
+    },
+    {
+      "algorithm": "ML-DSA-65",
+      "project": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65",
+      "log": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/sec03_20261108T140026Z_860324.jsonl",
+      "node_logs": {
+        "5000": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5000.log",
+        "5001": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5001.log",
+        "5002": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5002.log",
+        "5003": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5003.log",
+        "5004": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5004.log",
+        "5005": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa65/logs/sec03_20261108T140026Z_860324_node_5005.log"
+      },
+      "exit_code": 0,
+      "wallet_preparation": {
+        "algorithm": "ML-DSA-65",
+        "generated": false,
+        "funded": false,
+        "balance": 100.0,
+        "public_key_bytes": 1952,
+        "private_key_bytes": 4032,
+        "public_key_sha256": "c475b95ef01a93bf7cc209450d949d2f4b5f1b935fe63812be5a67f79a6bf905"
+      },
+      "verified_balances": {
+        "5000": 100.0,
+        "5001": 100.0,
+        "5002": 100.0,
+        "5003": 100.0,
+        "5004": 100.0,
+        "5005": 100.0
+      },
+      "status": "passed",
+      "log_mtime_ns": 1794146618526438098
+    },
+    {
+      "algorithm": "ML-DSA-87",
+      "project": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87",
+      "log": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/sec03_20261108T140026Z_860324.jsonl",
+      "node_logs": {
+        "5000": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5000.log",
+        "5001": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5001.log",
+        "5002": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5002.log",
+        "5003": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5003.log",
+        "5004": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5004.log",
+        "5005": "/home/kali/Desktop/test/Blockchain-CSATT-mldsa87/logs/sec03_20261108T140026Z_860324_node_5005.log"
+      },
+      "exit_code": 0,
+      "wallet_preparation": {
+        "algorithm": "ML-DSA-87",
+        "generated": false,
+        "funded": false,
+        "balance": 100.0,
+        "public_key_bytes": 2592,
+        "private_key_bytes": 4896,
+        "public_key_sha256": "d5562200c0689dca6eb44bb91e45b98762c9b60b32f1781281fa8232bec49a80"
+      },
+      "verified_balances": {
+        "5000": 100.0,
+        "5001": 100.0,
+        "5002": 100.0,
+        "5003": 100.0,
+        "5004": 100.0,
+        "5005": 100.0
+      },
+      "status": "passed",
+      "log_mtime_ns": 1794146723394128973
+    }
+  ],
+  "benchmark": {
+    "ECDSA": {
+      "Bit-flipping": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 39.762393333333335,
+        "p95_ms": 89.084,
+        "total_ms": 11928.718,
+        "phase_wall_seconds": 12.941,
+        "group_mean_ms": {
+          "1": 36.570586666666664,
+          "2": 35.18312,
+          "3": 42.630653333333335,
+          "4": 44.665213333333334
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 39.77712666666667,
+        "p95_ms": 88.134,
+        "total_ms": 11933.138,
+        "phase_wall_seconds": 12.949,
+        "group_mean_ms": {
+          "amount": 42.235690000000005,
+          "recipient_address": 35.18343,
+          "sender_address": 41.912259999999996
+        }
+      },
+      "Replay": {
+        "attack_sent": 200,
+        "blocked": 200,
+        "mean_ms": 2.38186,
+        "p95_ms": 4.606,
+        "total_ms": 476.372,
+        "phase_wall_seconds": 16.03
+      }
+    },
+    "ML-DSA-44": {
+      "Bit-flipping": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 30.797913333333334,
+        "p95_ms": 68.102,
+        "total_ms": 9239.374,
+        "phase_wall_seconds": 14.873,
+        "group_mean_ms": {
+          "1": 25.737266666666667,
+          "2": 32.13196,
+          "3": 31.98336,
+          "4": 33.33906666666667
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 36.29159333333333,
+        "p95_ms": 85.91,
+        "total_ms": 10887.478,
+        "phase_wall_seconds": 17.494,
+        "group_mean_ms": {
+          "amount": 37.11866,
+          "recipient_address": 33.01642,
+          "sender_address": 38.7397
+        }
+      },
+      "Replay": {
+        "attack_sent": 200,
+        "blocked": 200,
+        "mean_ms": 2.27081,
+        "p95_ms": 3.476,
+        "total_ms": 454.162,
+        "phase_wall_seconds": 29.122
+      }
+    },
+    "ML-DSA-65": {
+      "Bit-flipping": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 38.55968333333333,
+        "p95_ms": 86.056,
+        "total_ms": 11567.905,
+        "phase_wall_seconds": 18.515,
+        "group_mean_ms": {
+          "1": 42.77693333333333,
+          "2": 33.93349333333334,
+          "3": 36.505093333333335,
+          "4": 41.02321333333333
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 53.913693333333335,
+        "p95_ms": 135.32,
+        "total_ms": 16174.108,
+        "phase_wall_seconds": 24.753,
+        "group_mean_ms": {
+          "amount": 54.904300000000006,
+          "recipient_address": 52.05782,
+          "sender_address": 54.77896
+        }
+      },
+      "Replay": {
+        "attack_sent": 200,
+        "blocked": 200,
+        "mean_ms": 2.396415,
+        "p95_ms": 3.438,
+        "total_ms": 479.283,
+        "phase_wall_seconds": 35.742
+      }
+    },
+    "ML-DSA-87": {
+      "Bit-flipping": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 61.69958,
+        "p95_ms": 134.146,
+        "total_ms": 18509.874,
+        "phase_wall_seconds": 28.843,
+        "group_mean_ms": {
+          "1": 62.44916,
+          "2": 62.880039999999994,
+          "3": 61.17732,
+          "4": 60.2918
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 300,
+        "blocked": 300,
+        "mean_ms": 60.963346666666666,
+        "p95_ms": 137.924,
+        "total_ms": 18289.004,
+        "phase_wall_seconds": 29.532,
+        "group_mean_ms": {
+          "amount": 65.41629,
+          "recipient_address": 54.78371,
+          "sender_address": 62.690039999999996
+        }
+      },
+      "Replay": {
+        "attack_sent": 200,
+        "blocked": 200,
+        "mean_ms": 2.322665,
+        "p95_ms": 3.344,
+        "total_ms": 464.533,
+        "phase_wall_seconds": 41.395
+      }
+    }
+  }
+}

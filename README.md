@@ -1,5 +1,11 @@
 # Blockchain Python P2P Network (Modular Architecture, WebSocket TLS 1.3 & 6-Node Mesh)
 
+> **Nhánh SEC03new:** chạy bộ kiểm thử đầy đủ bằng `run_test.bat` (Windows)
+> hoặc `bash run_test.sh --keep-raw-logs` (Kali). Bốn thuật toán, 1.450 yêu cầu
+> mỗi thuật toán; ECDSA dùng OpenSSL như master. Xem [SEC03.md](SEC03.md) trước
+> khi chạy. Các launcher và nội dung bên dưới là hệ thống/demo chung của nhóm;
+> bộ SEC-03 dùng runtime riêng để giữ cấu hình thực nghiệm cũ.
+
 > **Dự án nâng cấp hệ thống Blockchain P2P đa Node:** Tái cấu trúc mã nguồn theo kiến trúc module hóa chuyên nghiệp (Zero-Hardcode), chuẩn hóa chu trình **Vòng đời giao dịch (Transaction Lifecycle)** tự động, nâng cấp tầng giao vận sang **Persistent WebSocket (`wss://`) bảo mật bởi TLS 1.3 ECDHE**, chống tấn công phát lại (Anti-Replay Attack) bằng trường `nonce`, thẩm định toàn diện giao dịch trong khối (Full Block Consensus Verification), hộp đen kiểm toán an ninh thời gian thực (Security Audit Trail), tích hợp **Trình bắt gói tin 3 tầng (Live Packet Inspector)** và bộ đo lường hiệu năng chuyên sâu (Micro & Macro Benchmark).
 
 ---
