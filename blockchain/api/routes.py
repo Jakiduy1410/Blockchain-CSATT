@@ -18,6 +18,58 @@ except ImportError:
     from consensus.miner import Miner
 
 
+def _read_inprocess_cgroup_telemetry(ledger: BlockchainLedger) -> dict:
+    stats = {
+        'cpu_usec': 0,
+        'nr_periods': 0,
+        'nr_throttled': 0,
+        'throttled_usec': 0,
+        'mem_current_mb': 0.0,
+        'anon_mb': 0.0,
+        'file_mb': 0.0,
+        'working_ram_mb': ledger.get_working_memory_mb(),
+        'mempool_heap_mb': round(ledger.mempool_heap_bytes / 1048576.0, 2),
+        'oom_kill': 0
+    }
+    try:
+        if os.path.exists('/sys/fs/cgroup/cpu.stat'):
+            with open('/sys/fs/cgroup/cpu.stat', 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        if parts[0] == 'usage_usec':
+                            stats['cpu_usec'] = int(parts[1])
+                        elif parts[0] == 'nr_periods':
+                            stats['nr_periods'] = int(parts[1])
+                        elif parts[0] == 'nr_throttled':
+                            stats['nr_throttled'] = int(parts[1])
+                        elif parts[0] == 'throttled_usec':
+                            stats['throttled_usec'] = int(parts[1])
+        if os.path.exists('/sys/fs/cgroup/memory.current'):
+            with open('/sys/fs/cgroup/memory.current', 'r') as f:
+                val = f.read().strip()
+                if val.isdigit():
+                    stats['mem_current_mb'] = round(int(val) / 1048576.0, 2)
+        if os.path.exists('/sys/fs/cgroup/memory.stat'):
+            with open('/sys/fs/cgroup/memory.stat', 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        if parts[0] == 'anon':
+                            stats['anon_mb'] = round(int(parts[1]) / 1048576.0, 2)
+                        elif parts[0] == 'file':
+                            stats['file_mb'] = round(int(parts[1]) / 1048576.0, 2)
+        if os.path.exists('/sys/fs/cgroup/memory.events'):
+            with open('/sys/fs/cgroup/memory.events', 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0] == 'oom_kill':
+                        stats['oom_kill'] = int(parts[1])
+    except Exception:
+        pass
+    return stats
+
+
 def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: Miner, port: int) -> Blueprint:
     api = Blueprint('blockchain_api', __name__)
 
@@ -63,6 +115,29 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
         limit = request.args.get('limit', default=50, type=int)
         logs = ledger.audit.get_logs(limit=limit)
         return jsonify({'logs': logs, 'count': len(logs)}), 200
+
+    @api.route('/metrics/light', methods=['GET'])
+    def get_light_metrics():
+        p2p_stats = network.get_p2p_stats() if hasattr(network, 'get_p2p_stats') else {}
+        v_cnt = getattr(ledger, 'verified_tx_count', 0)
+        tot_ms = getattr(ledger, 'total_tx_verify_ms', 0.0)
+        crypto_stats = {
+            'verified_tx_count': v_cnt,
+            'total_tx_verify_ms': round(tot_ms, 3),
+            'avg_tx_verify_ms': round(tot_ms / max(1, v_cnt), 4),
+            'last_block_verify_ms': round(getattr(ledger, 'last_block_verify_ms', 0.0), 3),
+            'verified_block_count': getattr(ledger, 'verified_block_count', 0)
+        }
+        cgroup_stats = _read_inprocess_cgroup_telemetry(ledger)
+        return jsonify({
+            'node_id': ledger.node_id,
+            'port': port,
+            'mempool_count': ledger.get_mempool_count(),
+            'chain_length': len(ledger.chain),
+            'p2p': p2p_stats,
+            'crypto': crypto_stats,
+            'cgroup': cgroup_stats
+        }), 200
 
     # --- Node Status Route (Cho Visualizer & Monitoring) ---
     @api.route('/status', methods=['GET'])

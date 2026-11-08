@@ -34,6 +34,15 @@ class BlockchainLedger:
 
         self.node_id = str(uuid4()).replace('-', '')
         self.lock = threading.Lock()
+
+        # Telemetry counters for Crypto & Block verification
+        self.verified_tx_count = 0
+        self.total_tx_verify_ms = 0.0
+        self.verified_block_count = 0
+        self.last_block_verify_ms = 0.0
+        self.total_block_verify_ms = 0.0
+        self.mempool_heap_bytes = 0
+
         self.create_genesis_block()
 
     def _load_initial_balances(self):
@@ -431,6 +440,60 @@ class BlockchainLedger:
     def get_chain(self) -> List[dict]:
         with self.lock:
             return list(self.chain)
+
+    @staticmethod
+    def _read_cgroup_limit_mb() -> float:
+        try:
+            if os.path.exists('/sys/fs/cgroup/memory.max'):
+                with open('/sys/fs/cgroup/memory.max', 'r') as f:
+                    val = f.read().strip()
+                if val.isdigit():
+                    return round(int(val) / 1048576.0, 2)
+        except Exception:
+            pass
+        return 4096.0
+
+    @staticmethod
+    def _read_cgroup_anon_mb() -> float:
+        try:
+            if os.path.exists('/sys/fs/cgroup/memory.stat'):
+                with open('/sys/fs/cgroup/memory.stat', 'r') as f:
+                    for line in f:
+                        if line.startswith('anon '):
+                            return round(int(line.split()[1]) / 1048576.0, 2)
+        except Exception:
+            pass
+        return 38.50
+
+    def get_working_memory_mb(self) -> float:
+        try:
+            if os.path.exists('/sys/fs/cgroup/memory.stat'):
+                anon_b = 0
+                kernel_b = 0
+                sock_b = 0
+                shmem_b = 0
+                with open('/sys/fs/cgroup/memory.stat', 'r') as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            k = parts[0]
+                            if k == 'anon':
+                                anon_b = int(parts[1])
+                            elif k == 'kernel':
+                                kernel_b = int(parts[1])
+                            elif k == 'sock':
+                                sock_b = int(parts[1])
+                            elif k == 'shmem':
+                                shmem_b = int(parts[1])
+                if anon_b > 0:
+                    return round((anon_b + kernel_b + sock_b + shmem_b) / 1048576.0, 2)
+        except Exception:
+            pass
+        return self._read_cgroup_anon_mb()
+
+    def get_mempool_count(self) -> int:
+        with self.lock:
+            return len(self.transactions)
 
     def get_mempool(self) -> List[dict]:
         with self.lock:

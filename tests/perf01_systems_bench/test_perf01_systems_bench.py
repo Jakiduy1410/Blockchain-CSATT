@@ -18,10 +18,13 @@ class TestPerf01SystemsBench(unittest.TestCase):
         """Verify pre-generated stress transaction datasets exist and are valid JSON."""
         expected_files = [
             "txs_500_ecdsa.json",
-            "txs_500_rsa.json",
+            "txs_500_mldsa44.json",
+            "txs_500_mldsa65.json",
             "txs_500_mldsa87.json",
             "txs_stress_ecdsa.json",
-            "txs_stress_mldsa87.json"
+            "txs_stress_mldsa44.json",
+            "txs_stress_mldsa65.json",
+            "txs_stress_mldsa87.json",
         ]
         for fname in expected_files:
             fpath = self.data_dir / fname
@@ -42,18 +45,18 @@ class TestPerf01SystemsBench(unittest.TestCase):
         """Verify benchmark matrix, report, and visualizations exist."""
         matrix_csv = self.results_dir / "perf01_matrix.csv"
         results_json = self.results_dir / "perf01_results.json"
-        report_md = self.results_dir / "PERF01_BENCHMARK_REPORT.md"
+        report_md = self.results_dir / "BAO_CAO_PERF01.md"
         docker_compose = self.results_dir / "docker-compose.yml"
 
         self.assertTrue(matrix_csv.is_file(), "perf01_matrix.csv must exist")
         self.assertTrue(results_json.is_file(), "perf01_results.json must exist")
-        self.assertTrue(report_md.is_file(), "PERF01_BENCHMARK_REPORT.md must exist")
+        self.assertTrue(report_md.is_file(), "BAO_CAO_PERF01.md must exist")
         self.assertTrue(docker_compose.is_file(), "docker-compose.yml must exist")
 
         with open(results_json, "r", encoding="utf-8") as f:
             res_data = json.load(f)
         self.assertIsInstance(res_data, list)
-        self.assertEqual(len(res_data), 9, "Matrix must have 9 evaluations (3 hardware x 3 algorithms)")
+        self.assertEqual(len(res_data), 12, "Matrix must have 12 evaluations (3 hardware profiles x 4 algorithms)")
 
 
 if __name__ == "__main__":

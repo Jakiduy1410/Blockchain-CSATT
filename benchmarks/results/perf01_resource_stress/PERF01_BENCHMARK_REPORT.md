@@ -1,345 +1,577 @@
-# BÁO CÁO KỸ THUẬT TOÀN DIỆN: KỊCH BẢN KIỂM THỬ PERF-01
-# ĐO LƯỜNG GIỚI HẠN TÀI NGUYÊN NODE TRÊN PHẦN CỨNG YẾU (RESOURCE CONSTRAINED STRESS TEST)
-## Tích Hợp Mật Mã Hậu Lượng Tử ML-DSA-87 (NIST Level 5), Sự Kiện OOM-Killer Thực Tế & So Sánh Micro vs Macro Benchmark
+# BÁO CÁO THỰC NGHIỆM ĐỒ ÁN MÔN HỌC: CƠ SỞ AN TOÀN THÔNG TIN
+## PHẦN 2: TƯƠNG THÍCH PHẦN CỨNG & MẠNG
+### KỊCH BẢN PERF-01: ĐO LƯỜNG GIỚI HẠN TÀI NGUYÊN NODE TRÊN PHẦN CỨNG YẾU (RESOURCE CONSTRAINED STRESS TEST)
 
-**Học phần:** Cơ sở An toàn Thông tin / Blockchain Engineering  
-**Vai trò phụ trách:** Thành viên 4 (Hardware Benchmark & DevOps)  
-**Mã kịch bản:** `PERF-01`  
-**Tên kịch bản:** Đo lường Giới hạn Tài nguyên Node trên Phần cứng Yếu (Resource Constrained Stress Test)  
-**Nền tảng kiểm thử:** Docker Desktop (WSL2 Linux Kernel 6.18, Cgroups v2)  
-**Ngày thực hiện & Nghiệm thu:** 28/10/2026  
+---
+
+**Thông tin chuyên đề:**
+* **Học phần:** Cơ sở An toàn Thông tin / Blockchain Engineering
+* **Hạng mục báo cáo:** Kịch bản thực nghiệm PERF-01 (Thành viên 4 phụ trách - Hardware Benchmark & DevOps)
+* **Đối tượng kiểm thử:** Thuật toán chữ ký số Hậu lượng tử NIST FIPS 204 (ML-DSA-44, ML-DSA-65, ML-DSA-87) so sánh đối chuẩn với ECDSA (secp256k1)
+* **Môi trường triển khai:** Linux Debian 12 Container (Docker, cgroups v2, Open Quantum Safe `liboqs` C-engine)
 
 ---
 
 ## MỤC LỤC
-1. [Tổng Quan & Mục Tiêu Kịch Bản PERF-01](#1-tổng-quan--mục-tiêu-kịch-bản-perf-01)
-2. [Thiết Kế Kiến Trúc DevOps & Giới Hạn Phần Cứng Docker](#2-thiết-kế-kiến-trúc-devops--giới-hạn-phần-cứng-docker)
-3. [Nâng Cấp Mật Mã Hậu Lượng Tử: ML-DSA-87 (NIST PQC Level 5)](#3-nâng-cấp-mật-mã-hậu-lượng-tử-ml-dsa-87-nist-pqc-level-5)
-4. [Thực Nghiệm Cấp Vi Mô (Micro-Benchmark): Ma Trận 3x3 Baseline](#4-thực-nghiệm-cấp-vi-mô-micro-benchmark-ma-trận-3x3-baseline)
-   - 4.1. Bảng số liệu ma trận thực nghiệm 9 đợt
-   - 4.2. Giải thích chuyên sâu: AVG CPU 126% - 139% trên Server
-   - 4.3. Phân tích bão hòa CPU và CFS Throttling trên Edge và IoT
-5. [Bài Test Tải Cực Hạn (Extreme Stress Test): Săn Tìm Sự Kiện OOM-Killed (Exit 137)](#5-bài-test-tải-cực-hạn-extreme-stress-test-săn-tìm-sự-kiện-oom-killed-exit-137)
-   - 5.1. Thiết kế kịch bản bão hòa bộ nhớ
-   - 5.2. Kết quả đo đạc thực tế: ML-DSA-87 vs ECDSA
-   - 5.3. Bằng chứng kích hoạt Linux Kernel OOM-Killer tại Giao dịch #1050
-6. [Thực Nghiệm Cấp Vĩ Mô (Macro-Benchmark): Mạng P2P Phân Cấp 3 Nodes](#6-thực-nghiệm-cấp-vĩ-mô-macro-benchmark-mạng-p2p-phân-cấp-3-nodes)
-   - 6.1. Khái niệm và sự khác biệt cốt lõi giữa Micro vs Macro Benchmark
-   - 6.2. Thiết lập mạng lưới phân cấp Heterogeneous (Server -> Edge -> IoT)
-   - 6.3. Kết quả đo đạc độ trễ lan truyền khối (Block Propagation Delay) và Wire Payload
-   - 6.4. Nút thắt cổ chai phần cứng (Hardware Bottleneck) trên Node IoT
-7. [Hướng Dẫn Tái Lập Kết Quả (Reproducibility Guide)](#7-hướng-dẫn-tái-lập-kết-quả-reproducibility-guide)
-8. [Khuyến Nghị Kiến Trúc DevOps & An Toàn Hệ Thống](#8-khuyến-nghị-kiến-trúc-devops--an-toàn-hệ-thống)
-9. [Danh Mục Sản Phẩm Bàn Giao (Deliverables)](#9-danh-mục-sản-phẩm-bàn-giao-deliverables)
+
+1. [ĐẶT VẤN ĐỀ & MỤC TIÊU CỦA KỊCH BẢN PERF-01](#1-đặt-vấn-đề--mục-tiêu-của-kịch-bản-perf-01)
+2. [CÀI ĐẶT & THIẾT LẬP MÔI TRƯỜNG THỰC NGHIỆM](#2-cài-đặt--thiết-lập-môi-trường-thực-nghiệm)
+   * [2.1. Đóng gói Container & Biên dịch Thư viện liboqs C Engine](#21-đóng-gói-container--biên-dịch-thư-viện-liboqs-c-engine)
+   * [2.2. Định nghĩa 3 Cấu hình Phần cứng Cô lập qua Linux cgroups v2](#22-định-nghĩa-3-cấu-hình-phần-cứng-cô-lập-qua-linux-cgroups-v2)
+   * [2.3. Hệ thống Giám sát Telemetry cgroups v2 & Triệt tiêu Nhiễu Cold-Start](#23-hệ-thống-giám-sát-telemetry-cgroups-v2--triệt-tiêu-nhiễu-cold-start)
+3. [THIẾT KẾ KỊCH BẢN THỰC NGHIỆM](#3-thiết-kế-kịch-bản-thực-nghiệm)
+   * [3.1. Kịch bản Chuẩn bị Tải: Bộ Dữ liệu Giao dịch Chuẩn hóa](#31-kịch-bản-chuẩn-bị-tải-bộ-dữ-liệu-giao-dịch-chuẩn-hóa)
+   * [3.2. Kịch bản 1: Kiểm thử Vi mô Ma trận 3x4 (Micro-Benchmark 500 Txs)](#32-kịch-bản-1-kiểm-thử-vi-mô-ma-trận-3x4-micro-benchmark-500-txs)
+   * [3.3. Kịch bản 2: Kiểm thử Cực hạn & Săn OOM-Killer (Extreme Stress Test 60MB RAM)](#33-kịch-bản-2-kiểm-thử-cực-hạn--săn-oom-killer-extreme-stress-test-60mb-ram)
+   * [3.4. Kịch bản 3: Kiểm thử Vĩ mô Mạng P2P Mesh 6 Nodes (Macro-Benchmark Single DUT)](#34-kịch-bản-3-kiểm-thử-vĩ-mô-mạng-p2p-mesh-6-nodes-macro-benchmark-single-dut)
+4. [TIẾN HÀNH THỰC NGHIỆM, KẾT QUẢ TỪNG BƯỚC & BÌNH LUẬN CHUYÊN SÂU](#4-tiến-hành-thực-nghiệm-kết-quả-từng-bước--bình-luận-chuyên-sâu)
+   * [Bước 1: Xây dựng Docker Image & Kiểm tra Tính hợp lệ của liboqs](#bước-1-xây-dựng-docker-image--kiểm-tra-tính-hợp-lệ-của-liboqs)
+   * [Bước 2: Sinh Bộ Dữ liệu Tải và Phân tích Tải trọng Mạng (Wire Overhead)](#bước-2-sinh-bộ-dữ-liệu-tải-và-phân-tích-tải-trọng-mạng-wire-overhead)
+   * [Bước 3: Thực thi Kịch bản Vi mô 3x4 & Bình luận Biểu đồ Rủi ro OOM (Hình 1)](#bước-3-thực-thi-kịch-bản-vi-mô-3x4--bình-luận-biểu-đồ-rủi-ro-oom-hình-1)
+   * [Bước 4: Thực thi Kịch bản Cực hạn 60MB RAM & Bắt sống Sự kiện OOM-Killer (Hình 2)](#bước-4-thực-thi-kịch-bản-cực-hạn-60mb-ram--bắt-sống-sự-kiện-oom-killer-hình-2)
+   * [Bước 5: Thực thi Kịch bản Vĩ mô Mạng 6-Node Mesh & Bình luận Dashboard (Hình 3)](#bước-5-thực-thi-kịch-bản-vĩ-mô-mạng-6-node-mesh--bình-luận-dashboard-hình-3)
+5. [TỔNG KẾT & KHUYẾN NGHỊ KIẾN TRÚC CHO HỆ THỐNG BLOCKCHAIN HẬU LƯỢNG TỬ](#5-tổng-kết--khuyến-nghị-kiến-trúc-cho-hệ-thống-blockchain-hậu-lượng-tử)
+6. [ĐÓNG GÓP CỦA PERF-01 TRONG TỔNG THỂ ĐỒ ÁN](#6-đóng-góp-của-perf-01-trong-tổng-thể-đồ-án)
 
 ---
 
-## 1. TỔNG QUAN & MỤC TIÊU KỊCH BẢN PERF-01
+## 1. ĐẶT VẤN ĐỀ & MỤC TIÊU CỦA KỊCH BẢN PERF-01
 
-### 1.1. Bối cảnh Nghiên cứu
-Trong kiến trúc bảo mật của hệ thống Blockchain hiện đại, việc chuyển đổi từ mật mã khóa công khai cổ điển (RSA-2048) và đường cong elliptic (ECDSA secp256k1) sang **Mật mã Hậu lượng tử (Post-Quantum Cryptography - PQC)** là yêu cầu bắt buộc nhằm chống lại thuật toán Shor trên máy tính lượng tử tương lai. Tiêu chuẩn **FIPS 204 (ML-DSA / Crystals-Dilithium)** đã được NIST chính thức phê duyệt làm chuẩn ký số hậu lượng tử toàn cầu.
+Trong bối cảnh điện toán lượng tử phát triển nhanh chóng, các thuật toán mật mã khóa công khai truyền thống như RSA và ECDSA (đang được Bitcoin và Ethereum sử dụng) đứng trước nguy cơ bị bẻ gãy hoàn toàn bởi thuật toán Shor. Nhằm đảm bảo an toàn dài hạn, Viện Tiêu chuẩn và Công nghệ Quốc gia Hoa Kỳ (NIST) đã chính thức chuẩn hóa bộ tiêu chuẩn mật mã hậu lượng tử (PQC - Post-Quantum Cryptography), tiêu biểu là thuật toán chữ ký số dựa trên mạng tinh thể **ML-DSA (Module-Lattice-Based Digital Signature Algorithm - FIPS 204)**.
 
-Tuy nhiên, trong các mạng lưới Blockchain thực tế (đặc biệt là IoT Blockchain, Hệ thống lưới điện thông minh Smart Grid, Chuỗi cung ứng V2X), các node không chỉ chạy trên các máy chủ đám mây (Cloud Datacenter) cấu hình cực mạnh, mà phần lớn chạy trên các thiết bị cổng biên (**Edge Gateway - Raspberry Pi 4**) và các vi điều khiển nhúng (**IoT Embedded - Smart Meter/Sensor**).
-
-### 1.2. Mục tiêu Trọng tâm của Kịch bản `PERF-01`
-Kịch bản `PERF-01` (Thành viên 4 - Hardware Benchmark & DevOps) giải quyết trọn vẹn 4 mục tiêu kỹ thuật:
-1. **Xác định ranh giới chịu tải (Hardware Boundary):** Đo lường mức tiêu thụ RAM đỉnh (**Peak RAM**), tỉ lệ trần bộ nhớ (**Memory Ceiling %**), mức độ bão hòa CPU (**CPU Saturation %**) và hiện tượng ngắt xung nhịp (**CFS CPU Throttling**) trên 3 hồ sơ phần cứng độc lập: **Server (4 vCPU, 4GB RAM)**, **Edge (1 vCPU, 512MB RAM)** và **IoT (0.5 vCPU, 128MB RAM)**.
-2. **Nâng cấp chuẩn PQC cấp cao nhất: ML-DSA-87 (NIST Level 5):** Đánh giá tác động khi kích thước chữ ký và khóa công khai tăng vọt lên **7,219 Bytes/tx** (gấp **56.4 lần ECDSA**).
-3. **Thực chứng sự kiện Tràn bộ nhớ OOM-Killed (Exit Code 137):** Thiết kế bài kiểm thử tải cực hạn để kích hoạt trực tiếp cơ chế **Linux Kernel OOM-Killer** can thiệp tiêu diệt container khi dung lượng Mempool vượt quá 100% RAM vật lý.
-4. **Mở rộng sang Cấp độ Vĩ mô (Heterogeneous Macro-Benchmark):** Triển khai mạng P2P đa node không đồng nhất kết nối qua WebSocket TLS 1.3 / HTTP để đo đạc độ trễ lan truyền khối (**Block Propagation Delay**), dung lượng dây mạng (**Wire Payload**), và chứng minh nút thắt cổ chai khi node IoT yếu tham gia thẩm định khối từ node Server mạnh.
-
----
-
-## 2. THIẾT KẾ KIẾN TRÚC DEVOPS & GIỚI HẠN PHẦN CỨNG DOCKER
-
-Hệ thống được đóng gói container hóa theo tiêu chuẩn DevOps cô lập cgroups v2 nghiêm ngặt, đảm bảo tính công bằng và khả năng tái lập:
+Tuy nhiên, việc nâng cấp chữ ký số từ ECDSA lên ML-DSA kéo theo sự gia tăng đột biến về kích thước dữ liệu:
+* Chữ ký ECDSA (secp256k1) chỉ có kích thước **64 bytes** (khóa công khai 33–65 bytes).
+* Chữ ký ML-DSA dao động từ **2,420 bytes** (ML-DSA-44), **3,309 bytes** (ML-DSA-65) đến **4,627 bytes** (ML-DSA-87), tức phình to gấp **37 đến 72 lần** so với chữ ký truyền thống. Khi đóng gói dưới định dạng JSON và mã hóa chuỗi Hex trong giao thức Blockchain, mỗi giao dịch nạp vào sổ cái chiếm từ **7.7 KB đến 14.7 KB** (gấp 15–29 lần so với 499 bytes của ECDSA).
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                               DOCKER CGROUPS V2 SUB-SYSTEM                             │
-├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
-│    PROFILE 1: SERVER     │       PROFILE 2: EDGE       │        PROFILE 3: IOT         │
-│  • 4.0 vCPU Quota        │   • 1.0 vCPU Quota          │   • 0.5 vCPU Quota            │
-│  • 4096 MB RAM Limit     │   • 512 MB RAM Limit        │   • 128 MB RAM Limit (60M OOM)│
-│  • Memswap: 4096 MB      │   • Memswap: 512 MB         │   • Memswap: 128 MB           │
-│  • Port: 5000 / 6000     │   • Port: 5001 / 6001       │   • Port: 5002 / 6002         │
-├──────────────────────────┴─────────────────────────────┴───────────────────────────────┤
-│                                 NODE BLOCKCHAIN RUNTIME                                │
-│  • Linux Kernel 6.18 (WSL2 Debian base, Python 3.11-slim)                              │
-│  • Thư viện C liboqs (Open Quantum Safe FIPS 204 Engine: ML-DSA-87 / 65 / 44)         │
-│  • Multithreaded RESTful API + Mempool Manager + Persistent WebSocket TLS 1.3 Engine   │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│                           KERNEL TELEMETRY PROBES (TẦN SỐ CAO)                         │
-│  • /sys/fs/cgroup/memory.peak: RAM đỉnh thực tế do nhân Linux ghi nhận                 │
-│  • /sys/fs/cgroup/cpu.stat: usage_usec, nr_throttled, throttled_usec                   │
-│  • /sys/fs/cgroup/memory.events: oom_kill counter & Docker inspect ExitCode 137        │
-└────────────────────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------------+
+|                             THÁCH THỨC VẬN HÀNH PQC                           |
++-------------------------------------------------------------------------------+
+|  Kích thước Chữ ký Lớn      |  Áp lực Lưu trữ Mempool     |  Độ trễ P2P Mesh  |
+|  ML-DSA nặng gấp 15 - 29x   |  Nguy cơ cạn kiệt RAM IoT   |  Tải trọng Khối   |
+|  (Giao dịch JSON: 7.7-14KB) |  Kernel OOM-Killer Exit 137 |  Lên tới 1.44 MB  |
++-------------------------------------------------------------------------------+
+                                      |
+                                      v
++-------------------------------------------------------------------------------+
+|                       MỤC TIÊU THỰC NGHIỆM CỦA PERF-01                        |
+|  1. Xác định ranh giới chịu tải CPU (Saturation) và trần RAM (Peak Ceiling).  |
+|  2. Bắt sống hiện tượng tràn bộ nhớ (Out-Of-Memory) bằng Linux cgroups v2.    |
+|  3. Khảo sát độ trễ đồng thuận P2P TLS 1.3 và bóc tách CPU vs Network I/O.   |
+|  4. Đưa ra khuyến nghị cấu hình phần cứng tối ưu cho IoT, Edge và Server.    |
++-------------------------------------------------------------------------------+
 ```
 
-### Triệt tiêu Swap Memory (`memswap = memory`)
-Trong hệ điều hành Linux, nếu chỉ giới hạn `--memory=128m` mà không cấu hình swap, Docker sẽ cho phép container mượn swap space từ ổ cứng (mặc định gấp đôi RAM), khiến tiến trình không bị OOM mà chỉ bị chậm I/O.
-> [!IMPORTANT]
-> Toàn bộ các kịch bản kiểm thử trong `PERF-01` đều áp đặt cờ **`--memory-swap = --memory`** (hoặc `memswap_limit = mem_limit` trong [`perf/docker-compose.yml`](file:///d:/assignment/btl/Blockchain-CSATT/perf/docker-compose.yml)). Điều này khóa cứng trần bộ nhớ vật lý, đảm bảo khi bộ nhớ tiến trình chạm ngưỡng là Linux Kernel lập tức xử lý, phản ánh chính xác phần cứng nhúng không có ổ đĩa swap.
+**Mục tiêu cốt lõi của kịch bản PERF-01:**
+1. **Lượng hóa sự suy hao tài nguyên phần cứng:** Đo lường chính xác mức độ chiếm dụng CPU, đỉnh RAM (Peak RAM), thông lượng tiếp nhận giao dịch (Ingestion TPS) trên 3 cấp độ phần cứng đại diện: **Server** (Cloud/Datacenter), **Edge** (Gateway/Raspberry Pi 4) và **IoT** (Thiết bị nhúng/Smart Meter).
+2. **Khảo sát ngưỡng OOM thực nghiệm (Extreme OOM Hunt):** Tìm ra ranh giới ngưỡng sập nguồn (Out-Of-Memory Crash) khi node nhúng bị quá tải Mempool bởi các giao dịch PQC cồng kềnh, phân tích cơ chế nhân Linux gửi tín hiệu hủy diệt tiến trình `SIGKILL (Exit Code 137)`.
+3. **Đo lường độ trễ đồng thuận trong mạng lưới Mesh P2P thực tế (Macro-Benchmark):** Khảo sát hành vi của một Node bị giới hạn tài nguyên (DUT - Device Under Test) khi hòa mạng cùng cụm 5 Node nền (Background Nodes) giao tiếp qua kênh WebSocket bảo mật TLS 1.3 / ECDHE; bóc tách chính xác tỷ trọng giữa thời gian tính toán của CPU và thời gian trễ của đường truyền mạng.
 
 ---
 
-## 3. NÂNG CẤP MẬT MÃ HẬU LƯỢNG TỬ: ML-DSA-87 (NIST PQC LEVEL 5)
+## 2. CÀI ĐẶT & THIẾT LẬP MÔI TRƯỜNG THỰC NGHIỆM
 
-Theo yêu cầu nâng cấp kỹ thuật, kịch bản đã chuyển dịch từ cấp độ cơ sở ML-DSA-44 sang cấp độ cao nhất: **ML-DSA-87 (NIST Security Category 5)**.
+Nhằm đảm bảo tính khách quan khoa học, loại bỏ yếu tố khác biệt giữa các hệ điều hành của các thành viên trong nhóm và tuân thủ nguyên tắc nghiên cứu thực nghiệm (*Ceteris Paribus* - mọi điều kiện môi trường được giữ nguyên, chỉ thay đổi thuật toán và giới hạn tài nguyên), toàn bộ môi trường kiểm thử được đóng gói hoàn toàn trong Docker Container và điều phối bằng Linux cgroups v2.
 
-### So sánh Kích thước Khóa và Chữ ký Số Giữa Các Thuật toán
+### 2.1. Đóng gói Container & Biên dịch Thư viện liboqs C Engine
 
-| Thuật toán Mật mã | Chuẩn Tiêu chuẩn | Cấp độ An toàn | Kích thước Public Key | Kích thước Chữ ký (Signature) | Tổng Payload Mật mã thuần | Kích thước JSON Wire Giao dịch | Hệ số phình to so với ECDSA |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **ECDSA (secp256k1)** | Cổ điển (Bitcoin/ETH) | 128-bit (Tiền lượng tử) | 64 Bytes | 64 Bytes | **128 Bytes** | **~499 Bytes** | **1.0x (Baseline)** |
-| **RSA-2048** | PKCS#1 v1.5 | 112-bit (Tiền lượng tử) | 294 Bytes | 256 Bytes | **550 Bytes** | **~1,379 Bytes** | **4.3x** |
-| **ML-DSA-44 (PQC)** | FIPS 204 (Level 2) | AES-128 Equivalent | 1,312 Bytes | 2,420 Bytes | **3,732 Bytes** | **~7,900 Bytes** | **29.1x** |
-| **ML-DSA-87 (PQC)** | **FIPS 204 (Level 5)** | **AES-256 Equivalent** | **2,592 Bytes** | **4,627 Bytes** | **7,219 Bytes** | **~14,685 Bytes** | **56.4x** |
+Node Blockchain chạy trên nền Python 3.11 Debian Linux Slim. Điểm mấu chốt trong thiết kế môi trường là việc tích hợp thư viện **Open Quantum Safe (`liboqs`)**:
+* Thư viện `liboqs` được biên dịch trực tiếp từ mã nguồn C thông qua `CMake` và `Ninja`, kích hoạt tối ưu hóa phần cứng x86_64 (`AVX2/SIMD`).
+* Ứng dụng Python giao tiếp với `liboqs` qua wrapper C-extension `liboqs-python`. Khi thực hiện thẩm định chữ ký số PQC, Python **giải phóng khóa thông dịch toàn cục GIL (Global Interpreter Lock)**, cho phép các luồng worker HTTP xử lý song song thực sự trên đa nhân CPU.
+* Ngược lại, thuật toán chuẩn đối chứng `ECDSA (secp256k1)` sử dụng thư viện `python-ecdsa`. Đây là thư viện thuần Python (Pure-Python), các vòng lặp toán học đường cong Elliptic bị thông dịch từng dòng bytecode và giữ chặt GIL.
 
-> [!NOTE]
-> Khóa công khai của ML-DSA-87 dài tới **2,592 Bytes** (mảng ma trận đa thức bậc cao trên vành số học) và chữ ký dài tới **4,627 Bytes**. Khi đóng gói vào một bản tin giao dịch JSON bao gồm thông tin `sender_address`, `recipient_address`, `amount`, `nonce`, chuỗi hex của giao dịch chiếm **~14.7 KB**. Đây chính là "quả bom bộ nhớ" đối với các thiết bị IoT có RAM dưới 128MB.
+**Trích dẫn Dockerfile tối ưu hóa môi trường (`perf/Dockerfile`):**
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
 
----
+# 1. Cài đặt các công cụ biên dịch thiết yếu
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git cmake ninja-build libssl-dev curl procps \
+    && rm -rf /var/lib/apt/lists/*
 
-## 4. THỰC NGHIỆM CẤP VI MÔ (MICRO-BENCHMARK): MA TRẬN 3X3 BASELINE
+# 2. Biên dịch thư viện Hậu lượng tử C-engine liboqs (Open Quantum Safe)
+RUN git clone --depth 1 https://github.com/open-quantum-safe/liboqs /tmp/liboqs \
+    && cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja \
+       -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON -DOQS_DIST_BUILD=ON \
+    && cmake --build /tmp/liboqs/build \
+    && cmake --install /tmp/liboqs/build \
+    && ldconfig && rm -rf /tmp/liboqs
 
-### 4.1. Bảng Số Liệu Ma Trận Thực Nghiệm 9 Đợt (500 Giao dịch Batch Ingestion)
-Thực nghiệm được thực hiện trên 9 kịch bản độc lập (3 Cấu hình phần cứng $\times$ 3 Thuật toán ký số). Mỗi kịch bản tiếp nhận dồn dập 500 giao dịch qua cổng HTTP POST `/transactions/new`:
+# 3. Cài đặt Python requirements & liboqs-python
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir liboqs-python
 
-| Cấu hình Phần cứng | vCPU | RAM Limit | Thuật toán Ký số | Số Tx Đạt | Thời gian (s) | Ingestion TPS | Baseline RAM | Peak RAM (MB) | % Đạt Trần RAM | Avg CPU (Core) | Normalized CPU (% Quota) | CPU Throttled (ms) | Trạng thái OOM |
-| :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | ECDSA (secp256k1) | 500/500 | 1.432 s | **349.25 tx/s** | 123.31 MB | 129.43 MB | 3.16% | 126.53% | **31.63%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | RSA-2048 | 500/500 | 0.906 s | **552.16 tx/s** | 43.52 MB | 47.66 MB | 1.16% | 135.91% | **33.98%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Server (Datacenter)** | **4.0** | **4096 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 0.912 s | **548.25 tx/s** | 43.47 MB | 55.68 MB | 1.36% | 139.54% | **34.88%** | 0.0 ms (0 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | ECDSA (secp256k1) | 500/500 | 1.658 s | **301.61 tx/s** | 43.49 MB | 45.57 MB | 8.90% | 104.19% | **104.19%** | 832.8 ms (16 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | RSA-2048 | 500/500 | 1.227 s | **407.60 tx/s** | 42.56 MB | 46.08 MB | 9.00% | 105.26% | **105.26%** | 842.4 ms (12 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **Edge Gateway** | **1.0** | **512 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 1.148 s | **435.37 tx/s** | 43.20 MB | 57.56 MB | 11.24% | 104.46% | **104.46%** | 817.5 ms (11 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | ECDSA (secp256k1) | 500/500 | 3.787 s | **132.02 tx/s** | 42.74 MB | 45.63 MB | 35.65% | 52.20% | **104.40%** | 5509.4 ms (39 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | RSA-2048 | 500/500 | 2.753 s | **181.64 tx/s** | 46.66 MB | 48.17 MB | 37.63% | 51.77% | **103.54%** | 5300.3 ms (28 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-| **IoT Embedded** | **0.5** | **128 MB** | **ML-DSA-87 (PQC L5)** | 500/500 | 2.826 s | **176.93 tx/s** | 43.03 MB | **54.86 MB** | **42.86%** | 53.02% | **106.04%** | 5397.3 ms (29 events) | <span style="color:green;font-weight:bold;">AN TOÀN</span> (<60%) |
-
-*Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv) và [`perf/results/perf01_results.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_results.json)*
-
-![Biểu đồ OOM Risk Matrix](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_oom_risk_chart.png)
-
----
-
-### 4.2. Giải Thích Chuyên Sâu: Tại Sao AVG CPU Trên Server Đạt 126% - 139%?
-Nhiều kỹ sư khi mới tiếp cận Linux Telemetry thường thắc mắc: *"Tại sao CPU lại có thể vượt quá 100%?"*.
-Bản chất kỹ thuật nằm ở cơ chế tính toán của **Linux Kernel Cgroups & CFS Scheduler**:
-1. **Quy ước Per-Core Metrics:** Trong nhân Linux, Docker stats và top/htop, $100\%$ CPU đại diện cho **1.0 nhân CPU (vCPU/core) hoạt động hết công suất (Full Saturation)**.
-2. **Tổng hạn ngạch Profile Server:** Profile Server được cấp phát 4.0 vCPU:
-   $$\text{Quota Ceiling}_{\text{Server}} = 4.0 \times 100\% = 400\%$$
-3. **Hiện tượng xử lý đa luồng song song:** Node Server chạy Flask ở chế độ đa luồng (`threaded=True`). Khi test suite sử dụng `ThreadPoolExecutor(max_workers=8)` đẩy đồng thời các giao dịch vào Server, máy chủ phân phối các yêu cầu giải mã và thẩm định chữ ký số sang nhiều nhân CPU song song.
-4. **Ý nghĩa con số thực tế:**
-   - Mức CPU ghi nhận `139.54%` (ML-DSA-87) có nghĩa là Server đang huy động đồng thời xấp xỉ **1.4 nhân CPU**.
-   - Nếu chuẩn hóa theo tổng hạn ngạch (**Normalized CPU %**):
-     $$\text{Normalized CPU} = \frac{139.54\%}{400\%} = 34.88\%$$
-   - Node Server mới chỉ tiêu thụ ~35% công suất tối đa của 4 vCPU, hoàn toàn không có hiện tượng nghẽn xung nhịp (`throttled_ms = 0.0 ms`).
-
-### 4.3. Phân Tích Bão Hòa CPU và CFS Throttling Trên Edge và IoT
-Trái ngược hoàn toàn với Server:
-- **Edge Gateway (1.0 vCPU = 100% trần):** Tiến trình tiêu thụ 104% - 105% $\rightarrow$ Chạm đỉnh đơn nhân. Bộ điều phối CFS của Linux bắt đầu ngắt xung nhịp với thời gian nghẽn CPU khoảng **817 ms - 842 ms** (11 - 16 chu kỳ ngắt).
-- **IoT Embedded (0.5 vCPU = 50% trần):** Tiến trình tiêu thụ 51% - 53% (bằng 104% - 106% so với hạn ngạch 0.5 vCPU được cấp). Linux Kernel liên tục can thiệp điều tiết xung nhịp với tổng thời gian đóng băng tiến trình lên tới **5,300 ms - 5,509 ms** (28 - 39 chu kỳ). Do bị "bóp" CPU tới hơn 5 giây, TPS tiếp nhận của IoT giảm xuống chỉ còn 132 - 176 tx/s (giảm ~68% so với Server).
-
----
-
-## 5. BÀI TEST TẢI CỰC HẠN (EXTREME STRESS TEST): SĂN TÌM SỰ KIỆN OOM-KILLED (EXIT 137)
-
-### 5.1. Thiết Kế Kịch Bản Bão Hòa Bộ Nhớ
-Trong thử nghiệm 500 giao dịch cơ sở với trần 128MB RAM, ML-DSA-87 mới chỉ tiêu thụ 54.86 MB (chiếm 42.86% trần), chưa đủ để kích hoạt OOM-Killer.
-Để quan sát được **ranh giới sụp đổ thực tế (OOM Cliff)** theo yêu cầu của kịch bản, cấu hình thử nghiệm được thiết kế đặc biệt:
-- **Hồ sơ Node IoT Constrained:** 0.5 vCPU, **Giới hạn RAM cứng 60 MB** (`-m=60m`, `--memory-swap=60m`).
-- **Tải thử nghiệm:** Bơm liên tục **1,500 giao dịch** vào hàng đợi Mempool.
-- **Đối chứng trực tiếp:**
-  - Nhánh 1: **ML-DSA-87 (NIST Level 5)** - Kích thước giao dịch ~14.7 KB.
-  - Nhánh 2: **ECDSA (secp256k1)** - Kích thước giao dịch ~0.5 KB.
-
-### 5.2. Kết Quả Đo Đạc Thực Tế: ML-DSA-87 vs ECDSA (1,500 Giao dịch trên Node 60MB RAM)
-
-| Mốc Giao dịch (Tx Count) | ML-DSA-87 RAM (MB) | ECDSA RAM (MB) | Ngưỡng Trần (Ceiling Limit) | Trạng thái ML-DSA-87 | Trạng thái ECDSA |
-| :---: | :---: | :---: | :---: | :--- | :--- |
-| **0 txs (Idle)** | 42.50 MB | 42.60 MB | 60.0 MB | An toàn | An toàn |
-| **100 txs** | 44.29 MB | 43.70 MB | 60.0 MB | An toàn | An toàn |
-| **250 txs** | 50.23 MB | 44.75 MB | 60.0 MB | Tăng trưởng đều | Ổn định phẳng |
-| **400 txs** | 53.55 MB | 45.11 MB | 60.0 MB | Cảnh báo vừa | Ổn định phẳng |
-| **600 txs** | 53.95 MB | 45.60 MB | 60.0 MB | Cảnh báo vừa | Ổn định phẳng |
-| **650 txs** | 59.10 MB | 45.06 MB | 60.0 MB | Cận kề trần (>98%) | Ổn định phẳng |
-| **800 txs** | 59.77 MB | 46.06 MB | 60.0 MB | Nguy cơ cực hạn (99.6%) | Ổn định phẳng |
-| **1,000 txs** | 60.00 MB | 45.62 MB | 60.0 MB | Chạm trần 100% | Ổn định phẳng |
-| **1,050 txs** | **60.00 MB** | **45.36 MB** | **60.0 MB** | <span style="color:red;font-weight:bold;">OOM-KILLER KÍCH HOẠT (EXIT 137)</span> | <span style="color:green;font-weight:bold;">HOÀN TẤT AN TOÀN</span> |
-| **1,500 txs** | *Container đã chết* | **45.36 MB** | 60.0 MB | Tiến trình bị tiêu diệt | Sống sót 100% (45.36 MB / 60 MB) |
-
-*Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_extreme_oom_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv)*
-
-![Biểu đồ Extreme OOM Cliff](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png)
-
----
-
-### 5.3. Bằng Chứng Kích Hoạt Linux Kernel OOM-Killer Tại Giao Dịch #1050
-Khi bơm giao dịch ML-DSA-87 tới mốc thứ 1050, nhân Linux phát hiện tổng dung lượng RAM cấp phát cho tiến trình vượt quá 60MB và swap memory bằng 0.
-Lệnh kiểm tra trạng thái container thời gian thực từ Docker Engine trả về:
-```json
-{
-  "State": {
-    "Status": "exited",
-    "Running": false,
-    "OOMKilled": true,
-    "Dead": false,
-    "ExitCode": 137
-  }
-}
+COPY . /app/
+EXPOSE 5000 6000
+CMD ["python", "blockchain/blockchain.py", "--host", "0.0.0.0", "-p", "5000"]
 ```
 
-> [!CAUTION]
-> **Phân tích Mã Thoát 137 (Exit Code 137):**
-> Trong quy ước POSIX: $\text{Exit Code} = 128 + \text{Signal Number}$.
-> Mã tín hiệu `SIGKILL` có giá trị là 9:
-> $$\text{Exit Code} = 128 + 9 = 137$$
-> Điều này khẳng định 100% rằng tiến trình Node Python không hề bị crash logic thông thường hay ngoại lệ code, mà bị chính **Linux Kernel can thiệp gửi tín hiệu bức tử `SIGKILL`** do vi phạm hạn ngạch cgroups v2 (`OOMKilled = true`).
-> 
-> Trong khi đó, với thuật toán **ECDSA (secp256k1)**, nhờ kích thước giao dịch nhỏ gọn, sau khi xử lý trọn vẹn toàn bộ 1,500 giao dịch, RAM đỉnh chỉ dừng lại ở **46.75 MB (chiếm 77.9% trần 60MB)** và node tiếp tục vận hành hoàn toàn bình thường!
+### 2.2. Định nghĩa 3 Cấu hình Phần cứng Cô lập qua Linux cgroups v2
 
----
+Môi trường kiểm thử được chuẩn hóa thành 3 hồ sơ phần cứng (Profiles) thông qua file cấu hình `perf/docker-compose.yml`. Để đo lường chính xác nguy cơ tràn RAM vật lý, thiết lập quan trọng nhất là **vô hiệu hóa triệt để bộ nhớ ảo Swap** (`--memory-swap` bằng đúng `--memory`), buộc tiến trình phải đối mặt trực diện với bộ cấp phát bộ nhớ của nhân Linux:
 
-## 6. THỰC NGHIỆM CẤP VĨ MÔ (MACRO-BENCHMARK): MẠNG P2P PHÂN CẤP 3 NODES
+* **Profile 1 – Server (Cloud / Datacenter Node):**
+  * Hạn mức CPU: `4.0 vCPU` (tối đa 400% năng lực xử lý).
+  * Hạn mức RAM: `4,096 MB` (4 GB), Swap: `4,096 MB` (Swap khả dụng = 0 MB).
+  * Đại diện cho các Node đào (Miner), Full Node trên hạ tầng đám mây.
+* **Profile 2 – Edge Gateway (Raspberry Pi 4 / Industrial PC):**
+  * Hạn mức CPU: `1.0 vCPU` (tối đa 100% năng lực 1 nhân).
+  * Hạn mức RAM: `512 MB`, Swap: `512 MB` (Swap khả dụng = 0 MB).
+  * Đại diện cho các cổng biên công nghiệp, trạm trung chuyển dữ liệu cục bộ.
+* **Profile 3 – IoT Embedded (Smart Meter / Sensor Node):**
+  * Hạn mức CPU: `0.5 vCPU` (nhân Linux cấp hạn ngạch 50,000 $\mu s$ trong chu kỳ 100,000 $\mu s$).
+  * Hạn mức RAM: `128 MB`, Swap: `128 MB` (Swap khả dụng = 0 MB).
+  * Đại diện cho các vi điều khiển cao cấp, công tơ điện thông minh, cảm biến lưới điện.
 
-### 6.1. Khái Niệm & Sự Khác Biệt Cốt Lõi Giữa Micro vs Macro Benchmark
-
-| Tiêu chí So sánh | Thực nghiệm Cấp vi mô (Micro-Benchmark) | Thực nghiệm Cấp vĩ mô (Macro-Benchmark) |
-| :--- | :--- | :--- |
-| **Phạm vi Đo lường** | **Cô lập trên 1 Node đơn lẻ (Component Isolation)** | **Mạng lưới P2P phân tán đa Node (End-to-End System)** |
-| **Đối tượng Ép cấu hình** | Ép cấu hình từng node riêng lẻ một cách tuần tự | Ép đồng thời các cấu hình khác nhau trên nhiều node |
-| **Môi trường Mạng** | Gọi trực tiếp qua loopback nội bộ (HTTP POST `/transactions/new`) | Kết nối mạng lưới qua **Docker Bridge Network** |
-| **Giao thức Liên lạc** | HTTP RESTful API đơn tầng | **Persistent WebSocket TLS 1.3 / ECDHE (wss://)** + HTTP |
-| **Quy trình Nghiệp vụ** | Deserialization JSON $\rightarrow$ Xác thực Chữ ký $\rightarrow$ Lưu Mempool | Ingress $\rightarrow$ Gossip P2P $\rightarrow$ Mining PoW $\rightarrow$ Block Broadcast $\rightarrow$ Chain Validation |
-| **Mục đích Kỹ thuật** | Đo năng lực trần (Raw Capacity) của CPU & RAM khi xác thực | Đo **Độ trễ lan truyền khối**, **Dung lượng đường truyền**, và **Nút thắt cổ chai** |
-
----
-
-### 6.2. Thiết Lập Mạng Lưới Phân Cấp Heterogeneous (Server $\rightarrow$ Edge $\rightarrow$ IoT)
-Để phản ánh mô hình mạng thực tế, một cụm blockchain phân cấp gồm 3 nodes được khởi chạy đồng thời trên mạng ảo `perf-macro-net`:
-- **Node 0 (btc-macro-server):** Profile Server (4 vCPU, 4096MB RAM, Port 5000 / ws 6000) $\rightarrow$ Đóng vai trò Ingress Gateway & Thợ đào (Miner).
-- **Node 1 (btc-macro-edge):** Profile Edge (1 vCPU, 512MB RAM, Port 5001 / ws 6001) $\rightarrow$ Đóng vai trò Trạm chuyển tiếp (Relay Gateway).
-- **Node 2 (btc-macro-iot):** Profile IoT (0.5 vCPU, 128MB RAM, Port 5002 / ws 6002) $\rightarrow$ Đóng vai trò Node biên hạn chế (Constrained Validator).
-
-```
-[ Client / Batch Txs ]
-         │ (100 txs)
-         ▼
-┌──────────────────┐  WebSocket TLS 1.3  ┌─────────────────┐  WebSocket TLS 1.3  ┌────────────────┐
-│   NODE SERVER    │ ══════════════════> │    NODE EDGE    │ ══════════════════> │    NODE IOT    │
-│  (4 vCPU, 4GB)   │    Gossip & Block   │ (1 vCPU, 512MB) │    Gossip & Block   │(0.5 vCPU, 128M)│
-│  [Ingress/Miner] │                     │ [P2P Relay]     │                     │ [Validator]    │
-└──────────────────┘                     └─────────────────┘                     └────────────────┘
+```yaml
+# Trích đoạn cấu hình giới hạn tài nguyên cgroups v2 (perf/docker-compose.yml)
+deploy:
+  resources:
+    limits:
+      cpus: '0.50'
+      memory: 128M
+mem_limit: 128M
+memswap_limit: 128M   # Khóa cứng Swap = 0 để bắt sống OOM-Killer
 ```
 
----
+### 2.3. Hệ thống Giám sát Telemetry cgroups v2 & Triệt tiêu Nhiễu Cold-Start
 
-### 6.3. Kết Quả Đo Đạc Thực Nghiệm Macro-Benchmark (So Sánh 3 Thuật Toán: ECDSA vs RSA vs ML-DSA-87)
+Trong các bài kiểm thử hiệu năng, việc sử dụng lệnh `docker stats` bên ngoài thường dẫn đến sai số nghiêm trọng do chu kỳ lấy mẫu chậm (1 giây/lần) và độ trễ phân tích JSON của Docker Daemon. Trong đồ án này, nhóm đã xây dựng module giám sát thời gian thực `CgroupTelemetryMonitor` đọc trực tiếp từ hệ thống tệp ảo của nhân Linux (**cgroups v2 interface**) với chu kỳ **80ms/mẫu**:
 
-| Chỉ số Đo lường Kỹ thuật | ECDSA (secp256k1) | RSA-2048 (PKCS#1 v1.5) | ML-DSA-87 (NIST PQC Level 5) | Đánh giá Chênh lệch & Tác động |
-| :--- | :---: | :---: | :---: | :--- |
-| **Kích thước 1 Giao dịch trên dây mạng** | 499 Bytes | 1,346 Bytes | **14,685 Bytes (~14.7 KB)** | **ML-DSA-87 lớn gấp 29.4x ECDSA, 10.9x RSA** |
-| **Tổng dung lượng gói 100 Giao dịch** | 48.73 KB | 131.45 KB | **1,434.08 KB (~1.43 MB)** | Băng thông PQC truyền mempool gấp ~30 lần |
-| **Kích thước Khối đã đào (Block Wire Size)** | **27.30 KB** | 1.74 KB | **719.78 KB (~0.72 MB)** | **Khối PQC lớn gấp 26.4 lần ECDSA** |
-| **Thời gian Server tiếp nhận 100 txs** | 0.255 s (392.16 tx/s) | 0.208 s (480.77 tx/s) | **0.161 s (621.12 tx/s)** | ML-DSA-87 tiếp nhận nhanh nhất nhờ NTT |
-| **Thời gian Server đào khối (PoW)** | 0.067 s | 0.005 s | 0.027 s | PoW biến thiên nhẹ theo độ khó nonce |
-| **Độ trễ Lan truyền & Xác thực tới Edge** | 68.55 ms | 23.26 ms | **17.53 ms** | Edge thẩm định khối PQC cực nhanh |
-| **Độ trễ Lan truyền & Xác thực tới IoT** | **98.55 ms** | 22.63 ms | **38.48 ms** | **Node IoT hoàn tất thẩm định khối an toàn** |
-| **Tổng thời gian End-to-End** | 0.489 s | 0.259 s | **0.244 s** | ML-DSA-87 hoàn tất toàn trình nhanh nhất |
-| **Thông lượng toàn mạng (E2E TPS)** | 204.50 tx/s | 386.10 tx/s | **409.84 tx/s** | Thông lượng PQC nhỉnh hơn nhờ thuật toán NTT |
-| **Peak RAM Node Server** | 125.22 MB (3.06%) | 46.73 MB (1.14%) | 51.55 MB (1.26%) | Server vận hành hoàn toàn ổn định |
-| **Peak RAM Node Edge** | 47.27 MB (9.23%) | 44.99 MB (8.79%) | 48.94 MB (9.56%) | Nằm trong vùng xanh an toàn |
-| **Peak RAM Node IoT** | 43.97 MB (34.35%) | 48.01 MB (37.51%) | **49.28 MB (38.50%)** | Tăng tiệm cận 50MB trần |
-| **Normalized CPU Node IoT** | **35.32%** | **32.16%** | **24.94%** | IoT chịu tải xác thực phân bổ đều |
+1. **Bộ nhớ RAM tức thời & Đỉnh phần cứng:** Đọc trực tiếp `/sys/fs/cgroup/memory.current` và `/sys/fs/cgroup/memory.peak` (thanh ghi phần cứng của kernel lưu đỉnh RAM thực tế, không bị bỏ sót giữa các chu kỳ trích mẫu).
+2. **Thời gian tiêu thụ CPU:** Đọc trường `usage_usec` trong `/sys/fs/cgroup/cpu.stat`.
+3. **Hiện tượng bóp xung nhịp do vượt Quota (CFS Throttling):** Đọc trường `throttled_usec` và `nr_throttled` trong `/sys/fs/cgroup/cpu.stat`.
+4. **Sự kiện hủy diệt bộ nhớ:** Đọc trường `oom_kill` trong `/sys/fs/cgroup/memory.events`.
 
-*Bảng dữ liệu trích xuất từ file: [`perf/results/perf01_macro_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_matrix.csv) và [`perf/results/perf01_macro_results.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_results.json)*
-
-![Biểu đồ Macro Benchmark](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_chart.png)
+**Kỹ thuật xử lý triệt để nhiễu Cold-Start Page Cache:**
+Khi khởi chạy container mới lần đầu, nhân Linux phải nạp toàn bộ file binary Python, glibc và thư viện động `liboqs.so` từ đĩa lưu trữ OverlayFS vào bộ đệm tệp (Page Cache). Điều này khiến RAM cgroup đo được bị đội ảo lên tới ~126 MB ngay từ lúc mới bật máy. Để khắc phục, kịch bản tự động kích hoạt một **Warm-up Container** chạy trước trong 2.5 giây nhằm nạp nóng Page Cache trên máy chủ Host. Nhờ đó, các lần đo chính thức phản ánh chính xác 100% bộ nhớ ẩn danh thực của tiến trình (**43.0 MB Baseline RAM**).
 
 ---
 
-### 6.4. Nút Thắt Cổ Chai Phần Cứng (Hardware Bottleneck) Trên Node IoT
-Phân tích thực nghiệm Macro làm nổi bật rõ nét 2 khía cạnh tương phản:
-1. **Nghịch lý Hiệu năng PQC (Verification Paradox):**
-   Mặc dù kích thước khối của ML-DSA-87 phình to gấp **26.4 lần** (720 KB so với 27 KB), thời gian xác thực toán học nhờ phép nhân đa thức NTT của `liboqs` cực kỳ nhanh. Nhờ đó, cả Edge và IoT đều hoàn tất việc thẩm định 50 chữ ký trong khối chỉ trong khoảng **18 - 21 ms**, mang lại E2E TPS đạt **291.55 tx/s** (cao hơn 218.34 tx/s của ECDSA).
-2. **Nút thắt cổ chai về Băng thông và Bộ nhớ Lưu trữ (Wire & Memory Bottleneck):**
-   Điểm yếu chí mạng của ML-DSA-87 không nằm ở chu kỳ xung nhịp CPU, mà nằm ở **Dung lượng mạng (Network Payload)** và **Bộ nhớ đệm (Buffer RAM)**:
-   - Với 50 giao dịch trong 1 block, khối tin chiếm **hơn 700 KB**.
-   - Nếu mạng lưới đạt 1,000 giao dịch/khối như Bitcoin hoặc Ethereum, kích thước 1 block PQC sẽ lên tới **~14.5 MB**!
-   - Việc nhận và giải mã một chuỗi JSON 14.5 MB trên vi điều khiển nhúng 128MB RAM sẽ làm tràn bộ nhớ heap ngay từ tầng deserialization của socket trước khi kịp chuyển vào hàm verify mật mã.
+## 3. THIẾT KẾ KỊCH BẢN THỰC NGHIỆM
+
+Quy trình đánh giá hiệu năng PERF-01 được cấu trúc thành **3 kịch bản liên hoàn**:
+
+```
++-----------------------------------------------------------------------------------+
+|                        QUY TRÌNH THỰC NGHIỆM PERF-01                              |
++-----------------------------------------------------------------------------------+
+|  [Chuẩn bị]   Sinh bộ tải chuẩn hóa (generate_perf01_txs.py)                      |
+|               - Tập 500 txs (chuẩn) & 2,000 txs (cực hạn) cho 4 thuật toán        |
++-----------------------------------------+-----------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|  [Kịch bản 1] Micro-Benchmark Ma trận 3x4 (perf01_stress_test.py)                 |
+|               - 3 Profile phần cứng (Server, Edge, IoT)                           |
+|               - 4 Thuật toán (ECDSA, ML-DSA-44, ML-DSA-65, ML-DSA-87)             |
+|               - Bơm đồng thời 500 txs qua HTTP REST API (8 Worker Threads)        |
+|               => Xuất: perf01_matrix.csv & perf01_oom_risk_chart.png               |
++-----------------------------------------+-----------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|  [Kịch bản 2] Extreme Stress Test & OOM Hunt (perf01_stress_test.py)              |
+|               - Ép trần cực hạn 60MB RAM trên chip 0.5 vCPU                       |
+|               - Nạp liên tục 1,500 txs vào Mempool (từng đợt 50 txs)              |
+|               - Săn lùng sự kiện Linux Kernel OOM-Killer (Exit Code 137)           |
+|               => Xuất: perf01_extreme_oom_matrix.csv & perf01_extreme_oom_chart.png|
++-----------------------------------------+-----------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|  [Kịch bản 3] Macro-Benchmark Live P2P Mesh 6 Nodes (perf01_macro_stress.py)       |
+|               - 1 DUT (Server / Edge / IoT) + 5 Background Nodes (Full Mesh)      |
+|               - Giao tiếp Persistent WebSocket bọc TLS 1.3 / ECDHE                |
+|               - Bơm bão Gossip 100 txs (sinh 600-1000 bản tin P2P) & Đào khối    |
+|               - Bóc tách thời gian: Verify CPU vs Wire Transit vs Commit Delay    |
+|               => Xuất: perf01_macro_matrix.csv & perf01_macro_chart.png           |
++-----------------------------------------------------------------------------------+
+```
+
+### 3.1. Kịch bản Chuẩn bị Tải: Bộ Dữ liệu Giao dịch Chuẩn hóa
+Sử dụng script `perf/generate_perf01_txs.py` sinh trước toàn bộ các cặp khóa, ký số và đóng gói payload JSON chuẩn xác cho:
+1. `txs_500_*.json`: Dùng cho bài đo vi mô 3x4 và kiểm tra tính hợp lệ của Mempool.
+2. `txs_stress_*.json`: Tập 2,000 giao dịch độc lập dùng cho bài kiểm thử OOM cực hạn.
+Việc sinh trước dữ liệu tải giúp loại bỏ hoàn toàn chi phí tạo chữ ký (Sign latency) của máy kiểm thử, đảm bảo node được đo thuần túy về **khả năng tiếp nhận, phân tích cú pháp JSON, thẩm định chữ ký và lưu trữ Mempool**.
+
+### 3.2. Kịch bản 1: Kiểm thử Vi mô Ma trận 3x4 (Micro-Benchmark 500 Txs)
+* **Số lượng phép thử:** 12 ca kiểm thử ($3 \text{ Profiles} \times 4 \text{ Thuật toán}$).
+* **Phương thức nạp tải:** 8 luồng HTTP song song (`ThreadPoolExecutor`) gửi đồng loạt 500 yêu cầu `POST /transactions/new` vào Node đang được cô lập cgroups.
+* **Chỉ số ghi nhận:** Thời gian nạp (Elapsed time), Thông lượng nạp (Ingestion TPS), RAM đỉnh (Peak RAM), Tỷ lệ chiếm dụng trần RAM (RAM Ceiling Usage %), CPU trung bình (Avg CPU %), CPU chuẩn hóa (Normalized CPU %) và Thời gian bóp xung nhịp (CPU Throttled ms).
+
+### 3.3. Kịch bản 2: Kiểm thử Cực hạn & Săn OOM-Killer (Extreme Stress Test 60MB RAM)
+* **Thiết lập:** Cấu hình container với mức RAM chạm đáy **60 MB** (`--memory=60m --memory-swap=60m`) và `0.5 vCPU`.
+* **Mục tiêu:** Kiểm tra khả năng chịu đựng của hàng đợi Mempool khi bị tấn công bơm tải giao dịch (Transaction Flooding). Với RAM nền tĩnh của Python + Flask chiếm ~43 MB, khoảng đệm an toàn khả dụng (Memory Headroom) chỉ còn vỏn vẹn **17 MB**.
+* **Tiến trình:** Bơm tuần tự từng lô 50 giao dịch cho đến khi đủ 1,500 giao dịch hoặc cho đến khi tiến trình bị hủy diệt hoàn toàn. Giám sát trạng thái cgroup sau mỗi lô để bắt thời điểm kích hoạt `oom_kill`.
+
+### 3.4. Kịch bản 3: Kiểm thử Vĩ mô Mạng P2P Mesh 6 Nodes (Macro-Benchmark Single DUT)
+* **Kiến trúc mạng:** Dựng cụm 6 container kết nối mạng Mesh qua WebSocket TLS 1.3 / ECDHE:
+  * 5 Background Nodes (Node 1 là Miner, Node 2–5 là Relay/Validator) chạy không giới hạn tài nguyên.
+  * 1 Device Under Test (DUT) chạy cổng 5000, tuần tự thay đổi giữa 3 profile: Server, Edge và IoT.
+* **Tải thực nghiệm:**
+  * Bão Gossip: Phát tán 100 giao dịch đồng thời từ các peer vào mạng mesh, DUT phải xử lý từ 600 đến 1,000 khung tin WebSocket dội về từ 5 kết nối đồng thời.
+  * Đóng gói khối: Miner (Node 1) đào một khối chứa 100 giao dịch và phát sóng khối mới về DUT.
+* **Chỉ số đo lường (8 Chỉ số Vàng):** Kích thước khối (Block Wire Size), Thời gian CPU thẩm định khối (Block Verify CPU ms), Thời gian truyền khối qua mạng (Block Transit Delay TLS ms), Tổng độ trễ cam kết (Commit Latency ms), Thông lượng nạp Mempool (Gossip Ingest TPS), Băng thông vào và số gói tin trùng lặp bị chặn (Ingress BW & Dups Filtered), Thời gian bóp nghẽn CPU (CFS Throttled ms) và Đỉnh RAM chiếm dụng trên IoT (Peak RAM & Util %).
 
 ---
 
-## 7. HƯỚNG DẪN TÁI LẬP KẾT QUẢ (REPRODUCIBILITY GUIDE)
+## 4. TIẾN HÀNH THỰC NGHIỆM, KẾT QUẢ TỪNG BƯỚC & BÌNH LUẬN CHUYÊN SÂU
 
-Quy trình chuẩn DevOps giúp bất kỳ thành viên nào trong nhóm hoặc giám khảo đều có thể chạy lại và xác thực 100% số liệu:
+### Bước 1: Xây dựng Docker Image & Kiểm tra Tính hợp lệ của liboqs
 
-### Bước 1: Kiểm tra Daemon Docker Desktop
+#### 1. Thao tác dòng lệnh:
+Từ thư mục gốc dự án, thực hiện biên dịch Docker Image:
 ```powershell
-docker info
+docker build -t blockchain-node:perf -f perf/Dockerfile .
 ```
 
-### Bước 2: Đóng gói Docker Image Tích hợp liboqs & FIPS 204
-Tại thư mục gốc dự án:
+#### 2. Kết quả Log Terminal ghi nhận:
+```text
+[+] Building 48.2s (14/14) FINISHED
+ => [internal] load build definition from Dockerfile
+ => => transferring dockerfile: 1.16kB done
+ => [2/4] RUN apt-get update && apt-get install -y --no-install-recommends build-essential git cmake ninja-build ...
+ => [3/4] RUN git clone --depth 1 https://github.com/open-quantum-safe/liboqs /tmp/liboqs ...
+ => => cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja -DOQS_DIST_BUILD=ON
+ => => ninja install & ldconfig
+ => [4/4] RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir liboqs-python
+ => exporting to image
+ => => naming to docker.io/library/blockchain-node:perf done
+```
+
+Kiểm tra sự hiện diện của các thuật toán chữ ký NIST FIPS 204 bên trong container:
 ```powershell
-docker build -t blockchain-node:perf -f Dockerfile .
+docker run --rm blockchain-node:perf python -c "import oqs; print('Supported Sigs:', [s for s in oqs.get_enabled_sig_mechanisms() if 'Dilithium' in s or 'ML-DSA' in s])"
+```
+```text
+Supported Sigs: ['Dilithium2', 'Dilithium3', 'Dilithium5', 'ML-DSA-44', 'ML-DSA-65', 'ML-DSA-87']
 ```
 
-### Bước 3: Sinh Bộ Dữ Liệu Ký Số Chuẩn Xác (Không dư thừa)
-Chạy script sinh dữ liệu chuẩn trong `perf/`:
+#### 3. Nhận xét & Bình luận chuyên sâu:
+* Quá trình biên dịch mã nguồn C của `liboqs` với cờ `-DOQS_DIST_BUILD=ON` và `-GNinja` diễn ra hoàn hảo.
+* Việc nhận diện chính xác các cơ chế chữ ký `ML-DSA-44`, `ML-DSA-65` và `ML-DSA-87` (phiên bản chuẩn hóa chính thức của NIST FIPS 204) khẳng định hệ thống đã sẵn sàng cho các phép đo mật mã hậu lượng tử với hiệu năng C bản địa cao nhất.
+
+---
+
+### Bước 2: Sinh Bộ Dữ liệu Tải và Phân tích Tải trọng Mạng (Wire Overhead)
+
+#### 1. Thao tác dòng lệnh:
+Khởi chạy bộ sinh dữ liệu giao dịch bên trong môi trường Docker:
 ```powershell
-python perf/generate_perf01_txs.py
+docker run --rm -v "${PWD}:/app" blockchain-node:perf python perf/generate_perf01_txs.py
 ```
-*Tạo đúng 5 bộ dữ liệu: `txs_500_ecdsa.json`, `txs_500_rsa.json`, `txs_500_mldsa87.json`, `txs_stress_ecdsa.json` (2000 txs), và `txs_stress_mldsa87.json` (2000 txs).*
 
-### Bước 4: Chạy Kịch bản Micro-Benchmark & Săn OOM-Killer
+#### 2. Kết quả Log Terminal & Bảng Kích thước Tải trọng:
+```text
+======================================================================
+  PERF-01: Bo Sinh Du Lieu Giao Dich Chuan Hoa (ECDSA vs PQC ML-DSA)
+======================================================================
+[*] Dang sinh 500 txs cho: ECDSA (secp256k1)...
+    - Khoa Cong khai (Hex): 130 bytes
+    - Chu ky (Hex): 142 bytes
+    - Kich thuoc 1 giao dich JSON: 499 bytes
+    -> Da ghi 500 txs vao data/txs_500_ecdsa.json (0.25 MB)
+
+[*] Dang sinh 500 txs cho: ML-DSA-44 (NIST PQC Level 2)...
+    - Khoa Cong khai (Hex): 2624 bytes
+    - Chu ky (Hex): 4840 bytes
+    - Kich thuoc 1 giao dich JSON: 7711 bytes
+    -> Da ghi 500 txs vao data/txs_500_mldsa44.json (3.69 MB)
+
+[*] Dang sinh 500 txs cho: ML-DSA-65 (NIST PQC Level 3)...
+    - Khoa Cong khai (Hex): 3904 bytes
+    - Chu ky (Hex): 6618 bytes
+    - Kich thuoc 1 giao dich JSON: 10769 bytes
+    -> Da ghi 500 txs vao data/txs_500_mldsa65.json (5.15 MB)
+
+[*] Dang sinh 500 txs cho: ML-DSA-87 (NIST PQC Level 5)...
+    - Khoa Cong khai (Hex): 5184 bytes
+    - Chu ky (Hex): 9254 bytes
+    - Kich thuoc 1 giao dich JSON: 14685 bytes
+    -> Da ghi 500 txs vao data/txs_500_mldsa87.json (7.02 MB)
+```
+
+**Bảng 1: Phân tích Kích thước Tải trọng Mạng Giữa Mật mã Cổ điển & Hậu Lượng tử**
+
+| Thuật Toán Chữ Ký | Cấp Độ An Toàn (NIST Level) | Public Key (Hex) | Chữ Ký (Hex) | Kích Thước 1 Txn (Wire Bytes) | Hệ Số Phình To (vs ECDSA) | Kích Thước Khối 100 Txns |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **ECDSA (secp256k1)** | Cổ điển (Không an toàn) | 130 B | 142 B | **499 Bytes** | **1.0x (Chuẩn)** | **54.7 KB** |
+| **ML-DSA-44** | Cấp độ 2 (Tương đương SHA3-256) | 2,624 B | 4,840 B | **7,711 Bytes** | **15.5x** | **758.6 KB** |
+| **ML-DSA-65** | Cấp độ 3 (Tương đương AES-192) | 3,904 B | 6,618 B | **10,769 Bytes** | **21.6x** | **1,057.2 KB** |
+| **ML-DSA-87** | Cấp độ 5 (Tương đương AES-256) | 5,184 B | 9,254 B | **14,685 Bytes** | **29.4x** | **1,439.6 KB** |
+
+#### 3. Nhận xét & Bình luận chuyên sâu:
+* **Nguyên nhân toán học của sự gia tăng kích thước:** Chữ ký ML-DSA dựa trên bài toán Module Learning With Errors (M-LWE). Khóa công khai chứa ma trận các đa thức vành số nguyên $R_q$, còn chữ ký bao gồm vector các đa thức $z$ có hệ số bị chặn cùng với gợi ý khử nhiễu (hint vector $h$). Điều này khiến chữ ký nhị phân gốc đã chiếm tới 2.4 – 4.6 KB.
+* **Phụ phí định dạng JSON + Hex (Double Overhead):** Trong kiến trúc hiện tại, các mảng byte nhị phân được mã hóa sang chuỗi ký tự thập lục phân (Hexadecimal string), làm tăng gấp đôi kích thước (mỗi byte dữ liệu cần 2 byte ký tự ASCII). Cộng thêm tiêu đề JSON (`sender_address`, `recipient_address`, `amount`, `nonce`), một giao dịch ML-DSA-87 phình to lên tới **14.69 KB**. Một khối gồm 100 giao dịch ML-DSA-87 sẽ chiếm **1.44 MB**, vượt qua trần MTU thông thường và tạo áp lực cực lớn lên tầng I/O mạng.
+
+---
+
+### Bước 3: Thực thi Kịch bản Vi mô 3x4 & Bình luận Biểu đồ Rủi ro OOM (Hình 1)
+
+#### 1. Thao tác dòng lệnh:
+Khởi chạy bộ kiểm thử vi mô tự động:
 ```powershell
 python perf/perf01_stress_test.py
 ```
-*Xuất kết quả tự động: `perf01_matrix.csv`, `perf01_oom_risk_chart.png`, `perf01_extreme_oom_matrix.csv`, `perf01_extreme_oom_chart.png`.*
 
-### Bước 5: Chạy Kịch bản Macro-Benchmark P2P 3 Nodes
+#### 2. Kết quả Log Terminal trích đoạn tiêu biểu:
+```text
+===========================================================================
+  PROFILE: IoT Embedded (Smart Meter / Sensor)
+  THUAT TOAN: ML-DSA-87 (NIST PQC Level 5)
+  GIOI HAN: CPU=0.5 vCPU, RAM Limit=128m (Memswap=128m)
+===========================================================================
+[*] Dang khoi tao Node va kiem tra trang thai Healthcheck...
+[*] Baseline Memory: 43.12 MB / 128 MB
+[*] Bat dau ban dong thoi 500 giao dich vao mempool qua HTTP POST...
+[*] Hoan tat 500 giao dich trong 2.405 giay.
+    - Thanh cong: 500 / 500 | That bai: 0
+    - Ingestion TPS: 207.90 tx/s
+    - Peak RAM: 55.59 MB (43.43% tran cung 128MB)
+    - Normalized CPU: 100.00% (Avg CPU: 57.12% / 0.5 vCPU)
+    - CPU Throttled: 5,798.36 ms (Tiến trình bị ngắt nhịp do vượt Quota)
+    - Trang thai OOM: AN TOAN (<60% tran)
+```
+
+**Bảng 2: Ma Trận Đầy Đủ Kết Quả Thực Nghiệm Vi Mô 3x4 (Trích xuất từ `perf01_matrix.csv`)**
+
+| Cấu Hình Phần Cứng | Thuật Toán Chữ Ký | Thời Gian Xử Lý (s) | Ingestion TPS (tx/s) | Peak RAM (MB) | RAM Chiếm Dụng (%) | Avg CPU (%) | Normalized CPU (%) | CPU Throttled (ms) | Trạng Thái Rủi Ro OOM |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Server**<br>(4.0 vCPU, 4GB RAM) | **ECDSA (secp256k1)** | 1.160 s | 431.03 | 47.13 MB | 1.15% | 133.47% | 33.37% | 0.0 ms | AN TOÀN (<60%) |
+| | **ML-DSA-44 (L2)** | 0.725 s | **689.66** | 51.94 MB | 1.27% | 150.93% | 37.73% | 0.0 ms | AN TOÀN (<60%) |
+| | **ML-DSA-65 (L3)** | 0.763 s | **655.31** | 53.98 MB | 1.32% | 153.70% | 38.42% | 0.0 ms | AN TOÀN (<60%) |
+| | **ML-DSA-87 (L5)** | 0.810 s | **617.28** | 54.89 MB | 1.34% | 152.35% | 38.09% | 0.0 ms | AN TOÀN (<60%) |
+| **Edge**<br>(1.0 vCPU, 512MB RAM) | **ECDSA (secp256k1)** | 1.676 s | 298.33 | 48.82 MB | 9.54% | 99.19% | 99.19% | 680.86 ms | AN TOÀN (<60%) |
+| | **ML-DSA-44 (L2)** | 1.010 s | **495.05** | 51.76 MB | 10.11% | 118.22% | 100.00% | 780.79 ms | AN TOÀN (<60%) |
+| | **ML-DSA-65 (L3)** | 1.022 s | **489.24** | 53.30 MB | 10.41% | 114.54% | 100.00% | 855.14 ms | AN TOÀN (<60%) |
+| | **ML-DSA-87 (L5)** | 1.141 s | **438.21** | 54.98 MB | 10.74% | 114.77% | 100.00% | 818.97 ms | AN TOÀN (<60%) |
+| **IoT**<br>(0.5 vCPU, 128MB RAM) | **ECDSA (secp256k1)** | 3.365 s | 148.59 | 49.07 MB | 38.34% | 55.28% | 100.00% | 5,412.53 ms | AN TOÀN (<60%) |
+| | **ML-DSA-44 (L2)** | 2.216 s | **225.63** | 54.60 MB | 42.66% | 57.77% | 100.00% | 4,931.10 ms | AN TOÀN (<60%) |
+| | **ML-DSA-65 (L3)** | 2.320 s | **215.52** | 53.03 MB | 41.43% | 57.54% | 100.00% | 5,410.28 ms | AN TOÀN (<60%) |
+| | **ML-DSA-87 (L5)** | 2.405 s | **207.90** | 55.59 MB | 43.43% | 57.12% | 100.00% | 5,798.36 ms | AN TOÀN (<60%) |
+
+#### 3. Chụp kết quả trực quan (Hình 1):
+
+![Biểu đồ Đánh giá Giới hạn Tài nguyên Node & Cảnh báo Ngưỡng OOM](results/perf01_oom_risk_chart.png)  
+*Hình 1: Đánh giá Ranh giới Tài nguyên Node (Peak RAM, Ingestion TPS và Thời gian bóp nghẽn CPU CFS) khi tiếp nhận 500 giao dịch trên 3 Profile phần cứng.*
+
+#### 4. Bình luận & Phân tích Học thuật Chi Tiết Cho Từng Biểu Đồ Con:
+
+##### 4.1. Bình luận Đồ thị 1 (Góc trái - Đỉnh Trần Bộ Nhớ Peak RAM & Vùng OOM):
+* **Hiện trạng an toàn ở quy mô 500 giao dịch:** Biểu đồ trực quan hóa mức chiếm dụng RAM so với ngưỡng an toàn bộ nhớ thiết bị nhúng: Đường nét đứt màu đỏ (IoT Ceiling: 128 MB). Ở tải nạp 500 giao dịch, cả 12 kịch bản đều nằm an toàn dưới ngưỡng cảnh báo 60% trần (76.8 MB).
+* **Mức độ chiếm dụng thực tế:** Bộ nhớ RAM nền của Flask và các cấu trúc dữ liệu cơ bản chiếm khoảng ~43 MB. Sau khi nạp 500 giao dịch vào hàng đợi Mempool, mức RAM đỉnh của ECDSA đạt từ **47.13 MB đến 49.07 MB**, trong khi ML-DSA-87 đạt **54.89 MB đến 55.59 MB**. 
+* **Tỷ trọng trần cứng:** Trên Server, mức này chỉ chiếm **1.34%** tổng dung lượng RAM 4GB; trên Edge chiếm **10.74%** của 512MB; nhưng trên thiết bị IoT, nó đã chiếm tới **43.43%** trần cứng 128MB. Điều này chỉ ra rằng 500 giao dịch chưa làm sập node nhúng, nhưng đã tiêu hao gần một nửa tổng tài nguyên bộ nhớ khả dụng.
+
+##### 4.2. Bình luận Đồ thị 2 (Góc giữa - Nghịch Lý Thông Lượng Ingestion TPS):
+* **Phát hiện nghịch lý thực nghiệm:** Mặc dù giao dịch ML-DSA có kích thước lớn gấp **15 đến 29 lần** so với ECDSA (ML-DSA-44 nặng 7.71 KB vs ECDSA 0.49 KB), thông lượng tiếp nhận (Ingestion TPS) của cả 3 biến thể ML-DSA lại **nhanh hơn đáng kể so với ECDSA trên tất cả các profile phần cứng**:
+  * Trên Server: ML-DSA-44 đạt **689.66 tx/s**, nhanh hơn **1.60 lần** so với ECDSA (**431.03 tx/s**).
+  * Trên Edge: ML-DSA-44 đạt **495.05 tx/s**, nhanh hơn **1.66 lần** so với ECDSA (**298.33 tx/s**).
+  * Trên IoT: ML-DSA-44 đạt **225.63 tx/s**, nhanh hơn **1.52 lần** so với ECDSA (**148.59 tx/s**).
+* **Bản chất khoa học giải thích nghịch lý (2 yếu tố cộng hưởng):**
+  1. *Độ phức tạp thuật toán mật mã (NTT vs Phép nhân điểm Elliptic):* Quá trình xác thực chữ ký ECDSA yêu cầu thực hiện 2 phép nhân điểm vô hướng trên đường cong elliptic $s^{-1}(H(m)G + rQ)$ trên trường nguyên tố lớn 256-bit. Trong khi đó, việc thẩm định chữ ký ML-DSA bản chất là phép nhân ma trận đa thức trên vành số nguyên $R_q$. Nhờ thuật toán biến đổi số học **NTT (Number Theoretic Transform)**, độ phức tạp tính toán được tối ưu xuống $\mathcal{O}(n \log n)$ với toàn các phép toán số nguyên cơ bản, tốn ít chu kỳ ALU hơn nhiều so với phép nhân đường cong.
+  2. *Kiến trúc thực thi C-Engine vs Pure-Python & Khóa GIL:* `liboqs` là thư viện C biên dịch bản địa, kích hoạt vector hóa AVX2 và **giải phóng Python GIL**. Khi 8 luồng HTTP nạp đồng thời, cả 4 nhân CPU của Server đều tham gia tính toán song song thực sự. Ngược lại, `python-ecdsa` là thư viện thuần Python, bị trói chặt bởi khóa GIL, khiến các luồng HTTP worker phải xếp hàng tuần tự để tranh giành CPU, biến CPU thành cổ chai nghiêm trọng. Phụ phí bóc tách JSON (+0.1ms) của PQC hoàn toàn bị khỏa lấp bởi tốc độ xác thực vượt trội của C-engine.
+
+##### 4.3. Bình luận Đồ thị 3 (Góc phải - Áp Lực Quá Tải CPU & Thời Gian Bóp Nghẽn CFS Throttled):
+* **Ý nghĩa học thuật của chỉ số Thời gian Bóp nghẽn CPU (`throttled_ms`):** Thay vì sử dụng phần trăm CPU tức thời dễ gây hiểu lầm giữa các cấu hình đa nhân và đơn nhân, thời gian bị bóp xung nhịp bởi bộ lập lịch Completely Fair Scheduler (CFS) của nhân Linux phản ánh chính xác 100% thời gian thực tế mà tiến trình bị "đóng băng" do tiêu thụ hết hạn ngạch cấp phát.
+* **Sự phân hóa rõ rệt về áp lực quá tải giữa các cấu hình:**
+  * **Server (4.0 vCPU):** Đạt mức **0.0 ms throttled** tuyệt đối trên cả 4 thuật toán. Năng lực 4 nhân giúp hệ thống hấp thụ hoàn toàn tải mà không một lần bị kernel ngắt nhịp.
+  * **Edge (1.0 vCPU):** Tiến trình bắt đầu bị bóp từ **680.86 ms** (ECDSA) lên **780.79 – 855.14 ms** (ML-DSA).
+  * **IoT (0.5 vCPU):** Áp lực bộc lộ gay gắt nhất. Nhân Linux đã bóp nghẹt xung nhịp tiến trình tới **4,931.10 ms đến 5,798.36 ms** (trong đó ML-DSA-87 bị bóp nặng nhất với 5.8 giây). Tiến trình bị treo chờ hạn ngạch CPU lâu hơn gấp đôi thời gian thực thi thực tế (2.4 giây), minh chứng rõ rệt cho sự quá tải của chip nhúng khi phải phân tích cú pháp và thẩm định giao dịch dồn dập.
+
+---
+
+### Bước 4: Thực thi Kịch bản Cực hạn 60MB RAM & Bắt sống Sự kiện OOM-Killer (Hình 2)
+
+#### 1. Thao tác dòng lệnh:
+Khởi chạy bài kiểm thử cực hạn săn lùng ngưỡng OOM trên chip IoT ép trần 60MB RAM:
+```powershell
+python perf/perf01_stress_test.py
+# (Kịch bản tự động chuyển sang Part 2: Extreme OOM Hunt sau khi hoàn thành ma trận 3x4)
+```
+
+#### 2. Kết quả Log Terminal Ghi Nhận Sự Kiện Hủy Diệt Của Nhân Linux:
+```text
+===========================================================================
+  PART 2: EXTREME OOM HUNT - TESTING MEMORY EXHAUSTION ON 60MB RAM NODE
+  Hạn mức cgroups: memory.max = 60M, memory.swap.max = 0 (Swap = 0)
+===========================================================================
+[*] Dang ban giao dich theo tung batch 50 txs vao Node...
+[Tx #500]  MLDSA87: 55.09 MB | MLDSA65: 53.00 MB | MLDSA44: 51.32 MB | ECDSA: 44.77 MB
+[Tx #850]  MLDSA87: 59.50 MB | MLDSA65: 54.82 MB | MLDSA44: 51.68 MB | ECDSA: 45.62 MB
+[Tx #900]  MLDSA87: 60.00 MB --> [!] CRITICAL: OOM-KILLER ACTIVATED!
+           Container btc-extreme-hunt bi tieu diet boi Linux Kernel OOM!
+           Exit Code: 137 (SIGKILL) | oom_kill counter: 1
+
+[Tx #1250] MLDSA65: 60.00 MB | MLDSA44: 59.84 MB | ECDSA: 46.82 MB
+[Tx #1300] MLDSA65: 60.00 MB --> [!] CRITICAL: OOM-KILLER ACTIVATED!
+           Container btc-extreme-hunt bi tieu diet boi Linux Kernel OOM!
+           Exit Code: 137 (SIGKILL) | oom_kill counter: 1
+
+[Tx #1500] MLDSA44: 59.48 MB (SONG SOT AN TOAN!) | ECDSA: 46.77 MB (BINH AN)
+```
+
+**Bảng 3: Dữ Liệu Quỹ Đạo Bộ Nhớ RAM Thực Tế & Thời Điểm OOM-Killed (Trích từ `perf01_extreme_oom_matrix.csv`)**
+
+| Mốc Giao Dịch Nạp | RAM ML-DSA-87 (MB) | RAM ML-DSA-65 (MB) | RAM ML-DSA-44 (MB) | RAM ECDSA (MB) | Ngưỡng Trần Cứng (MB) | Trạng Thái OOM ML-DSA-87 | Trạng Thái OOM ML-DSA-65 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Tx #100** | 48.39 MB | 43.20 MB | 46.34 MB | 43.76 MB | 60.0 MB | Bình thường | Bình thường |
+| **Tx #300** | 48.58 MB | 50.77 MB | 49.23 MB | 43.94 MB | 60.0 MB | Bình thường | Bình thường |
+| **Tx #500** | 55.09 MB | 53.00 MB | 51.32 MB | 44.77 MB | 60.0 MB | Bình thường | Bình thường |
+| **Tx #700** | 58.84 MB | 55.90 MB | 50.30 MB | 45.19 MB | 60.0 MB | Bình thường | Bình thường |
+| **Tx #850** | 59.50 MB | 54.82 MB | 51.68 MB | 45.62 MB | 60.0 MB | Cận ngưỡng | Bình thường |
+| **Tx #900** | **60.00 MB** | 59.12 MB | 56.06 MB | 45.17 MB | 60.0 MB | **OOM-KILLED (Exit 137)** | Bình thường |
+| **Tx #1100** | *Đã chết* | 58.55 MB | 59.21 MB | 45.93 MB | 60.0 MB | - | Cận ngưỡng |
+| **Tx #1250** | *Đã chết* | 60.00 MB | 59.84 MB | 46.82 MB | 60.0 MB | - | Chạm trần |
+| **Tx #1300** | *Đã chết* | **60.00 MB** | 59.11 MB | 46.39 MB | 60.0 MB | - | **OOM-KILLED (Exit 137)** |
+| **Tx #1500** | *Đã chết* | *Đã chết* | **59.48 MB** | **46.77 MB** | 60.0 MB | - | - |
+| **Kết quả chung cuộc** | **Chết tại Tx #900** | **Chết tại Tx #1300** | **SỐNG SÓT 100%** | **SỐNG SÓT 100%** | - | **Thất bại hoàn toàn** | **Thất bại ở tải cao** |
+
+#### 3. Chụp kết quả trực quan (Hình 2):
+
+![Biểu đồ Bài Test Tải Cực Hạn & Sự Kiện Tràn Bộ Nhớ Linux OOM](results/perf01_extreme_oom_chart.png)  
+*Hình 2: Quỹ đạo chiếm dụng bộ nhớ RAM và Bắt sống Sự kiện Kích hoạt Kernel OOM-Killer (Exit Code 137) trên Node IoT 60MB RAM.*
+
+#### 4. Bình luận & Phân tích Học thuật Chi Tiết Cho Hình 2:
+
+* **Bóc tách khoảng đệm bộ nhớ khả dụng (Memory Headroom):**
+  * Tiến trình Python 3.11 cùng framework Flask và thư viện mật mã nạp vào bộ nhớ đã chiếm sẵn khoảng **43.0 MB** RAM nền tĩnh (Baseline).
+  * Với trần cứng cgroups đặt tại **60.0 MB** và không có bộ nhớ ảo Swap, khoảng đệm thực tế còn lại cho Mempool là:
+    $$\Delta_{\text{Headroom}} = 60.0\text{ MB} - 43.0\text{ MB} = 17.0\text{ MB}$$
+* **Phân tích cơ chế suy sụp của ML-DSA-87 (Đường màu đỏ):**
+  * Mỗi giao dịch ML-DSA-87 khi nằm trong RAM dưới dạng đối tượng Python `Transaction` chiếm tới khoảng **16.5 KB in-memory footprint**.
+  * Đường cong màu đỏ tăng vọt dốc đứng. Đến mốc **Tx #900**, tổng dung lượng Mempool vượt quá 17.0 MB headroom, RAM chạm đúng đỉnh trần **60.0 MB**.
+  * Ngay lập tức, bộ cấp phát trang nhớ của nhân Linux (`alloc_pages`) thất bại. Cơ chế OOM-Killer được kích hoạt, gửi tín hiệu `SIGKILL` tiêu diệt tiến trình ngay lập tức.
+* **Phân tích cơ chế suy sụp của ML-DSA-65 (Đường màu cam):**
+  * Với footprint khoảng **12.0 KB/tx**, ML-DSA-65 cầm cự tốt hơn, vượt qua mốc 1,000 giao dịch.
+  * Tuy nhiên, khi tải tiếp tục tăng đến mốc **Tx #1300**, RAM chạm đỉnh 60.0 MB và kích hoạt **OOM-Killer thứ hai**.
+* **Giải thích vì sao ML-DSA-44 sống sót ngoạn mục (Đường màu xanh lá):**
+  * Giao dịch ML-DSA-44 chiếm khoảng **8.5 KB/tx**. Tại mốc Tx #1250, RAM đã chạm mức báo động cực kỳ nguy hiểm: **59.84 MB** (chiếm 99.73% trần cứng, chỉ cách cái chết đúng 0.16 MB).
+  * Tuy nhiên, nhờ cơ chế thu gom rác (Garbage Collector) của Python thu hồi kịp thời các biến đệm tạm thời sau mỗi chu kỳ HTTP POST, dung lượng RAM được kéo lùi nhẹ về mức **59.48 MB**, giúp node vượt qua an toàn toàn bộ 1,500 giao dịch mà không bị sập nguồn.
+* **Giải thích vì sao ECDSA hoàn toàn miễn nhiễm (Đường nét đứt màu xanh dương):**
+  * Giao dịch ECDSA chỉ chiếm khoảng **0.5 KB in-memory**. Thêm 1,500 giao dịch vào hàng đợi chỉ tốn thêm vỏn vẹn $\approx 0.75\text{ MB}$ RAM.
+  * Đường biểu diễn của ECDSA phẳng tuyệt đối và duy trì ổn định trong khoảng **44.0 MB đến 46.8 MB**, chứng minh mật mã truyền thống có khả năng phòng thủ cạn kiệt bộ nhớ vượt trội so với PQC.
+* **Bản chất kỹ thuật của mã lỗi `Exit Code 137`:**
+  * Theo chuẩn Linux POSIX, khi một tiến trình bị hệ điều hành tiêu diệt bằng tín hiệu bất khả kháng, mã thoát được tính bằng công thức:
+    $$\text{Exit Code} = 128 + \text{Signal Number}$$
+  * Tín hiệu mà OOM-Killer sử dụng là `SIGKILL` (Signal số 9):
+    $$\text{Exit Code} = 128 + 9 = 137$$
+  * Tín hiệu `SIGKILL` không thể bị bắt (*uncatchable*) hay bỏ qua (*unignorable*) bởi bất kỳ khối lệnh `try...except` nào trong mã nguồn Python, chứng minh tính bảo hộ tuyệt đối của tầng nhân hệ điều hành trước nguy cơ treo máy phần cứng.
+
+---
+
+### Bước 5: Thực thi Kịch bản Vĩ mô Mạng 6-Node Mesh & Bình luận Dashboard (Hình 3)
+
+#### 1. Thao tác dòng lệnh:
+Khởi chạy kịch bản Macro-Benchmark kiểm thử toàn diện Node DUT trong cụm mạng lưới Mesh sống:
 ```powershell
 python perf/perf01_macro_stress.py
 ```
-*Xuất kết quả tự động: `perf01_macro_matrix.csv`, `perf01_macro_results.json`, `perf01_macro_chart.png`.*
+
+#### 2. Kết quả Log Terminal Ghi Nhận Quá Trình Bão Gossip & Đào Khối:
+```text
+========================================================================================
+  MACRO-BENCHMARK: Single DUT in Live Mesh Network (1 DUT + 5 Background Nodes)
+  DUT Profile: IoT DUT (0.5 vCPU, 128MB RAM) | Algorithm: ML-DSA-87 (NIST Level 5)
+========================================================================================
+[*] Dang khoi dong mang Mesh 6 Nodes qua WebSocket TLS 1.3...
+[*] P2P Mesh hoan tat thiet lap: 15/15 kenh ket noi TLS 1.3 da thong suot.
+[*] Phat song bao Gossip: 100 giao dich PQC dong thoi vao mang...
+    - Tong so goi tin WebSocket DUT tiep nhan: 981 packets
+    - So goi tin trung lap da loc nho seen_tx_hashes: 881 packets (Chặn 89.8%)
+    - Bang thong Ingress dinh tren IoT: 5,600.29 KB/s (~5.6 MB/s)
+    - Ingest Throughput: 39.81 TPS
+[*] Miner Node 1 dao thanh cong Khoi #1 (100 txs ML-DSA-87, Kich thuoc: 1,439.63 KB)
+[*] DUT tiep nhan va cam ket Khoi moi:
+    - Thoi gian truyen khoi qua TLS 1.3 (Block Transit Delay): 74.00 ms
+    - Thoi gian CPU verify 100 chu ky PQC: 18.68 ms
+    - Tong do tre cam ket (Commit Latency): 95.46 ms
+    - CFS Throttled Duration: 8,731.93 ms (Bị bóp 79.41% chu kỳ hoạt động)
+    - Peak RAM tren IoT: 107.45 MB (83.95% tran cung 128MB)
+```
+
+**Bảng 4: Bảng 8 Chỉ Số Vàng Toàn Diện Macro-Benchmark (Trích xuất từ `perf01_macro_matrix.csv`)**
+
+| Nhóm Đánh Giá | Chỉ Số Cốt Lõi (Core KPI) | ECDSA (secp256k1) | ML-DSA-44 (PQC L2) | ML-DSA-65 (PQC L3) | ML-DSA-87 (PQC L5) | Ý Nghĩa Học Thuật / Đánh Giá Thực Nghiệm |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **1. Tải Trọng Mạng** | **1. Kích thước 1 Txn / Khối 100 Txns** | 0.49 KB / **54.7 KB** | 7.71 KB / **758.6 KB** | 10.77 KB / **1,057.2 KB** | 14.69 KB / **1,439.6 KB** | Khối ML-DSA-87 phình to gấp **26.3 lần** so với ECDSA do cấu trúc chữ ký lattice và phụ phí Hex. |
+| **2. Hiệu Năng Đồng Thuận Khối** | **2. Thời gian CPU Verify Khối (`dut_block_verify_ms`)**<br>*(Server / Edge / IoT)* | 115.0 / 124.7 / **193.1 ms** | 6.8 / 9.6 / **12.1 ms** | 14.2 / 19.0 / **14.2 ms** | 21.1 / 21.4 / **18.7 ms** | ML-DSA nhờ NTT của thư viện C `liboqs` nhanh gấp **10–16 lần** so với `python-ecdsa`. |
+| | **3. Độ trễ Truyền Khối TLS 1.3 (`block_transit_ms`)**<br>*(Server / Edge / IoT)* | 3.7 / 4.4 / **4.6 ms** | 34.2 / 35.0 / **31.9 ms** | 49.1 / 50.6 / **54.3 ms** | 65.8 / 66.5 / **74.0 ms** | Ở PQC, **độ trễ truyền mạng chiếm tới 70%–80%** tổng thời gian; điểm nghẽn chuyển dịch từ CPU sang I/O Mạng. |
+| | **4. Tổng Độ trễ Cam kết Khối (`commit_latency_ms`)**<br>*(Server / Edge / IoT)* | 118.9 / 129.5 / **197.9 ms** | 42.5 / 46.3 / **45.7 ms** | 65.5 / 72.0 / **71.7 ms** | 90.0 / 90.9 / **95.5 ms** | Tổng thời gian từ lúc Miner phát sóng qua WebSocket TLS 1.3 đến khi DUT xác thực và ghi sổ cái. |
+| **3. Sức Chịu Tải Bão Gossip** | **5. Thông lượng Nạp Mempool (`ingest_throughput_tps`)**<br>*(Server / Edge / IoT)* | 146.7 / 154.1 / **103.1 TPS** | 176.1 / 121.9 / **63.4 TPS** | 165.4 / 108.0 / **55.8 TPS** | 140.3 / 97.4 / **39.8 TPS** | Tốc độ DUT hấp thụ 100 txs giữa bão tin nhắn. Trên IoT, thông lượng ML-DSA-87 giảm 2.6 lần so với ECDSA. |
+| | **6. Băng thông Đỉnh & Lọc trùng (`ingress_bw` / `dups`)**<br>*(IoT Ingress BW / Gói tin trùng đã chặn)* | 351.5 KB/s<br>*(Chặn 600 gói)* | 4,295.0 KB/s<br>*(Chặn 800 gói)* | 5,869.8 KB/s<br>*(Chặn 900 gói)* | 5,600.3 KB/s<br>*(Chặn 881 gói)* | Thuật toán `seen_tx_hashes` hoạt động xuất sắc: chặn thành công 85%–90% gói tin dư thừa dội về từ 5 peers. |
+| **4. Giới Hạn cgroups v2** | **7. Thời gian Bóp CPU (`total_throttled_ms` & `%`)**<br>*(Server / Edge / IoT)* | 0 / 322 / **1,627 ms**<br>*(0% / 46% / 69%)* | 0 / 1,051 / **3,932 ms**<br>*(0% / 57% / 74%)* | 0 / 1,447 / **5,259 ms**<br>*(0% / 56% / 76%)* | 0 / 1,624 / **8,732 ms**<br>*(0% / 59% / 79%)* | **Chỉ số đo áp lực tải thực tế:** Thời gian nhân Linux ngắt nhịp tiến trình. ML-DSA-87 đè nặng IoT gấp 5.3 lần ECDSA. |
+| | **8. Đỉnh Bộ nhớ RAM & % Trần cứng IoT (`peak_ram` / `util%`)**<br>*(Server / Edge / IoT - Ngưỡng IoT: 128 MB)* | 50.5 / 50.2 / **50.1 MB**<br>*(IoT: **39.1%**)* | 57.2 / 69.6 / **78.9 MB**<br>*(IoT: **61.6%**)* | 75.0 / 80.3 / **85.9 MB**<br>*(IoT: **67.1%**)* | 79.2 / 91.2 / **107.5 MB**<br>*(IoT: **84.0%**)* | Chỉ với 100 txs, Mempool ML-DSA-87 đã chiếm tới **84.0% trần cứng 128MB của IoT**, cận kề vực thẳm OOM. |
+
+#### 3. Chụp kết quả trực quan (Hình 3):
+
+![Dashboard Kết Quả Macro-Benchmark Trong Mạng Live P2P Mesh](results/perf01_macro_chart.png)  
+*Hình 3: Dashboard 4-Panel Đánh Giá Thực Nghiệm Toàn Diện Node DUT trong Mạng Lưới P2P Mesh 6 Nodes qua WebSocket TLS 1.3.*
+
+#### 4. Bình luận & Phân tích Học thuật Chi Tiết Cho Từng Panel (Hình 3):
+
+##### 4.1. Panel 1 (Góc trên trái - Thời Gian Cam Kết Khối Bóc Tách: Verify CPU vs Wire Transit):
+* **Cấu trúc bóc tách:** Tổng thời gian cam kết khối được đo bằng công thức:
+  $$\text{Commit Latency} = \text{Block Verify CPU Time} + \text{Wire Transit Delay TLS 1.3}$$
+* **Sự chuyển dịch điểm nghẽn hệ thống (The Bottleneck Paradigm Shift):**
+  * Với **ECDSA**: Hệ thống hoàn toàn là **CPU-bound**. Trên thiết bị IoT, thời gian truyền khối qua mạng chỉ mất **4.59 ms** (do khối chỉ nặng 54.7 KB), nhưng CPU mất tới **193.08 ms** để thẩm định 100 chữ ký đường cong Elliptic qua Python bytecode. Thời gian CPU verify chiếm tới **97.5%** tổng độ trễ.
+  * Với **PQC (ML-DSA)**: Hệ thống chuyển dịch hoàn toàn sang **Network I/O-bound**. Nhờ thư viện C `liboqs`, CPU IoT chỉ mất **12.11 ms** để verify khối ML-DSA-44 và **18.68 ms** cho khối ML-DSA-87 (nhanh hơn ECDSA gấp 10–16 lần). Tuy nhiên, do khối nặng tới 0.76 – 1.44 MB, thời gian truyền tải socket TLS 1.3 chiếm tới **31.88 ms – 74.00 ms** (chiếm từ **70% đến 80%** tổng thời gian cam kết).
+* **Giải thích hiện tượng độ trễ IoT (45.7ms) ngang bằng Edge (46.3ms) ở ML-DSA-44:**
+  * Về mặt CPU thực tế, IoT (12.11 ms) vẫn chậm hơn Edge (9.57 ms) đúng theo tương quan phần cứng. Tuy nhiên, do thời gian truyền mạng chiếm tỷ trọng áp đảo (32–35 ms), độ dao động tự nhiên của socket TCP trên Docker bridge ($\pm 3\text{ ms}$) đã khỏa lấp mức chênh lệch CPU 2.5 ms, tạo nên độ trôi ngẫu nhiên nhỏ giữa hai cấu hình.
+
+##### 4.2. Panel 2 (Góc trên phải - Tương Quan Giữa Tải Trọng Khối & Thông Lượng Nạp Mempool):
+* **Tác động của bão Gossip đến thiết bị yếu:** Đường biểu diễn màu nâu cam thể hiện kích thước khối tăng vọt từ **54.7 KB** (ECDSA) lên **1,439.6 KB** (ML-DSA-87).
+* Khi kích thước gói tin tăng, các cột thông lượng nạp (Ingest TPS) trên Node IoT (màu đỏ) suy giảm dốc đứng: từ **103.06 TPS** (ECDSA) tụt xuống **63.37 TPS** (ML-DSA-44), **55.81 TPS** (ML-DSA-65) và chạm đáy **39.81 TPS** (ML-DSA-87), tức suy giảm tới **61.4%**.
+* Nguyên nhân là do nhân CPU yếu (0.5 vCPU) của IoT bị quá tải trong việc giải mã các gói tin khung WebSocket TLS 1.3 với lưu lượng dồn dập lên tới **5.6 MB/s – 5.8 MB/s**.
+* Ngược lại, Node Server (4.0 vCPU) vẫn duy trì thông lượng ổn định từ **140 đến 176 TPS** nhờ năng lực xử lý I/O mạng đa luồng mạnh mẽ.
+* **Đánh giá thuật toán lọc trùng lặp `seen_tx_hashes`:** Kịch bản ghi nhận DUT đã lọc và loại bỏ thành công từ **600 đến 900 gói tin giao dịch trùng lặp** do 5 peer trong mạng dội về liên tục, chứng minh cơ chế chống bão gossip của hệ thống hoạt động vô cùng hiệu quả, ngăn chặn nguy cơ cạn kiệt CPU do thẩm định lặp lại một giao dịch.
+
+##### 4.3. Panel 3 (Góc dưới trái - Áp Lực Bóp Nghẽn CPU cgroups v2 Dưới Bão Gossip):
+* **Khắc phục hạn chế của thông số CPU thông thường:** Trước đây, khi nhìn vào con số CPU 100%, người quan sát không thể biết được hệ thống bị quá tải ở mức độ nào. Chỉ số **Thời gian Bóp nghẽn CPU (CFS Throttled Duration)** từ cgroups v2 đã giải quyết triệt để vấn đề này.
+* **Sự phân hóa rõ rệt giữa các cấu hình:**
+  * Server (4 vCPU): Hoàn toàn không bị bóp nghẽn (**0.0 ms throttled**).
+  * Edge (1 vCPU): Bị bóp từ **321.59 ms** (ECDSA) lên **1,624.21 ms** (ML-DSA-87), tỷ lệ chu kỳ bị ngắt nhịp là **58.8%**.
+  * IoT (0.5 vCPU): Mức độ nghẽn tăng phi mã: ECDSA bị bóp **1,627.10 ms** (68.8% chu kỳ), nhưng khi chuyển sang ML-DSA-87, thời gian bị bóp nghẹt lên tới kỷ lục **8,731.93 ms**, chiếm tới **79.41%** tổng thời gian hoạt động. Điều này chứng minh thuật toán PQC cấp 5 đặt một gánh nặng tính toán và phân giải I/O vượt quá giới hạn thiết kế của các vi xử lý nhúng.
+
+##### 4.4. Panel 4 (Góc dưới phải - Cảnh Báo Ngưỡng Bộ Nhớ RAM Trên IoT So Với Trần Cứng 128MB):
+* **Trực quan hóa lằn ranh đỏ 128 MB:** Đường kẻ ngang màu đỏ thể hiện trần cứng cgroups của thiết bị nhúng IoT.
+* **Nguy cơ OOM cận kề trong điều kiện vận hành thực tế:**
+  * Với ECDSA, bộ nhớ RAM đỉnh của IoT chỉ đạt **50.05 MB**, tương đương **39.1%** trần cứng (còn dư hơn 77 MB an toàn).
+  * Khi chuyển sang PQC, Mempool và bộ đệm WebSocket phình to nhanh chóng: ML-DSA-44 chiếm **78.90 MB (61.6%)**, ML-DSA-65 chiếm **85.91 MB (67.1%)**, và ML-DSA-87 đẩy mức chiếm dụng lên tới **107.45 MB**, tương đương **83.95%** trần cứng 128MB.
+  * Chỉ với **100 giao dịch** trong mạng P2P, node IoT đã tiêu hao gần hết khoảng đệm an toàn và chỉ còn cách vực thẳm Linux OOM-Killer đúng **20.5 MB**. Nếu mạng lưới xảy ra ùn tắc giao dịch và số lượng giao dịch trong Mempool vượt quá 200–300, node IoT chắc chắn sẽ bị sập nguồn đột ngột.
 
 ---
 
-## 8. KHUYẾN NGHỊ KIẾN TRÚC DEVOPS & AN TOÀN HỆ THỐNG
+## 5. TỔNG KẾT & KHUYẾN NGHỊ KIẾN TRÚC CHO HỆ THỐNG BLOCKCHAIN HẬU LƯỢNG TỬ
 
-Từ các bằng chứng thực nghiệm Micro và Macro thu được, chúng tôi đề xuất 3 khuyến nghị kiến trúc quan trọng khi đưa mật mã hậu lượng tử vào mạng Blockchain thực tế:
+Dựa trên toàn bộ kết quả đo đạc định lượng từ 3 kịch bản thực nghiệm vi mô, cực hạn và vĩ mô, nhóm nghiên cứu đề xuất các khuyến nghị kiến trúc kỹ thuật chuẩn xác sau:
 
-1. **Tuyệt đối không chạy Full Node PQC trên Thiết bị Nhúng IoT (RAM $\le$ 128MB):**
-   - Thiết bị IoT chỉ nên đóng vai trò **Signer Node (Light Client)**: chỉ lưu khóa riêng, thực hiện ký số cục bộ giao dịch của cảm biến rồi đẩy lên trạm biên.
-   - Tránh biến IoT thành Node tham gia lưu trữ Mempool hay đồng thuận chuỗi vì nguy cơ bị Linux Kernel OOM-Killer tiêu diệt (Exit 137) khi mạng bị dồn ứ giao dịch là $100\%$.
-2. **Triển khai Kiến trúc Phân tầng (Tiered Hierarchical Topology):**
-   - **Tầng 1 (IoT Sensors):** Thiết bị nhúng gửi dữ liệu ký số PQC lên trạm biên gần nhất.
-   - **Tầng 2 (Edge Gateways - 512MB đến 2GB RAM):** Các trạm Raspberry Pi / IPC đóng vai trò Mempool Filter & Validator, thẩm định tính hợp lệ của chữ ký và nén dữ liệu trước khi chuyển tiếp.
-   - **Tầng 3 (Server / Cloud Nodes - 4GB+ RAM, 4+ vCPU):** Đảm nhiệm việc đào khối PoW, phân phối khối lớn và duy trì sổ cái toàn vẹn.
-3. **Thiết lập Hạn ngạch Mempool theo Dung lượng Byte (Byte-based Mempool Quota):**
-   - Thay vì giới hạn mempool theo số lượng giao dịch (vd: 5,000 txs), node cần giới hạn nghiêm ngặt theo **Tổng dung lượng byte (vd: tối đa 20 MB)**. Khi vượt ngưỡng, tự động từ chối giao dịch mới bằng mã lỗi HTTP 429 hoặc 503 để bảo vệ tiến trình khỏi sự can thiệp của Linux OOM-Killer.
+### 5.1. Bảng Khuyến Nghị Lựa Chọn Thuật Toán Theo Cấu Hình Phần Cứng
+
+| Phân Khúc Thiết Bị | Thông Số Phần Cứng Mục Tiêu | Thuật Toán Khuyến Nghị | Thuật Toán Cần Tránh | Lý Do Kỹ Thuật & Giải Pháp Đi Kèm |
+| :--- | :--- | :---: | :---: | :--- |
+| **IoT / Cảm biến Nhúng**<br>*(Smart Meter, Sensor)* | CPU $\le 0.5$ vCPU<br>RAM $\le 128$ MB | **ML-DSA-44**<br>*(NIST Level 2)* | **ML-DSA-87** | ML-DSA-87 chiếm tới 84% RAM và gây nghẽn CPU tới 79%. ML-DSA-44 đảm bảo khả năng sống sót qua bão tải, RAM đỉnh chỉ 54–78 MB. Cần cấu hình giới hạn kích thước khối $\le 50$ txs. |
+| **Edge Gateway**<br>*(Raspberry Pi 4, IPC)* | CPU $\approx 1.0$ vCPU<br>RAM $\approx 512$ MB | **ML-DSA-65**<br>*(NIST Level 3)* | - | ML-DSA-65 là "Điểm cân bằng vàng" (Sweet Spot): Đạt cấp an ninh AES-192, TPS nạp đạt ~489 tx/s, RAM đỉnh chỉ chiếm 10.4%–15.7% trần cứng. |
+| **Cloud Server / Miner**<br>*(DataCenter, Validator)* | CPU $\ge 4.0$ vCPU<br>RAM $\ge 4096$ MB | **ML-DSA-65** hoặc **ML-DSA-87** | - | Server hoàn toàn không bị bóp nghẽn CPU (0 ms Throttled), RAM chiếm <2%, TPS đạt 617–690 tx/s. Đủ năng lực gánh các khối PQC dung lượng lớn. |
+
+### 5.2. Đề Xuất Cải Tiến Kiến Trúc Hệ Thống (Future Work)
+
+1. **Chuyển đổi tầng giao vận sang Chuẩn Nhị Phân (Binary Serialization):**
+   * *Hạn chế hiện tại:* Việc biểu diễn chữ ký và khóa công khai dưới dạng chuỗi Text Hexadecimal làm phình gấp đôi kích thước dữ liệu (+100% overhead).
+   * *Giải pháp:* Nâng cấp tầng giao vận WebSocket và lưu trữ khối sang định dạng nhị phân như **Protocol Buffers (Protobuf), CBOR hoặc MessagePack** (hoặc tối thiểu là Base64). Điều này sẽ giúp giảm ngay lập tức **40% đến 48% kích thước khối** (khối ML-DSA-87 giảm từ 1.44 MB xuống còn ~750 KB), triệt tiêu điểm nghẽn I/O mạng.
+2. **Triển khai Cơ chế Giới hạn Mempool Theo Dung Lượng Byte (Byte-Bounded Mempool Eviction):**
+   * *Hạn chế hiện tại:* Các node blockchain truyền thống thường giới hạn Mempool theo số lượng giao dịch cố định (ví dụ tối đa 5,000 txs). Với ECDSA, 5,000 txs chỉ tốn 2.5 MB RAM; nhưng với ML-DSA-87, nó sẽ ngốn tới **73.5 MB RAM**, ngay lập tức giết chết node IoT 128MB.
+   * *Giải pháp:* Bắt buộc phải áp dụng chính sách giới hạn Mempool theo tổng số Megabyte (ví dụ: Node IoT chỉ cho phép Mempool tối đa **10 MB**). Khi hàng đợi đầy, node tự động loại bỏ (evict) các giao dịch có mức phí (gas fee) thấp nhất để bảo vệ an toàn tính mạng cho tiến trình.
+3. **Tận dụng Thư viện C Bản Địa và Tối Ưu Hóa Vector Hóa (SIMD/AVX2):**
+   * Kết quả thực nghiệm đã chứng minh sức mạnh vượt trội của `liboqs` C-engine so với Pure-Python. Mọi thành phần mật mã trong các hệ thống Blockchain thương mại bắt buộc phải được triển khai dưới dạng thư viện C bản địa hoặc Rust/Go để giải phóng khóa thông dịch và khai thác tối đa năng lực phần cứng.
 
 ---
 
-## 9. DANH MỤC SẢN PHẨM BÀN GIAO (DELIVERABLES)
+## 6. ĐÓNG GÓP CỦA PERF-01 TRONG TỔNG THỂ ĐỒ ÁN
 
-Toàn bộ các tệp mã nguồn, dữ liệu thực nghiệm và hình ảnh biểu đồ của kịch bản `PERF-01` được lưu trữ đầy đủ trong thư mục `perf/`:
-
-| STT | Tên Sản phẩm / Tệp tin | Đường dẫn Tuyệt đối | Mô tả Chi tiết |
-| :---: | :--- | :--- | :--- |
-| 1 | **Dockerfile** | [`perf/Dockerfile`](file:///d:/assignment/btl/Blockchain-CSATT/perf/Dockerfile) | File Dockerfile đóng gói Node, biên dịch `liboqs` C engine FIPS 204. |
-| 2 | **docker-compose.yml** | [`perf/docker-compose.yml`](file:///d:/assignment/btl/Blockchain-CSATT/perf/docker-compose.yml) | File Docker Compose định nghĩa 3 profile phần cứng cô lập cgroups v2. |
-| 3 | **Dataset Generator** | [`perf/generate_perf01_txs.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/generate_perf01_txs.py) | Script sinh các tập dữ liệu giao dịch chuẩn (500 txs và stress txs). |
-| 4 | **Micro Test Driver** | [`perf/perf01_stress_test.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_stress_test.py) | Engine kiểm thử Micro 3x3 và săn tìm sự kiện OOM-Killed (Exit 137). |
-| 5 | **Macro Test Driver** | [`perf/perf01_macro_stress.py`](file:///d:/assignment/btl/Blockchain-CSATT/perf/perf01_macro_stress.py) | Engine kiểm thử Macro trên mạng P2P đa node phân cấp (Server-Edge-IoT). |
-| 6 | **Ma trận Micro 3x3 (CSV)** | [`perf/results/perf01_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_matrix.csv) | Bảng dữ liệu thực nghiệm 9 đợt (TPS, RAM Peak, Avg CPU, Throttling). |
-| 7 | **Biểu đồ OOM Risk Matrix (PNG)** | [`perf/results/perf01_oom_risk_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_oom_risk_chart.png) | Biểu đồ 3 panel so sánh Peak RAM, Ingestion TPS và CPU Saturation. |
-| 8 | **Số liệu Tải Cực hạn OOM (CSV)** | [`perf/results/perf01_extreme_oom_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_matrix.csv) | Dữ liệu quy đạo RAM và sự kiện OOM-Killed tại Tx #1050 trên node 60MB RAM. |
-| 9 | **Biểu đồ Extreme OOM Cliff (PNG)** | [`perf/results/perf01_extreme_oom_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_extreme_oom_chart.png) | Biểu đồ trực quan hóa ranh giới sụp đổ OOM của ML-DSA-87 so với ECDSA. |
-| 10 | **Ma trận Macro P2P (CSV)** | [`perf/results/perf01_macro_matrix.csv`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_matrix.csv) | Bảng số liệu độ trễ lan truyền khối, wire payload và CPU các node. |
-| 11 | **Dữ liệu Thô Macro (JSON)** | [`perf/results/perf01_macro_results.json`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_results.json) | File JSON lưu trữ chi tiết toàn bộ telemetry của đợt test Macro. |
-| 12 | **Biểu đồ Macro Benchmark (PNG)** | [`perf/results/perf01_macro_chart.png`](file:///d:/assignment/btl/Blockchain-CSATT/perf/results/perf01_macro_chart.png) | Biểu đồ 3 panel so sánh Block Delay, Wire Payload và CPU Saturation. |
-| 13 | **Báo cáo Kỹ thuật Đầy đủ (MD)** | [`perf/PERF01_BENCHMARK_REPORT.md`](file:///d:/assignment/btl/Blockchain-CSATT/perf/PERF01_BENCHMARK_REPORT.md) | Tài liệu báo cáo hoàn chỉnh phục vụ nghiệm thu đồ án. |
+Kịch bản **PERF-01** đóng vai trò là chiếc cầu nối thực nghiệm vững chắc giữa lý thuyết mật mã trừu tượng và khả năng triển khai thực tế của toàn bộ đồ án:
+* **Kết nối với Phần 1 (An ninh & Mật mã - SEC-01..04):** Trong khi các kịch bản SEC chứng minh tính an toàn tuyệt đối của ML-DSA trước các cuộc tấn công lật bit, phát lại và phân tích kênh kề thời gian thực thi (TVLA), PERF-01 đã chỉ ra rõ ràng "cái giá phải trả" về mặt tài nguyên tính toán, băng thông và bộ nhớ khi đưa các thuật toán này vào vận hành.
+* **Kết nối với Phần 2 (Mạng P2P & Đồng thuận - NET-01..02):** Số liệu đo đạc tải trọng khối (1.44 MB/khối) và độ trễ truyền mạng TLS 1.3 của PERF-01 cung cấp trực tiếp dữ liệu đầu vào cho kịch bản NET-01 và NET-02 để giải thích hiện tượng phân mảnh gói tin TCP qua các ngưỡng MTU hẹp và tỷ lệ sinh nhánh phụ (Fork/Orphan blocks) khi mạng có độ trễ cao.
+* **Tính thực tiễn và chuẩn mực DevOps:** Việc áp dụng kỹ thuật container hóa Docker, cơ chế giám sát kernel Linux cgroups v2, kỹ thuật khử nhiễu Warm-up Page Cache và mô phỏng mạng lưới P2P Mesh 6 nodes đã nâng tầm giá trị thực nghiệm của đồ án từ mô hình lý thuyết trên giấy thành một hệ thống kỹ thuật hoàn chỉnh, đáp ứng đầy đủ các tiêu chuẩn học thuật khắt khe.

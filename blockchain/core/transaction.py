@@ -1,3 +1,4 @@
+import sys
 """
 Transaction Model
 """
@@ -41,6 +42,27 @@ class Transaction:
             'nonce': self.nonce,
             'signature': self.signature
         }
+
+    def to_mempool_entry(self) -> dict:
+        entry = self.to_full_dict()
+        if len(self.sender_address) <= 3000:
+            entry['sender_address'] = sys.intern(self.sender_address)
+            entry['recipient_address'] = sys.intern(self.recipient_address)
+        try:
+            if len(self.signature) > 6000:
+                raw_sig = bytes.fromhex(self.signature)
+                raw_pk_head = bytes.fromhex(self.sender_address[:512])
+            elif len(self.signature) >= 64:
+                raw_sig = bytes.fromhex(self.signature[:1024])
+                raw_pk_head = b""
+            else:
+                raw_sig = b""
+                raw_pk_head = b""
+        except ValueError:
+            raw_sig = self.signature.encode('utf-8')
+            raw_pk_head = b""
+        entry['_decoded_cache'] = raw_sig + raw_pk_head
+        return entry
 
     def calculate_hash(self) -> str:
         data = f"{self.sender_address}:{self.recipient_address}:{self.value}:{self.nonce}:{self.signature}"
