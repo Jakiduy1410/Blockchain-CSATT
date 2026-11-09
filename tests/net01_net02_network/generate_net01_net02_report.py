@@ -4,8 +4,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-ROOT = Path(__file__).resolve().parents[1]
-RESULT_DIR = ROOT / "benchmarks" / "results"
+ROOT = Path(__file__).resolve().parents[2]
+RESULT_DIR = ROOT / "benchmarks" / "results" / "net01_net02_network"
 SUMMARY_CSV = RESULT_DIR / "net01_net02_summary.csv"
 RAW_CSV = RESULT_DIR / "net01_net02_results.csv"
 
@@ -13,7 +13,7 @@ SEGMENT_CSV = RESULT_DIR / "net01_tcp_segmentation.csv"
 SEGMENT_PNG = RESULT_DIR / "tcp_segmentation_mtu.png"
 PROP_PNG = RESULT_DIR / "propagation_delay.png"
 FORK_PNG = RESULT_DIR / "fork_orphan_rate.png"
-REPORT = ROOT / "NET01_NET02_REPORT.md"
+REPORT = RESULT_DIR / "NET01_NET02_REPORT.md"
 
 FINAL_LABELS = [
     "mtu576_loss5_lag100",

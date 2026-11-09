@@ -8,9 +8,9 @@ from pathlib import Path
 
 import requests
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BENCH_DIR = ROOT / "benchmarks"
-RESULT_DIR = BENCH_DIR / "results"
+RESULT_DIR = BENCH_DIR / "results" / "net01_net02_network"
 WALLETS_PATH = ROOT / "configs" / "wallets.json"
 
 sys.path.insert(0, str(ROOT))

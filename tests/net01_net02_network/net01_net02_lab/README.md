@@ -22,7 +22,7 @@ Hai bản sửa `miner.py` và `ledger.py` cùng kiểm thử đã dùng trong l
 Đứng ở thư mục gốc repo, nơi có các thư mục `blockchain`, `tests`, `benchmarks`:
 
 ```powershell
-python -B benchmarks/net01_net02_lab/show_results.py
+python -B tests/net01_net02_network/net01_net02_lab/show_results.py
 ```
 
 Lệnh chỉ đọc CSV đã commit; bảng hiện ra là kết quả cũ, không phải phép đo trực tiếp.
@@ -30,7 +30,7 @@ Không cần node, Clumsy, Wireshark, Docker hoặc quyền Administrator.
 Trong thư mục bàn giao trên Desktop, kiểm tra thêm bằng chứng đã giải nén:
 
 ```powershell
-python -B benchmarks/net01_net02_lab/check_evidence.py --data-root ../bang-chung --verify-hashes
+python -B tests/net01_net02_network/net01_net02_lab/check_evidence.py --data-root ../bang-chung --verify-hashes
 ```
 
 Nếu chỉ clone GitHub, lấy gói `Bang_chung_NET01_NET02_GOC.zip` từ thành viên 5,

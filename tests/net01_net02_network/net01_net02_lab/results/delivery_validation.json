@@ -1,0 +1,36 @@
+{
+  "parsed_scripts": [
+    "analyze.py",
+    "charts.py",
+    "check_evidence.py",
+    "node_lab.py",
+    "run_lab.py",
+    "show_results.py",
+    "verify_blocks.py"
+  ],
+  "cli_help": {
+    "run_lab.py": true,
+    "analyze.py": true,
+    "verify_blocks.py": true,
+    "check_evidence.py": true
+  },
+  "core_and_tests_identical_to_measured_version": {
+    "blockchain/consensus/miner.py": true,
+    "blockchain/core/ledger.py": true,
+    "tests/test_mining_races.py": true,
+    "tests/test_consensus_security.py": true
+  },
+  "wallet_unchanged": true,
+  "base_commit": "56d5ccb25c716b2f363f18f68d9b63bbb3904eb7",
+  "git_diff_check": true,
+  "no_extra_runtime_or_wallet_files": true,
+  "new_bytes": 661872,
+  "new_data_files_with_private_key_values": [],
+  "regression_tests": 13,
+  "regression_status": "PASS",
+  "existing_blocks_verified": 2040,
+  "experiments_rerun": false,
+  "committed": false,
+  "pushed": false,
+  "analysis_files_byte_identical": 6
+}

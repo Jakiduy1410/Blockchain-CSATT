@@ -1,0 +1,19 @@
+{
+  "branch": "B24DCCE080-NET01-NET02",
+  "commit": "56d5ccb25c716b2f363f18f68d9b63bbb3904eb7",
+  "repo": "https://github.com/Jakiduy1410/Blockchain-CSATT",
+  "net01_runs": 12,
+  "net01_transactions": 1200,
+  "net02_runs": 60,
+  "net02_mined_unique_within_run": 2040,
+  "net02_synced_runs": 58,
+  "net02_timestamp_samples": 1758,
+  "unconverged": [
+    "N2_1500_loss10_ECDSA_3",
+    "N2_576_loss5_ML-DSA_3"
+  ],
+  "excluded": [
+    "evidence (pilot and synchronous file logging)",
+    "evidence_seg (incomplete packet-buffer captures)"
+  ]
+}
