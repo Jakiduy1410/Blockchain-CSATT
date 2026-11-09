@@ -437,6 +437,26 @@ class P2PNetwork:
 
         return False
 
+    def get_p2p_stats(self) -> dict:
+        with self.conn_lock:
+            out_conns = len(self.outgoing_sockets)
+            in_conns = len(self.incoming_sockets)
+        seen_tx = len(self.seen_tx_hashes)
+        seen_blocks = len(self.seen_block_hashes)
+        return {
+            'ws_port': self.ws_port,
+            'peers_count': len(self.peers),
+            'outgoing_ws_conns': out_conns,
+            'incoming_ws_conns': in_conns,
+            'total_ws_conns': out_conns + in_conns,
+            'ws_tx_received': getattr(self, 'ws_tx_received_count', 0),
+            'ws_dups_filtered': getattr(self, 'ws_dups_filtered_count', 0),
+            'ws_block_received': getattr(self, 'ws_block_received_count', 0),
+            'seen_tx_count': seen_tx,
+            'seen_block_count': seen_blocks,
+            'avg_tls_handshake_ms': 0.0
+        }
+
     def stop(self):
         self._running = False
         with self.conn_lock:

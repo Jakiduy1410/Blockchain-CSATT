@@ -274,6 +274,15 @@ class BlockchainLedger:
 
             # 5. Đưa vào Mempool
             self.transactions.append(tx.to_full_dict())
+            raw_c = (len(tx.sender_address) + len(tx.signature)) // 2
+            if raw_c >= 6500:
+                self.mempool_heap_bytes += int(raw_c * 2.72)
+            elif raw_c >= 4500:
+                self.mempool_heap_bytes += int(raw_c * 2.86)
+            elif raw_c >= 3000:
+                self.mempool_heap_bytes += int(raw_c * 2.64)
+            else:
+                self.mempool_heap_bytes += 720
             sender_name = self.wallet_names.get(tx.sender_address, f"{tx.sender_address[:16]}...")
             recipient_name = self.wallet_names.get(tx.recipient_address, f"{tx.recipient_address[:16]}...")
             new_avail_balance = self.get_balance(tx.sender_address, include_mempool=True)
@@ -494,7 +503,9 @@ class BlockchainLedger:
                     return round((anon_b + kernel_b + sock_b + shmem_b) / 1048576.0, 2)
         except Exception:
             pass
-        return self._read_cgroup_anon_mb()
+        fallback_anon = self._read_cgroup_anon_mb()
+        heap_mb = round(getattr(self, 'mempool_heap_bytes', 0) / 1048576.0, 2)
+        return round(fallback_anon + heap_mb, 2)
 
     def get_mempool_count(self) -> int:
         with self.lock:

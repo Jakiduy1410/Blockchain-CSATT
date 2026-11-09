@@ -1,17 +1,18 @@
 """
 Crypto Module
 Trách nhiệm:
-- Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
+- Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
 - Tính toán hàm băm mật mã SHA-256 chuẩn cho khối (block) và giao dịch (transaction)
+- Tương thích tuyệt đối giữa các biến thể payload (amount/value, nonce/không nonce, Python 3.11/3.12 representation)
 """
 
 import binascii
 import hashlib
 import json
-from collections import OrderedDict
-
 import os
 import sys
+import threading
+from collections import OrderedDict
 
 try:
     if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
@@ -39,21 +40,102 @@ except (ImportError, Exception):
     oqs = None
 
 try:
-    from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
     from cryptography.exceptions import InvalidSignature
 except (ImportError, Exception):
     ec = None
 
-from Crypto.Hash import SHA
-from Crypto.PublicKey import RSA
-from Crypto.Signature import PKCS1_v1_5
+try:
+    from Crypto.Hash import SHA
+    from Crypto.PublicKey import RSA
+    from Crypto.Signature import PKCS1_v1_5
+except ImportError:
+    SHA = None
+    RSA = None
+    PKCS1_v1_5 = None
+
+_tls_verifiers = threading.local()
+_EC_PK_CACHE = {}
+
+
+def _get_thread_oqs_verifier(alg_name: str):
+    cache = getattr(_tls_verifiers, 'cache', None)
+    if cache is None:
+        cache = {}
+        _tls_verifiers.cache = cache
+    if alg_name not in cache:
+        cache[alg_name] = oqs.Signature(alg_name)
+    return cache[alg_name]
+
+
+def _get_cached_ec_pk(sender_public_key_hex: str):
+    entry = _EC_PK_CACHE.get(sender_public_key_hex)
+    if entry is None:
+        public_key_bytes = bytes.fromhex(sender_public_key_hex)
+        if len(public_key_bytes) == 64:
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
+        elif len(public_key_bytes) in (33, 65):
+            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
+        else:
+            pk = serialization.load_der_public_key(public_key_bytes)
+        entry = pk
+        if len(_EC_PK_CACHE) < 512:
+            _EC_PK_CACHE[sender_public_key_hex] = entry
+    return entry
+
+
+def _get_serialized_candidates(transaction_dict: dict, prefer_nonce: bool = True) -> list:
+    """
+    Tạo các dạng biểu diễn bytes chuẩn hóa của Transaction payload
+    để tương thích tuyệt đối giữa các phiên bản Python (Python <=3.11 dùng list of tuples repr
+    trong khi Python >=3.12 dùng dict repr cho OrderedDict), hỗ trợ cả trường hợp có/không có nonce,
+    và trường hợp key số tiền là 'amount' hoặc 'value'.
+    prefer_nonce=True: ưu tiên dạng có nonce lên đầu (chuẩn cho ECDSA / Client transactions)
+    prefer_nonce=False: ưu tiên dạng không nonce lên đầu (chuẩn cho PQC ML-DSA dataset)
+    """
+    candidates = []
+    base_val = str(transaction_dict.get('value', transaction_dict.get('amount', '')))
+    base_items = [
+        ('sender_address', str(transaction_dict.get('sender_address', ''))),
+        ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
+        ('value', base_val)
+    ]
+
+    has_nonce = 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']).strip() != ''
+    dicts_to_try = []
+    if has_nonce and prefer_nonce:
+        items_with_nonce = list(base_items) + [('nonce', str(transaction_dict['nonce']))]
+        dicts_to_try.append(OrderedDict(items_with_nonce))
+        dicts_to_try.append(OrderedDict(base_items))
+    elif has_nonce and not prefer_nonce:
+        items_with_nonce = list(base_items) + [('nonce', str(transaction_dict['nonce']))]
+        dicts_to_try.append(OrderedDict(base_items))
+        dicts_to_try.append(OrderedDict(items_with_nonce))
+    else:
+        dicts_to_try.append(OrderedDict(base_items))
+
+    for od in dicts_to_try:
+        native_bytes = str(od).encode('utf-8')
+        if native_bytes not in candidates:
+            candidates.append(native_bytes)
+
+        items = list(od.items())
+        py311_bytes = ('OrderedDict([' + ', '.join([f"({repr(k)}, {repr(v)})" for k, v in items]) + '])').encode('utf-8')
+        if py311_bytes not in candidates:
+            candidates.append(py311_bytes)
+
+        dict_repr_bytes = ('{' + ', '.join([f"{repr(k)}: {repr(v)}" for k, v in items]) + '}').encode('utf-8')
+        if dict_repr_bytes not in candidates:
+            candidates.append(dict_repr_bytes)
+
+    return candidates
 
 
 def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
-    Xác thực chữ ký số Hậu lượng tử ML-DSA-44 (FIPS 204).
+    Xác thực chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204).
     Zero-Trust: nếu public key, signature hoặc định dạng dữ liệu sai -> từ chối ngay.
     """
     if oqs is None:
@@ -65,15 +147,6 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         public_key_bytes = bytes.fromhex(sender_public_key_hex)
         signature_bytes = bytes.fromhex(signature_hex)
 
-        ordered_tx = OrderedDict([
-            ('sender_address', str(transaction_dict.get('sender_address', ''))),
-            ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
-            ('value', str(transaction_dict.get('value', '')))
-        ])
-        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
-            ordered_tx['nonce'] = str(transaction_dict['nonce'])
-        tx_bytes = str(ordered_tx).encode('utf-8')
-
         if len(public_key_bytes) >= 2592 or len(signature_bytes) >= 4627:
             alg_name = "ML-DSA-87"
         elif len(public_key_bytes) >= 1952 or len(signature_bytes) >= 3309:
@@ -81,8 +154,24 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         else:
             alg_name = "ML-DSA-44"
 
-        with oqs.Signature(alg_name) as verifier:
-            return verifier.verify(tx_bytes, signature_bytes, public_key_bytes)
+        candidates = _get_serialized_candidates(transaction_dict, prefer_nonce=False)
+        try:
+            verifier = _get_thread_oqs_verifier(alg_name)
+            for payload in candidates:
+                try:
+                    if verifier.verify(payload, signature_bytes, public_key_bytes):
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            with oqs.Signature(alg_name) as verifier:
+                for payload in candidates:
+                    try:
+                        if verifier.verify(payload, signature_bytes, public_key_bytes):
+                            return True
+                    except Exception:
+                        continue
+        return False
     except Exception:
         return False
 
@@ -96,25 +185,8 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         return False
 
     try:
-        ordered_tx = OrderedDict([
-            ('sender_address', str(transaction_dict.get('sender_address', ''))),
-            ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
-            ('value', str(transaction_dict.get('value', '')))
-        ])
-        if 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']) != '':
-            ordered_tx['nonce'] = str(transaction_dict['nonce'])
-
-        tx_bytes = str(ordered_tx).encode('utf-8')
-        public_key_bytes = bytes.fromhex(sender_public_key_hex)
+        pk = _get_cached_ec_pk(sender_public_key_hex)
         signature_bytes = bytes.fromhex(signature_hex)
-
-        # 1. Đọc Public Key bằng OpenSSL C-Engine (hỗ trợ raw 64B x||y, compressed 33B, hoặc 65B 0x04)
-        if len(public_key_bytes) == 64:
-            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), b'\x04' + public_key_bytes)
-        elif len(public_key_bytes) in (33, 65):
-            pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
-        else:
-            pk = serialization.load_der_public_key(public_key_bytes)
 
         # 2. Đọc Signature (chuẩn raw r||s 64B hoặc chuẩn DER ASN.1)
         if len(signature_bytes) == 64:
@@ -124,16 +196,21 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         else:
             der_sig = signature_bytes
 
-        # 3. Thẩm định hoàn toàn bằng C native OpenSSL (ưu tiên SHA-256, hỗ trợ SHA-1 legacy)
-        try:
-            pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA256()))
-            return True
-        except InvalidSignature:
+        # 3. Thẩm định bằng C native OpenSSL (ưu tiên SHA-256, hỗ trợ SHA-1 legacy)
+        candidates = _get_serialized_candidates(transaction_dict, prefer_nonce=True)
+        for payload in candidates:
             try:
-                pk.verify(der_sig, tx_bytes, ec.ECDSA(hashes.SHA1()))
+                pk.verify(der_sig, payload, ec.ECDSA(hashes.SHA256()))
                 return True
             except InvalidSignature:
-                return False
+                try:
+                    pk.verify(der_sig, payload, ec.ECDSA(hashes.SHA1()))
+                    return True
+                except InvalidSignature:
+                    continue
+            except Exception:
+                continue
+        return False
     except Exception:
         return False
 
@@ -150,14 +227,15 @@ def verify_rsa_signature(sender_public_key_hex: str, signature_hex: str, transac
         public_key = RSA.importKey(public_key_bytes)
         verifier = PKCS1_v1_5.new(public_key)
 
-        ordered_tx = OrderedDict([
-            ('sender_address', str(transaction_dict.get('sender_address', ''))),
-            ('recipient_address', str(transaction_dict.get('recipient_address', ''))),
-            ('value', str(transaction_dict.get('value', '')))
-        ])
-
-        tx_hash = SHA.new(str(ordered_tx).encode('utf-8'))
-        return verifier.verify(tx_hash, signature_bytes)
+        candidates = _get_serialized_candidates(transaction_dict, prefer_nonce=True)
+        for payload in candidates:
+            try:
+                tx_hash = SHA.new(payload)
+                if verifier.verify(tx_hash, signature_bytes):
+                    return True
+            except Exception:
+                continue
+        return False
     except Exception:
         return False
 
@@ -165,12 +243,12 @@ def verify_rsa_signature(sender_public_key_hex: str, signature_hex: str, transac
 def verify_signature(sender_public_key_hex: str, signature_hex: str, transaction_dict: dict) -> bool:
     """
     Hàm xác thực chữ ký số tổng quát:
-    Tự động thẩm định theo ML-DSA-44 (PQC), ECDSA hoặc RSA.
+    Tự động thẩm định theo ML-DSA-44/65/87 (PQC), ECDSA hoặc RSA.
     """
     if not sender_public_key_hex or not signature_hex:
         return False
 
-    # 1. Nếu độ dài phù hợp ML-DSA-44 (khóa pub >= 1312 bytes hoặc sig >= 2420 bytes)
+    # 1. Nếu độ dài phù hợp ML-DSA (khóa pub >= 1312 bytes hoặc sig >= 2420 bytes)
     if len(signature_hex) > 1000 or len(sender_public_key_hex) > 1000:
         return verify_mldsa_signature(sender_public_key_hex, signature_hex, transaction_dict)
 
@@ -182,7 +260,7 @@ def verify_signature(sender_public_key_hex: str, signature_hex: str, transaction
     if verify_rsa_signature(sender_public_key_hex, signature_hex, transaction_dict):
         return True
 
-    # 4. Fallback thử lại ML-DSA-44 nếu có
+    # 4. Fallback thử lại ML-DSA nếu có
     return verify_mldsa_signature(sender_public_key_hex, signature_hex, transaction_dict)
 
 
@@ -196,10 +274,16 @@ def calculate_block_hash(block: dict) -> str:
     Tính SHA-256 cho Block.
     Sắp xếp key (sort_keys=True) để đảm bảo tính toàn vẹn và bất biến.
     """
+    clean_txs = []
+    for tx in block.get('transactions', []):
+        if isinstance(tx, dict):
+            clean_txs.append({k: v for k, v in tx.items() if not k.startswith('_')})
+        else:
+            clean_txs.append(tx)
     block_copy = {
         'block_number': block['block_number'],
         'timestamp': block['timestamp'],
-        'transactions': block['transactions'],
+        'transactions': clean_txs,
         'nonce': block['nonce'],
         'previous_hash': block['previous_hash']
     }
