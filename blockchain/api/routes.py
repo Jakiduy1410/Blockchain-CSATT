@@ -157,7 +157,8 @@ def create_api_blueprint(ledger: BlockchainLedger, network: P2PNetwork, miner: M
             'stack_threshold': 3,
             'tls_desc': getattr(network, 'tls_desc', 'TLS 1.3 / ECDHE'),
             'tls_mode': getattr(network, 'tls_mode', 'ecdhe'),
-            'sig_mode': getattr(network, 'sig_mode', 'all')
+            'sig_mode': getattr(network, 'sig_mode', 'all'),
+            'net_metrics': network.get_net_metrics() if hasattr(network, 'get_net_metrics') else {}
         }
         return jsonify(response), 200
 

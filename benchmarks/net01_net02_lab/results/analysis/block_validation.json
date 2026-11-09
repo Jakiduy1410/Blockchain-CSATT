@@ -1,0 +1,302 @@
+[
+  {
+    "run": "N2_1500_base_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_base_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_base_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_base_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_base_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_base_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_delay_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss10_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss15_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_1500_loss5_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_base_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_delay_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss10_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss15_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ECDSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ECDSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ECDSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ML-DSA_1",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ML-DSA_2",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  },
+  {
+    "run": "N2_576_loss5_ML-DSA_3",
+    "blocks": 34,
+    "all_pow_signatures_and_4_txs": true
+  }
+]

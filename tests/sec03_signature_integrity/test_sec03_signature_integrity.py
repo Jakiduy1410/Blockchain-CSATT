@@ -126,9 +126,14 @@ class TestSec03SignatureIntegrity(unittest.TestCase):
 
         # 2. Mine the transaction into chain
         from blockchain.core.crypto import calculate_block_hash
+        from blockchain.core.block import Block
         last_block = self.ledger.get_last_block()
         prev_hash = calculate_block_hash(last_block)
-        self.ledger.create_block(nonce=12345, previous_hash=prev_hash)
+        user_txs = [tx for tx in self.ledger.transactions if tx.get('sender_address') != self.ledger.mining_sender]
+        nonce = 0
+        while not Block.valid_proof(user_txs, prev_hash, nonce, self.ledger.difficulty):
+            nonce += 1
+        self.ledger.create_block(nonce=nonce, previous_hash=prev_hash)
         self.assertEqual(len(self.ledger.transactions), 0)
 
         # 3. Post-mining replay: must be rejected with False 100% of the time

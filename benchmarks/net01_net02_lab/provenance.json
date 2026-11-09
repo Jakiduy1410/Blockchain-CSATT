@@ -1,0 +1,19 @@
+{
+  "base_branch": "B24DCCE080-NET01-NET02",
+  "base_commit": "56d5ccb25c716b2f363f18f68d9b63bbb3904eb7",
+  "original_scripts_sha256": {
+    "run_lab.py": "48f494bc9792d27861a3c8e261b04d6e39c78b31de7783e65cf1eb62fd5eba7e",
+    "node_lab.py": "14e7ab61652fe4b554f14f9bfdd1c058cffbe9bea6a6c34237d408df9e306e11",
+    "analyze.py": "cf423fcaacccf0e9633ff93ddfb9e14c6f1d280e40afdbc0d1debfed39a64ef9",
+    "charts.py": "c192002817818a19aca3444fd85f9943d11a1e71e82668c65c227e16f69faa39",
+    "verify_blocks.py": "8f404a8f1269e81e8461c06841e27f6fc12520c45ebd557d11fe4d8ee548c015",
+    "mining_fix.patch": "a2cf324d66525fed5b7d230505204bea1e50b568ff0b37fd2cc8fa991d650cb8"
+  },
+  "measurements": "Recorded 2026-11-07; not rerun for this delivery",
+  "packaging_changes": [
+    "Portable paths and CLI parameters",
+    "Disposable runtime repository and wallets",
+    "Analysis reads evidence and writes to a separate directory",
+    "No mining, consensus or timing calculations changed during packaging"
+  ]
+}
