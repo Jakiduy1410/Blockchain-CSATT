@@ -57,7 +57,15 @@ class P2PNetwork:
         # Bộ lọc chống lặp và DoS
         self.seen_tx_hashes: Set[str] = set()
         self.seen_block_hashes: Set[str] = set()
-        self.executor = ThreadPoolExecutor(max_workers=15)
+        self.seen_lock = threading.Lock()
+
+        # Telemetry đếm tải P2P Gossip thực tế
+        self.ws_tx_received_count = 0
+        self.ws_dups_filtered_count = 0
+        self.ws_block_received_count = 0
+        self.tls_handshake_durations: List[float] = []
+
+        self.executor = ThreadPoolExecutor(max_workers=20)
         self._running = True
 
         # Thiết lập SSL Context theo chế độ TLS được chọn
@@ -150,7 +158,11 @@ class P2PNetwork:
         if not peer_url:
             return
 
-        parsed = urlparse(peer_url)
+        clean_url = str(peer_url).strip()
+        if '://' not in clean_url:
+            clean_url = 'http://' + clean_url
+
+        parsed = urlparse(clean_url)
         peer_netloc = parsed.netloc if parsed.netloc else parsed.path
         peer_netloc = peer_netloc.strip().replace("http://", "").replace("https://", "").replace("ws://", "").replace("wss://", "")
 
@@ -178,14 +190,17 @@ class P2PNetwork:
                 if not has_conn:
                     ws_url = self._peer_to_ws_url(peer)
                     try:
-                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=1.5, max_size=32 * 1024 * 1024)
+                        t_hs_start = time.time()
+                        sock = ws_connect(ws_url, ssl=self.client_ssl_ctx, open_timeout=2.0, max_size=32 * 1024 * 1024)
+                        hs_ms = round((time.time() - t_hs_start) * 1000.0, 2)
                         with self.conn_lock:
                             self.outgoing_sockets[peer] = sock
+                            self.tls_handshake_durations.append(hs_ms)
 
                         self.audit.log(
                             category="P2P",
                             title=f"Thiet lap Persistent WebSocket toi Peer: {peer}",
-                            details={'ws_url': ws_url, 'cipher': self.tls_desc},
+                            details={'ws_url': ws_url, 'cipher': self.tls_desc, 'hs_ms': hs_ms},
                             status="SUCCESS"
                         )
 
@@ -193,7 +208,7 @@ class P2PNetwork:
                         threading.Thread(target=self._listen_outgoing_socket, args=(peer, sock), daemon=True).start()
                     except Exception:
                         pass
-            time.sleep(3.0)
+            time.sleep(1.5)
 
     def _listen_outgoing_socket(self, peer: str, sock):
         try:
@@ -213,12 +228,14 @@ class P2PNetwork:
             data = msg.get("data")
 
             if msg_type == "TRANSACTION" and data:
+                with self.seen_lock:
+                    self.ws_tx_received_count += 1
                 tx = Transaction.from_dict(data)
-                if tx.tx_id in self.seen_tx_hashes:
-                    return
                 self.gossip_transaction(tx)
             elif msg_type == "BLOCK" and data:
-                self.handle_incoming_block(data)
+                with self.seen_lock:
+                    self.ws_block_received_count += 1
+                self.handle_incoming_block(data, send_epoch_ms=msg.get("send_epoch_ms"))
         except Exception as e:
             logger.debug(f"Lỗi xử lý gói tin P2P: {e}")
 
@@ -305,17 +322,12 @@ class P2PNetwork:
                     )
                     return False
 
-        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Từ chối
-        if tx.tx_id in self.seen_tx_hashes:
-            self.audit.log(
-                category="SECURITY",
-                title="Tu choi giao dich: Phat hien DUPLICATE TRANSACTION (TX_ID da duoc tiep nhan)!",
-                details={'tx_id': f"{tx.tx_id[:16]}..."},
-                status="FAILED"
-            )
-            return False
-
-        self.seen_tx_hashes.add(tx.tx_id)
+        # 1. Chống bão lặp DoS trong Mempool: nếu đang chờ xử lý -> Bỏ qua ngay
+        with self.seen_lock:
+            if tx.tx_id in self.seen_tx_hashes:
+                self.ws_dups_filtered_count += 1
+                return True
+            self.seen_tx_hashes.add(tx.tx_id)
 
         # 2. Thẩm định mật mã và số dư ví
         success = self.ledger.submit_transaction(tx)
@@ -341,56 +353,61 @@ class P2PNetwork:
 
     def broadcast_block(self, block: dict):
         block_hash = calculate_block_hash(block)
-        if block_hash in self.seen_block_hashes:
-            return
+        with self.seen_lock:
+            if block_hash in self.seen_block_hashes:
+                return
+            self.seen_block_hashes.add(block_hash)
 
-        self.seen_block_hashes.add(block_hash)
-
-        payload = {
-            'type': 'BLOCK',
-            'data': block,
-            'origin': self.my_address
-        }
-        self.executor.submit(self._send_ws_payload, payload)
-
+        send_epoch_ms = round(time.time() * 1000.0, 3)
         active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
         self.audit.log(
             category="P2P",
             title=f"Block Broadcast ({self.tls_desc}): Phat song Block #{block['block_number']} qua {active_conn_count} ket noi {self.proto}://",
-            details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce'], 'tx_count': len(block.get('transactions', []))},
+            details={
+                'block_hash': f"{block_hash[:20]}...",
+                'nonce': block['nonce'],
+                'tx_count': len(block.get('transactions', [])),
+                'broadcast_epoch_ms': send_epoch_ms
+            },
             status="SUCCESS"
         )
 
-    def handle_incoming_block(self, block: dict) -> bool:
-        block_hash = calculate_block_hash(block)
-        if block_hash in self.seen_block_hashes:
-            return True
+        if self.peers:
+            payload = {
+                'type': 'BLOCK',
+                'data': block,
+                'origin': self.my_address,
+                'send_epoch_ms': send_epoch_ms
+            }
+            # Phat song Block uu tien ngay lap tuc qua luong rieng (khong cho hang doi Gossip)
+            threading.Thread(target=self._send_ws_payload, args=(payload,), daemon=True).start()
 
-        self.seen_block_hashes.add(block_hash)
+    def handle_incoming_block(self, block: dict, send_epoch_ms: Optional[float] = None) -> bool:
+        block_hash = calculate_block_hash(block)
+        with self.seen_lock:
+            if block_hash in self.seen_block_hashes:
+                return True
+            self.seen_block_hashes.add(block_hash)
+
+        recv_epoch_ms = round(time.time() * 1000.0, 3)
+        transit_delay_ms = round(max(0.5, recv_epoch_ms - send_epoch_ms), 2) if send_epoch_ms else None
 
         self.audit.log(
             category="P2P",
             title=f"Nhan goi tin Block #{block['block_number']} tu WebSocket P2P",
-            details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce']},
+            details={
+                'block_hash': f"{block_hash[:20]}...",
+                'nonce': block['nonce'],
+                'transit_delay_ms': transit_delay_ms,
+                'send_epoch_ms': send_epoch_ms,
+                'recv_epoch_ms': recv_epoch_ms
+            },
             status="INFO"
         )
 
         appended = self.ledger.append_block(block)
         if appended:
-            # Relay Block hop le toi toan bo cac Peers khac trong mang Mesh
-            payload = {
-                'type': 'BLOCK',
-                'data': block,
-                'origin': self.my_address
-            }
-            self.executor.submit(self._send_ws_payload, payload)
-            active_conn_count = len(self.outgoing_sockets) + len(self.incoming_sockets)
-            self.audit.log(
-                category="P2P",
-                title=f"Block Relay ({self.tls_desc}): Chuyen tiep Block #{block['block_number']} toi {active_conn_count} ket noi {self.proto}://",
-                details={'block_hash': f"{block_hash[:20]}...", 'nonce': block['nonce'], 'tx_count': len(block.get('transactions', []))},
-                status="SUCCESS"
-            )
+            self.broadcast_block(block)
             return True
         else:
             self.resolve_conflicts()
@@ -441,20 +458,22 @@ class P2PNetwork:
         with self.conn_lock:
             out_conns = len(self.outgoing_sockets)
             in_conns = len(self.incoming_sockets)
-        seen_tx = len(self.seen_tx_hashes)
-        seen_blocks = len(self.seen_block_hashes)
+            avg_hs_ms = round(sum(self.tls_handshake_durations) / len(self.tls_handshake_durations), 2) if self.tls_handshake_durations else 0.0
+        with self.seen_lock:
+            seen_tx = len(self.seen_tx_hashes)
+            seen_blocks = len(self.seen_block_hashes)
         return {
             'ws_port': self.ws_port,
             'peers_count': len(self.peers),
             'outgoing_ws_conns': out_conns,
             'incoming_ws_conns': in_conns,
             'total_ws_conns': out_conns + in_conns,
-            'ws_tx_received': getattr(self, 'ws_tx_received_count', 0),
-            'ws_dups_filtered': getattr(self, 'ws_dups_filtered_count', 0),
-            'ws_block_received': getattr(self, 'ws_block_received_count', 0),
+            'ws_tx_received': self.ws_tx_received_count,
+            'ws_dups_filtered': self.ws_dups_filtered_count,
+            'ws_block_received': self.ws_block_received_count,
             'seen_tx_count': seen_tx,
             'seen_block_count': seen_blocks,
-            'avg_tls_handshake_ms': 0.0
+            'avg_tls_handshake_ms': avg_hs_ms
         }
 
     def stop(self):

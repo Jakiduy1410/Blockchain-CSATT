@@ -66,7 +66,7 @@ ALGORITHMS = [
 ]
 
 
-def check_node_health(url: str, max_retries: int = 30) -> bool:
+def check_node_health(url: str, max_retries: int = 45) -> bool:
     for _ in range(max_retries):
         try:
             r = requests.get(f"{url}/metrics/light", timeout=1.0)
@@ -107,27 +107,34 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
     print(f"  GIOI HAN: CPU={cpus} vCPU, RAM Limit={memory} (Memswap={memory})")
     print(f"{'='*75}")
 
-    subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    cmd = [
-        "docker", "run", "-d",
-        "--name", container_name,
-        "-v", f"{BASE_DIR}:/app",
-        f"--cpus={cpus}",
-        f"-m={memory}",
-        f"--memory-swap={memory}",
-        "-p", f"{port}:5000",
-        "blockchain-node:perf"
-    ]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if res.returncode != 0:
-        print(f"[!] Khong the khoi dong container: {res.stderr}")
-        return {}
-
-    print(f"[*] Dang khoi tao Node va kiem tra trang thai Healthcheck...")
-    if not check_node_health(url):
-        print(f"[!] Node khong san sang tren port {port}!")
+    for attempt in range(2):
         subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.8)
+
+        cmd = [
+            "docker", "run", "-d",
+            "--name", container_name,
+            "-v", f"{BASE_DIR}:/app",
+            f"--cpus={cpus}",
+            f"-m={memory}",
+            f"--memory-swap={memory}",
+            "-p", f"{port}:5000",
+            "blockchain-node:perf"
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode != 0:
+            print(f"[!] Khong the khoi dong container (attempt {attempt+1}): {res.stderr}")
+            time.sleep(1.0)
+            continue
+
+        print(f"[*] Dang khoi tao Node va kiem tra trang thai Healthcheck...")
+        if check_node_health(url, max_retries=45):
+            break
+        print(f"[!] Node khong san sang tren port {port} (attempt {attempt+1}), thu lai...")
+        subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.5)
+    else:
+        print(f"[!] Node hoan toan khong san sang tren port {port} sau 2 lan thu!")
         return {}
 
     time.sleep(0.6)
