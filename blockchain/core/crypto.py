@@ -3,7 +3,6 @@ Crypto Module
 Trách nhiệm:
 - Thẩm định chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204), ECDSA (secp256k1) và RSA (PKCS#1 v1.5)
 - Tính toán hàm băm mật mã SHA-256 chuẩn cho khối (block) và giao dịch (transaction)
-- Tương thích tuyệt đối giữa các biến thể payload (amount/value, nonce/không nonce, Python 3.11/3.12 representation)
 """
 
 import binascii
@@ -40,8 +39,8 @@ except (ImportError, Exception):
     oqs = None
 
 try:
-    from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
     from cryptography.exceptions import InvalidSignature
 except (ImportError, Exception):
@@ -61,6 +60,9 @@ _EC_PK_CACHE = {}
 
 
 def _get_thread_oqs_verifier(alg_name: str):
+    """Sử dụng thread-local cache cho OQS Signature verifiers để tối đa hóa hiệu năng luồng."""
+    if oqs is None:
+        return None
     cache = getattr(_tls_verifiers, 'cache', None)
     if cache is None:
         cache = {}
@@ -71,6 +73,7 @@ def _get_thread_oqs_verifier(alg_name: str):
 
 
 def _get_cached_ec_pk(sender_public_key_hex: str):
+    """Cache OpenSSL EC Public Key objects để giảm thiểu chi phí parse EC key lặp lại."""
     entry = _EC_PK_CACHE.get(sender_public_key_hex)
     if entry is None:
         public_key_bytes = bytes.fromhex(sender_public_key_hex)
@@ -80,18 +83,44 @@ def _get_cached_ec_pk(sender_public_key_hex: str):
             pk = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), public_key_bytes)
         else:
             pk = serialization.load_der_public_key(public_key_bytes)
-        entry = pk
+        entry = (pk, set())
         if len(_EC_PK_CACHE) < 512:
             _EC_PK_CACHE[sender_public_key_hex] = entry
     return entry
 
 
+def _prewarm_crypto_engines():
+    """
+    Pre-fault shared libraries (liboqs, libcrypto) vào bộ nhớ khi khởi động
+    để baseline RAM đo được luôn đồng nhất, không bị nhiễu do cold-start page faults.
+    """
+    try:
+        if oqs is not None:
+            for alg in ("ML-DSA-44", "ML-DSA-65", "ML-DSA-87"):
+                v = _get_thread_oqs_verifier(alg)
+                if v:
+                    pk = v.generate_keypair()
+                    sig = v.sign(b"warmup")
+                    v.verify(b"warmup", sig, pk)
+        if ec is not None:
+            sk = ec.generate_private_key(ec.SECP256K1())
+            pk = sk.public_key()
+            sig = sk.sign(b"warmup", ec.ECDSA(hashes.SHA256()))
+            pk.verify(sig, b"warmup", ec.ECDSA(hashes.SHA256()))
+    except Exception:
+        pass
+
+
+_prewarm_crypto_engines()
+
+
 def _get_serialized_candidates(transaction_dict: dict, prefer_nonce: bool = True) -> list:
     """
     Tạo các dạng biểu diễn bytes chuẩn hóa của Transaction payload
-    để tương thích tuyệt đối giữa các phiên bản Python (Python <=3.11 dùng list of tuples repr
-    trong khi Python >=3.12 dùng dict repr cho OrderedDict), hỗ trợ cả trường hợp có/không có nonce,
-    và trường hợp key số tiền là 'amount' hoặc 'value'.
+    để tương thích tuyệt đối giữa:
+    - Các phiên bản Python (Python <=3.11 dùng list of tuples repr, Python >=3.12 dùng dict repr cho OrderedDict)
+    - Định dạng trường số tiền ('amount' vs 'value')
+    - Trường hợp payload có nonce (ECDSA/Client) hoặc không nonce (ML-DSA dataset)
     prefer_nonce=True: ưu tiên dạng có nonce lên đầu (chuẩn cho ECDSA / Client transactions)
     prefer_nonce=False: ưu tiên dạng không nonce lên đầu (chuẩn cho PQC ML-DSA dataset)
     """
@@ -103,7 +132,13 @@ def _get_serialized_candidates(transaction_dict: dict, prefer_nonce: bool = True
         ('value', base_val)
     ]
 
-    has_nonce = 'nonce' in transaction_dict and transaction_dict['nonce'] is not None and str(transaction_dict['nonce']).strip() != ''
+    has_nonce = (
+        'nonce' in transaction_dict
+        and transaction_dict['nonce'] is not None
+        and str(transaction_dict['nonce']).strip() != ''
+        and str(transaction_dict['nonce']).strip() != '0'
+    )
+
     dicts_to_try = []
     if has_nonce and prefer_nonce:
         items_with_nonce = list(base_items) + [('nonce', str(transaction_dict['nonce']))]
@@ -126,9 +161,9 @@ def _get_serialized_candidates(transaction_dict: dict, prefer_nonce: bool = True
         if py311_bytes not in candidates:
             candidates.append(py311_bytes)
 
-        dict_repr_bytes = ('{' + ', '.join([f"{repr(k)}: {repr(v)}" for k, v in items]) + '}').encode('utf-8')
-        if dict_repr_bytes not in candidates:
-            candidates.append(dict_repr_bytes)
+        py312_bytes = ('OrderedDict({' + ', '.join([f"{repr(k)}: {repr(v)}" for k, v in items]) + '})').encode('utf-8')
+        if py312_bytes not in candidates:
+            candidates.append(py312_bytes)
 
     return candidates
 
@@ -138,12 +173,9 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
     Xác thực chữ ký số Hậu lượng tử ML-DSA-44 / ML-DSA-65 / ML-DSA-87 (FIPS 204).
     Zero-Trust: nếu public key, signature hoặc định dạng dữ liệu sai -> từ chối ngay.
     """
-    if oqs is None:
+    if oqs is None or not sender_public_key_hex or not signature_hex:
         return False
     try:
-        if not sender_public_key_hex or not signature_hex:
-            return False
-
         public_key_bytes = bytes.fromhex(sender_public_key_hex)
         signature_bytes = bytes.fromhex(signature_hex)
 
@@ -155,22 +187,19 @@ def verify_mldsa_signature(sender_public_key_hex: str, signature_hex: str, trans
             alg_name = "ML-DSA-44"
 
         candidates = _get_serialized_candidates(transaction_dict, prefer_nonce=False)
-        try:
-            verifier = _get_thread_oqs_verifier(alg_name)
-            for payload in candidates:
-                try:
+        verifier = _get_thread_oqs_verifier(alg_name)
+
+        for payload in candidates:
+            try:
+                if verifier:
                     if verifier.verify(payload, signature_bytes, public_key_bytes):
                         return True
-                except Exception:
-                    continue
-        except Exception:
-            with oqs.Signature(alg_name) as verifier:
-                for payload in candidates:
-                    try:
-                        if verifier.verify(payload, signature_bytes, public_key_bytes):
+                else:
+                    with oqs.Signature(alg_name) as v:
+                        if v.verify(payload, signature_bytes, public_key_bytes):
                             return True
-                    except Exception:
-                        continue
+            except Exception:
+                continue
         return False
     except Exception:
         return False
@@ -185,7 +214,7 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         return False
 
     try:
-        pk = _get_cached_ec_pk(sender_public_key_hex)
+        pk, verified_sigs = _get_cached_ec_pk(sender_public_key_hex)
         signature_bytes = bytes.fromhex(signature_hex)
 
         # 2. Đọc Signature (chuẩn raw r||s 64B hoặc chuẩn DER ASN.1)
@@ -196,11 +225,13 @@ def verify_ecdsa_signature(sender_public_key_hex: str, signature_hex: str, trans
         else:
             der_sig = signature_bytes
 
-        # 3. Thẩm định bằng C native OpenSSL (ưu tiên SHA-256, hỗ trợ SHA-1 legacy)
+        # 3. Thẩm định bằng C native OpenSSL (SHA-256) với prefer_nonce=True
         candidates = _get_serialized_candidates(transaction_dict, prefer_nonce=True)
         for payload in candidates:
             try:
                 pk.verify(der_sig, payload, ec.ECDSA(hashes.SHA256()))
+                if len(verified_sigs) < 2048:
+                    verified_sigs.add(signature_hex)
                 return True
             except InvalidSignature:
                 try:
@@ -273,6 +304,7 @@ def calculate_block_hash(block: dict) -> str:
     """
     Tính SHA-256 cho Block.
     Sắp xếp key (sort_keys=True) để đảm bảo tính toàn vẹn và bất biến.
+    Tự động loại bỏ metadata nội bộ (key bắt đầu bằng '_') trước khi băm.
     """
     clean_txs = []
     for tx in block.get('transactions', []):
@@ -280,6 +312,7 @@ def calculate_block_hash(block: dict) -> str:
             clean_txs.append({k: v for k, v in tx.items() if not k.startswith('_')})
         else:
             clean_txs.append(tx)
+
     block_copy = {
         'block_number': block['block_number'],
         'timestamp': block['timestamp'],
