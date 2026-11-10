@@ -6,7 +6,6 @@ import datetime
 import os
 import ssl
 import tempfile
-import ctypes
 from typing import Tuple
 
 from cryptography import x509
@@ -17,8 +16,7 @@ from cryptography.x509.oid import NameOID
 # Thiết lập tự động cấu hình OpenSSL PQC từ thư mục configs
 _base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 _cnf_path = os.path.join(_base_dir, 'configs', 'pqc_openssl.cnf')
-if os.path.exists(_cnf_path):
-    os.environ["OPENSSL_CONF"] = _cnf_path
+# OPENSSL_CONF must be set before Python starts.
 
 
 class TLSManager:
@@ -29,25 +27,18 @@ class TLSManager:
     _ca_key_path = None
 
     @classmethod
-    def set_tls_groups(cls, ctx: ssl.SSLContext, group_name: str = "X25519MLKEM768"):
-        """Cấu hình nhóm TLS 1.3 Post-Quantum (FIPS 203 ML-KEM) trực tiếp vào SSL_CTX của OpenSSL 3"""
-        try:
-            ssl_lib = None
-            for dll_candidate in ['libssl-3-x64.dll', 'libssl-3.dll', 'libssl.so']:
-                try:
-                    ssl_lib = ctypes.CDLL(dll_candidate)
-                    break
-                except Exception:
-                    pass
-            if ssl_lib and hasattr(ssl_lib, 'SSL_CTX_ctrl'):
-                SSL_CTX_ctrl = ssl_lib.SSL_CTX_ctrl
-                SSL_CTX_ctrl.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_long, ctypes.c_char_p]
-                SSL_CTX_ctrl.restype = ctypes.c_long
-                ctx_ptr = ctypes.c_void_p.from_address(id(ctx) + 16).value
-                # SSL_CTRL_SET_GROUPS_LIST = 92
-                SSL_CTX_ctrl(ctx_ptr, 92, 0, group_name.encode('ascii'))
-        except Exception:
-            pass
+    def set_tls_groups(cls, ctx, group_name="X25519MLKEM768"):
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+        ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+
+        if group_name == "X25519MLKEM768":
+            # Groups is configured by OpenSSL at process startup.
+            if os.environ.get("OPENSSL_CONF") != _cnf_path:
+                raise RuntimeError("Set OPENSSL_CONF before starting Python")
+        elif group_name == "P-256:X25519":
+            ctx.set_ecdh_curve("prime256v1")
+        else:
+            raise ValueError(f"Unsupported group policy: {group_name}")
 
     @classmethod
     def get_or_create_ca(cls) -> Tuple[str, str]:
@@ -217,6 +208,12 @@ class TLSManager:
                                 },
                                 status="CRITICAL"
                             )
+                            print("\n[TLS][REJECT] Handshake rejected; suspected tampering / policy violation", flush=True)
+                            print(f"Peer: {peer_str} | TLS mode: {mode}", flush=True)
+                            terminal_policy = "PQC_REQUIRED" if mode in ("hybrid", "mlkem768", "mlkem", "pqc") else "TLS_REQUIRED"
+                            print(f"Policy: {terminal_policy} | Action: DROP_CONNECTION | Audit status: CRITICAL", flush=True)
+                            print(f"Reason: {reason}", flush=True)
+                            print(f"TLS error: {err_str}", flush=True)
                             raise
 
                     child_sock.do_handshake = audit_do_handshake
