@@ -1,0 +1,185 @@
+{
+  "algorithm": "Post-Quantum ML-DSA-44 (FIPS 204 NIST Level 2)",
+  "scheme": "mldsa44",
+  "timestamp": "2026-11-10T16:03:43.285119+00:00",
+  "workers": 6,
+  "total_cases": 900,
+  "benign_cases": 450,
+  "attack_cases": 450,
+  "breach_count": 0,
+  "latency_stats": {
+    "all_attack": {
+      "count": 450,
+      "min": 0.0,
+      "mean": 10.58,
+      "median": 15.0,
+      "p95": 16.0,
+      "p99": 31.0,
+      "max": 63.0
+    },
+    "all_benign": {
+      "count": 450,
+      "min": 0.0,
+      "mean": 12.29,
+      "median": 16.0,
+      "p95": 16.0,
+      "p99": 31.0,
+      "max": 32.0
+    },
+    "bitflip": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 12.44,
+      "median": 15.0,
+      "p95": 16.0,
+      "p99": 31.0,
+      "max": 32.0
+    },
+    "mutation": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 12.84,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 32.0,
+      "max": 63.0
+    },
+    "replay": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 6.45,
+      "median": 0.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    }
+  },
+  "bit_flip_detail": {
+    "1": {
+      "count": 37,
+      "min": 0.0,
+      "mean": 9.68,
+      "median": 15.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    },
+    "2": {
+      "count": 38,
+      "min": 0.0,
+      "mean": 15.13,
+      "median": 15.5,
+      "p95": 31.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "3": {
+      "count": 37,
+      "min": 0.0,
+      "mean": 13.08,
+      "median": 16.0,
+      "p95": 16.0,
+      "p99": 31.0,
+      "max": 31.0
+    },
+    "4": {
+      "count": 38,
+      "min": 0.0,
+      "mean": 11.82,
+      "median": 15.0,
+      "p95": 31.0,
+      "p99": 31.0,
+      "max": 31.0
+    }
+  },
+  "mutation_detail": {
+    "amount": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 13.8,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 63.0,
+      "max": 63.0
+    },
+    "recipient_address": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 13.46,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 31.0,
+      "max": 31.0
+    },
+    "sender_address": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 11.26,
+      "median": 15.0,
+      "p95": 16.0,
+      "p99": 31.0,
+      "max": 31.0
+    }
+  },
+  "mining_reconciliation": {
+    "mining_triggered": true,
+    "miner_port": 5001,
+    "total_chain_length": 14,
+    "blocks": [
+      {
+        "block_number": 9,
+        "timestamp": 1794326612.8859665,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 54,
+        "hash": "0b94ffa92c0f9b74d13cd92ae83ce0f03076701f32dfe599797a6044d7fcfde6"
+      },
+      {
+        "block_number": 10,
+        "timestamp": 1794326614.905903,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 102,
+        "hash": "7a363743b32331425be625c216919d80e083ca3b76041062681e17db4b6ba028"
+      },
+      {
+        "block_number": 11,
+        "timestamp": 1794326617.0377953,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 990,
+        "hash": "cc8406b96dc3b53a37c03e905b359d91db8d21187d73e73326802cefbb716ee8"
+      },
+      {
+        "block_number": 12,
+        "timestamp": 1794326619.081259,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 389,
+        "hash": "2b6e17f5a7b382cf4cec8967d7fd23facef79ecc8b704453aa2460f0bb63658c"
+      },
+      {
+        "block_number": 13,
+        "timestamp": 1794326621.09697,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 133,
+        "hash": "4ecc5a705290ad591ef202efab77ab3ff56787ca0706f04be6ea0d0d4639bba9"
+      },
+      {
+        "block_number": 14,
+        "timestamp": 1794326622.9969504,
+        "total_tx_count": 406,
+        "user_tx_count": 405,
+        "nonce": 3,
+        "hash": "4105b932a4037cbc058ef68a9d9a810956772175ab7c03a08cbcf79a2efcafe9"
+      }
+    ],
+    "total_user_txs_mined": 450,
+    "expected_benign_count": 450,
+    "mempool_remaining": 0,
+    "tampered_tx_in_block": 0,
+    "status": "SUCCESS"
+  },
+  "log_path": "C:\\Users\\ADMIN\\Documents\\Blockchain-CSATT\\benchmarks\\results\\sec03_tamper\\sec03_mldsa44_20261110T160314Z.jsonl"
+}

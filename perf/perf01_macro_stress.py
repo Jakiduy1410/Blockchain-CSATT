@@ -86,6 +86,14 @@ DUT_SPEC = {
     }
 }
 
+PIN_PCORES = False
+
+DUT_PCORE_MAP = {
+    "server": "0-7",    # 4 P-Cores voi Hyper-Threading (8 vCPUs)
+    "edge": "0-1",      # 1 P-Core voi Hyper-Threading (2 vCPUs)
+    "iot": "0",         # 1 P-Core thread
+}
+
 
 def clean_environment():
     containers = [DUT_SPEC["container"]] + [n["container"] for n in BG_NODES]
@@ -112,8 +120,11 @@ def start_mesh_nodes(dut_profile: str) -> bool:
         f"-m={dut_info['memory']}",
         f"--memory-swap={dut_info['memory']}",
         "-p", f"{DUT_SPEC['host_port']}:5000",
-        "blockchain-node:perf"
     ]
+    if PIN_PCORES:
+        dut_cpuset = DUT_PCORE_MAP.get(dut_profile, "0-7")
+        dut_cmd.append(f"--cpuset-cpus={dut_cpuset}")
+    dut_cmd.append("blockchain-node:perf")
     res_dut = subprocess.run(dut_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res_dut.returncode != 0:
         print(f"[!] Khong the khoi dong container DUT ({dut_profile}): {res_dut.stderr}")
@@ -127,8 +138,11 @@ def start_mesh_nodes(dut_profile: str) -> bool:
             "--network", NETWORK_NAME,
             "-v", f"{BASE_DIR}:/app",
             "-p", f"{bg['host_port']}:5000",
-            "blockchain-node:perf"
         ]
+        if PIN_PCORES:
+            # Ghim 5 Background Nodes sang Cores 8-15 (P-Cores phu + E-Cores), cach ly tuyet doi khoi DUT
+            cmd.append("--cpuset-cpus=8-15")
+        cmd.append("blockchain-node:perf")
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if res.returncode != 0:
             print(f"[!] Khong the khoi dong Background Node {bg['container']}: {res.stderr}")
@@ -811,7 +825,25 @@ def main():
     parser.add_argument("--plot-only", "-p", action="store_true", help="Chi ve lai bieu do tu perf01_macro_results.json")
     parser.add_argument("--batch-size", "-b", type=int, default=100, help="So luong giao dich trong 1 batch (mac dinh: 100)")
     parser.add_argument("--algo", "-a", type=str, default="all", help="Chi chay 1 thuat toan cu the (ecdsa, mldsa44, mldsa65, mldsa87)")
+    parser.add_argument("--pin-pcores", "-c", action="store_true", help="Ghim DUT vao P-Cores va 5 BG Nodes vao Cores 8-15 (Toi uu hoa kien truc Intel Hybrid)")
     args = parser.parse_args()
+
+    global PIN_PCORES
+    if args.pin_pcores:
+        PIN_PCORES = True
+        print("\n" + "=" * 80)
+        print("  [⚡ HARDWARE AFFINITY] Kich hoat Pinning P-Cores")
+        print("  - DUT Node: Duoc ghim doc lap vao P-Cores (0-7)")
+        print("  - 5 Background Nodes: Duoc cach ly sang Cores 8-15 (P-Cores phu + E-Cores)")
+        print("=" * 80)
+        try:
+            import psutil
+            p = psutil.Process()
+            p.cpu_affinity(list(range(12))) # P-cores
+            p.nice(psutil.HIGH_PRIORITY_CLASS)
+            print("[+] Da ghim tien trinh Python Host vao P-Cores (0-11) va dat High Priority\n")
+        except Exception as e:
+            print(f"[!] Warning: Khong the set CPU affinity cho Python: {e}\n")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.plot_only:
@@ -883,7 +915,11 @@ def main():
     macro_results = []
 
     print("[*] Khoi chay container warm-up de lam nong bo dem Linux Page Cache...")
-    subprocess.run(["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "-v", f"{BASE_DIR}:/app", "blockchain-node:perf"], stdout=subprocess.DEVNULL)
+    warmup_cmd = ["docker", "run", "--rm", "-d", "--name", "btc-macro-warmup", "-v", f"{BASE_DIR}:/app"]
+    if PIN_PCORES:
+        warmup_cmd.append("--cpuset-cpus=0-7")
+    warmup_cmd.append("blockchain-node:perf")
+    subprocess.run(warmup_cmd, stdout=subprocess.DEVNULL)
     time.sleep(2.0)
     subprocess.run(["docker", "rm", "-f", "btc-macro-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

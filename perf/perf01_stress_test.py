@@ -65,6 +65,14 @@ ALGORITHMS = [
     {"id": "mldsa87", "name": "ML-DSA-87 (NIST PQC Level 5)", "file": "txs_500_mldsa87.json"}
 ]
 
+PIN_PCORES = False
+
+PCORE_CPUMAP = {
+    "server": "0-7",    # 4 P-Cores voi Hyper-Threading (8 vCPUs)
+    "edge": "0-1",      # 1 P-Core voi Hyper-Threading (2 vCPUs)
+    "iot": "0",         # 1 P-Core thread
+}
+
 
 def check_node_health(url: str, max_retries: int = 30) -> bool:
     for _ in range(max_retries):
@@ -104,7 +112,8 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
     print(f"\n{'='*75}")
     print(f"  PROFILE: {profile_info['name']}")
     print(f"  THUAT TOAN: {algo_name}")
-    print(f"  GIOI HAN: CPU={cpus} vCPU, RAM Limit={memory} (Memswap={memory})")
+    affinity_msg = f" | P-Core Pin: {PCORE_CPUMAP.get(profile_key, '0-11')}" if PIN_PCORES else ""
+    print(f"  GIOI HAN: CPU={cpus} vCPU, RAM Limit={memory} (Memswap={memory}){affinity_msg}")
     print(f"{'='*75}")
 
     subprocess.run(["docker", "rm", "-f", container_name, profile_info['container']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -117,8 +126,11 @@ def run_benchmark_trial(profile_key: str, profile_info: dict, algo_info: dict, t
         f"-m={memory}",
         f"--memory-swap={memory}",
         "-p", f"{port}:5000",
-        "blockchain-node:perf"
     ]
+    if PIN_PCORES:
+        cpuset = PCORE_CPUMAP.get(profile_key, "0-11")
+        cmd.append(f"--cpuset-cpus={cpuset}")
+    cmd.append("blockchain-node:perf")
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
         print(f"[!] Khong the khoi dong container: {res.stderr}")
@@ -270,12 +282,16 @@ def _run_single_oom_trial(algo_label: str, tx_filename: str, port: int, containe
         txs = json.load(f)[:max_txs]
 
     subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run([
+    cmd = [
         "docker", "run", "-d", "--name", container_name,
         "-v", f"{BASE_DIR}:/app",
         "--cpus=0.5", "-m=60m", "--memory-swap=60m",
-        "-p", f"{port}:5000", "blockchain-node:perf"
-    ], check=True, stdout=subprocess.DEVNULL)
+        "-p", f"{port}:5000",
+    ]
+    if PIN_PCORES:
+        cmd.append("--cpuset-cpus=0")
+    cmd.append("blockchain-node:perf")
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
 
     url = f"http://127.0.0.1:{port}"
     if not check_node_health(url, max_retries=30):
@@ -755,7 +771,24 @@ def save_extreme_csv(stress_data: dict, out_path: Path):
 def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    if len(sys.argv) > 1 and sys.argv[1] in ['--baseline-only', '-b', '--matrix']:
+    global PIN_PCORES
+    PIN_PCORES = any(arg in sys.argv for arg in ['--pin-pcores', '--pcore', '-c'])
+    if PIN_PCORES:
+        print("\n" + "=" * 80)
+        print("  [⚡ HARDWARE AFFINITY] Kich hoat Pinning P-Cores (CPU 0-11)")
+        print("  Loai bo hoan toan E-Cores (12-15) de ket qua tinh sach & triet tieu jitter.")
+        print("=" * 80)
+        try:
+            import psutil
+            p = psutil.Process()
+            # Ghim Python Host vao P-Cores (0-11)
+            p.cpu_affinity(list(range(12)))
+            p.nice(psutil.HIGH_PRIORITY_CLASS)
+            print("[+] Da ghim tien trinh Python Host vao P-Cores (0-11) va dat High Priority\n")
+        except Exception as e:
+            print(f"[!] Warning: Khong the dat affinity cho Python Host: {e}\n")
+
+    if any(arg in sys.argv for arg in ['--baseline-only', '-b', '--matrix']):
         print("[*] Che do --baseline-only: Dang chay do luong Thi nghiem 1 (Ma tran 3x4) tren Docker...")
         datasets = {}
         for algo in ALGORITHMS:
@@ -776,7 +809,7 @@ def main():
         plot_oom_risk_chart(all_results, RESULTS_DIR / "perf01_oom_risk_chart.png")
         return
 
-    if len(sys.argv) > 1 and sys.argv[1] in ['--extreme-only', '-e', '--oom']:
+    if any(arg in sys.argv for arg in ['--extreme-only', '-e', '--oom']):
         print("[*] Che do --extreme-only: Dang chay do luong thuc nghiem Thi nghiem 2 (OOM Hunt) tren Docker...")
         _, stress_data = run_extreme_oom_hunt()
         extreme_csv = RESULTS_DIR / "perf01_extreme_oom_matrix.csv"
@@ -786,7 +819,7 @@ def main():
         print(f"[+] Hoan tat do luong thuc nghiem that 100%! Du lieu: {extreme_csv}, Bieu do: {extreme_chart}")
         return
 
-    if len(sys.argv) > 1 and sys.argv[1] in ['--plot-only', '--charts', '-p']:
+    if any(arg in sys.argv for arg in ['--plot-only', '--charts', '-p']):
         print("[*] Che do --plot-only: Dang xuat lai cac bieu do va bang ma tran CSV tu du lieu da ghi nhan...")
         results_file = RESULTS_DIR / "perf01_results.json"
         if results_file.exists():
@@ -816,7 +849,11 @@ def main():
     # 1.1. Warm-up Docker container de lam am Page Cache he thong
     print("[*] Khoi dong container warm-up de lam am page cache he thong...")
     subprocess.run(["docker", "rm", "-f", "btc-node-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["docker", "run", "-d", "--name", "btc-node-warmup", "-v", f"{BASE_DIR}:/app", "blockchain-node:perf"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    warmup_cmd = ["docker", "run", "-d", "--name", "btc-node-warmup", "-v", f"{BASE_DIR}:/app"]
+    if PIN_PCORES:
+        warmup_cmd.append("--cpuset-cpus=0-11")
+    warmup_cmd.append("blockchain-node:perf")
+    subprocess.run(warmup_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     subprocess.run(["docker", "rm", "-f", "btc-node-warmup"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

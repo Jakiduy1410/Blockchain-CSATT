@@ -58,7 +58,11 @@ docker run --rm -v "${PWD}:/app" blockchain-node:perf python perf/generate_perf0
 
 ### Bước 3: Chạy Kịch Bản Stress Test Vi Mô & Săn OOM-Killer
 ```powershell
+# Chạy tiêu chuẩn (tự động phân bổ CPU):
 python perf/perf01_stress_test.py
+
+# KHUYẾN NGHỊ CAO: Ghim P-Cores (CPU 0-11) để triệt tiêu nhiễu E-Cores trên Intel Gen 12/13/14:
+python perf/perf01_stress_test.py --pin-pcores
 ```
 *Script sẽ tự động khởi động các container theo từng profile phần cứng (Server / Edge / IoT), bắn tải 500 giao dịch (ECDSA / ML-DSA-44 / ML-DSA-65 / ML-DSA-87), giám sát RAM / CPU qua cgroups v2 và kích hoạt Extreme OOM Hunt (60MB RAM).*
 
@@ -69,7 +73,11 @@ python perf/perf01_stress_test.py --plot-only
 
 ### Bước 4: Chạy Kịch Bản Macro-Benchmark P2P 6 Nodes (1 DUT + 5 Background Nodes)
 ```powershell
+# Chạy tiêu chuẩn:
 python perf/perf01_macro_stress.py
+
+# KHUYẾN NGHỊ CAO: Ghim DUT vào P-Cores (0-7) và cô lập 5 BG Nodes sang Cores 8-15:
+python perf/perf01_macro_stress.py --pin-pcores
 ```
 *Script sẽ khởi chạy cụm 6 node mạng Mesh qua WebSocket TLS 1.3 (1 DUT phân cấp Server/Edge/IoT + 5 Background Nodes), đo độ trễ lan truyền khối, lọc trùng bão gossip, wire payload và bão hòa CPU.*
 

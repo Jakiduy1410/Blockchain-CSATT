@@ -1,0 +1,151 @@
+{
+  "timestamp": "2026-11-10T16:04:28.663562+00:00",
+  "algorithms": [
+    "ECDSA",
+    "ML-DSA-44",
+    "ML-DSA-65",
+    "ML-DSA-87"
+  ],
+  "benchmark": {
+    "ECDSA": {
+      "Bit-flipping": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 11.88,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "1": 12.22,
+          "2": 9.92,
+          "3": 12.27,
+          "4": 13.13
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 19.74,
+        "p95_ms": 31.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "amount": 10.86,
+          "recipient_address": 28.1,
+          "sender_address": 20.26
+        }
+      },
+      "Replay": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 6.91,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {}
+      }
+    },
+    "ML-DSA-44": {
+      "Bit-flipping": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 12.44,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "1": 9.68,
+          "2": 15.13,
+          "3": 13.08,
+          "4": 11.82
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 12.84,
+        "p95_ms": 31.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "amount": 13.8,
+          "recipient_address": 13.46,
+          "sender_address": 11.26
+        }
+      },
+      "Replay": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 6.45,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {}
+      }
+    },
+    "ML-DSA-65": {
+      "Bit-flipping": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 15.94,
+        "p95_ms": 32.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "1": 17.0,
+          "2": 15.95,
+          "3": 14.78,
+          "4": 16.03
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 15.5,
+        "p95_ms": 31.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "amount": 14.32,
+          "recipient_address": 16.94,
+          "sender_address": 15.24
+        }
+      },
+      "Replay": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 7.57,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {}
+      }
+    },
+    "ML-DSA-87": {
+      "Bit-flipping": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 12.74,
+        "p95_ms": 31.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "1": 10.16,
+          "2": 15.21,
+          "3": 13.95,
+          "4": 11.61
+        }
+      },
+      "Payload mutation": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 11.61,
+        "p95_ms": 31.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {
+          "amount": 11.64,
+          "recipient_address": 11.32,
+          "sender_address": 11.86
+        }
+      },
+      "Replay": {
+        "attack_sent": 150,
+        "blocked": 150,
+        "mean_ms": 8.3,
+        "p95_ms": 16.0,
+        "total_ms": 0.0,
+        "group_mean_ms": {}
+      }
+    }
+  }
+}

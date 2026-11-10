@@ -1,0 +1,201 @@
+{
+  "algorithm": "Post-Quantum ML-DSA-65 (FIPS 204 NIST Level 3)",
+  "scheme": "mldsa65",
+  "timestamp": "2026-11-10T16:04:04.395328+00:00",
+  "workers": 6,
+  "total_cases": 900,
+  "benign_cases": 450,
+  "attack_cases": 450,
+  "breach_count": 0,
+  "latency_stats": {
+    "all_attack": {
+      "count": 450,
+      "min": 0.0,
+      "mean": 13.0,
+      "median": 15.0,
+      "p95": 31.0,
+      "p99": 47.0,
+      "max": 94.0
+    },
+    "all_benign": {
+      "count": 450,
+      "min": 0.0,
+      "mean": 15.58,
+      "median": 16.0,
+      "p95": 32.0,
+      "p99": 78.0,
+      "max": 156.0
+    },
+    "bitflip": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 15.94,
+      "median": 16.0,
+      "p95": 32.0,
+      "p99": 93.0,
+      "max": 94.0
+    },
+    "mutation": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 15.5,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 47.0,
+      "max": 78.0
+    },
+    "replay": {
+      "count": 150,
+      "min": 0.0,
+      "mean": 7.57,
+      "median": 0.0,
+      "p95": 16.0,
+      "p99": 16.0,
+      "max": 16.0
+    }
+  },
+  "bit_flip_detail": {
+    "1": {
+      "count": 37,
+      "min": 0.0,
+      "mean": 17.0,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "2": {
+      "count": 38,
+      "min": 0.0,
+      "mean": 15.95,
+      "median": 15.0,
+      "p95": 46.0,
+      "p99": 94.0,
+      "max": 94.0
+    },
+    "3": {
+      "count": 37,
+      "min": 0.0,
+      "mean": 14.78,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "4": {
+      "count": 38,
+      "min": 0.0,
+      "mean": 16.03,
+      "median": 15.5,
+      "p95": 93.0,
+      "p99": 93.0,
+      "max": 93.0
+    }
+  },
+  "mutation_detail": {
+    "amount": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 14.32,
+      "median": 15.5,
+      "p95": 31.0,
+      "p99": 32.0,
+      "max": 32.0
+    },
+    "recipient_address": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 16.94,
+      "median": 16.0,
+      "p95": 32.0,
+      "p99": 78.0,
+      "max": 78.0
+    },
+    "sender_address": {
+      "count": 50,
+      "min": 0.0,
+      "mean": 15.24,
+      "median": 16.0,
+      "p95": 31.0,
+      "p99": 31.0,
+      "max": 31.0
+    }
+  },
+  "mining_reconciliation": {
+    "mining_triggered": true,
+    "miner_port": 5001,
+    "total_chain_length": 22,
+    "blocks": [
+      {
+        "block_number": 15,
+        "timestamp": 1794326629.8553782,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 285,
+        "hash": "081b409a53e0b8fff9c66ad54bb9c5369d958228969936ec9aeb4419eb9cecc2"
+      },
+      {
+        "block_number": 16,
+        "timestamp": 1794326631.9617298,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 484,
+        "hash": "6510640ef96c41d4ac0125be38bb574a3397d6d760a942f2c7e063bd34aa6047"
+      },
+      {
+        "block_number": 17,
+        "timestamp": 1794326634.033402,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 393,
+        "hash": "754a8ee78a204e93eb00ce46640fb0d997b27fd97183988a3a3981a2c3dbfeb2"
+      },
+      {
+        "block_number": 18,
+        "timestamp": 1794326636.1265318,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 503,
+        "hash": "1cc047d074f1fcf5cd479263e1940c01d09c281d5cd462586d7034a0b47e6685"
+      },
+      {
+        "block_number": 19,
+        "timestamp": 1794326638.1612308,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 212,
+        "hash": "0045873458b4957ea6e0a332f295a61d1a1d2e915a37db7a1c588b88b775db1d"
+      },
+      {
+        "block_number": 20,
+        "timestamp": 1794326640.1673856,
+        "total_tx_count": 10,
+        "user_tx_count": 9,
+        "nonce": 24,
+        "hash": "1b7ec65fe0f825d2f96a689ebdac906caec95e7491c83e5b80634f9cd02ce30a"
+      },
+      {
+        "block_number": 21,
+        "timestamp": 1794326644.082511,
+        "total_tx_count": 397,
+        "user_tx_count": 396,
+        "nonce": 254,
+        "hash": "d4703a80c623fe82826899be92f4c93c8a59617b8cf3199f4fbb4b372125104a"
+      },
+      {
+        "block_number": 22,
+        "timestamp": 1794326644.206752,
+        "total_tx_count": 1,
+        "user_tx_count": 0,
+        "nonce": 76,
+        "hash": "f0f039da760d2108a91544ce6c4b46ad53593f6cd4fa206c8c5ab8cdca9b0ebb"
+      }
+    ],
+    "total_user_txs_mined": 450,
+    "expected_benign_count": 450,
+    "mempool_remaining": 0,
+    "tampered_tx_in_block": 0,
+    "status": "SUCCESS"
+  },
+  "log_path": "C:\\Users\\ADMIN\\Documents\\Blockchain-CSATT\\benchmarks\\results\\sec03_tamper\\sec03_mldsa65_20261110T160314Z.jsonl"
+}
