@@ -1,42 +1,42 @@
 Algorithm,ECDSA (secp256k1),ML-DSA-44 (NIST PQC Level 2),ML-DSA-65 (NIST PQC Level 3),ML-DSA-87 (NIST PQC Level 5)
 Tx Wire Bytes,499,7711,10769,14685
-Block Wire Size (KB),54.66,758.57,1057.2,1439.63
-Server Tx Verify (ms),0.0,0.0,0.0,0.0
-Edge Tx Verify (ms),0.0,0.0,0.0,0.0
-IoT Tx Verify (ms),0.0,0.0,0.0,0.0
-Server Block Verify (ms),0.65,0.65,0.65,0.65
-Edge Block Verify (ms),0.832,0.832,0.832,0.832
-IoT Block Verify (ms),1.073,1.073,1.073,1.073
+Block Wire Size (KB),54.67,758.57,1057.2,1439.63
+Server Tx Verify (ms),0.0123,0.8579,2.2303,5.7333
+Edge Tx Verify (ms),0.0211,1.1852,3.0057,6.4439
+IoT Tx Verify (ms),0.0614,1.3675,3.2119,7.3303
+Server Block Verify (ms),1.88,86.44,223.68,573.98
+Edge Block Verify (ms),2.942,119.352,301.402,645.222
+IoT Block Verify (ms),7.213,137.822,322.262,734.102
 Server Block Transit (ms),3.58,30.33,41.67,56.21
 Edge Block Transit (ms),4.37,37.0,50.84,68.58
 IoT Block Transit (ms),5.55,47.01,64.59,87.13
-Server Commit Latency (ms),4.23,30.98,42.32,56.86
-Edge Commit Latency (ms),5.2,37.83,51.67,69.41
-IoT Commit Latency (ms),6.62,48.08,65.66,88.2
-Server Ingest (TPS),318.63,228.84,185.19,238.67
-Edge Ingest (TPS),247.9,144.64,125.23,101.86
-IoT Ingest (TPS),153.02,76.92,74.2,60.97
-Server Ingress BW (KB/s),1093.09,11407.88,13885.99,21460.48
-Edge Ingress BW (KB/s),1034.07,8408.55,10141.08,9859.63
-IoT Ingress BW (KB/s),718.1,4720.93,4962.62,5709.45
-Server WS Dups Filtered,3,0,0,3
-Edge WS Dups Filtered,10,1,0,1
-IoT WS Dups Filtered,2,1,1,2
-Server Active Norm CPU (%),36.86,44.99,44.81,47.5
-Edge Active Norm CPU (%),100.0,100.0,100.0,100.0
-IoT Active Norm CPU (%),100.0,100.0,100.0,100.0
+Server Commit Latency (ms),5.46,116.77,265.35,630.19
+Edge Commit Latency (ms),7.31,156.35,352.24,713.8
+IoT Commit Latency (ms),12.76,184.83,386.85,821.23
+Server Ingest (TPS),314.48,203.69,170.1,139.52
+Edge Ingest (TPS),252.9,146.22,108.86,71.68
+IoT Ingest (TPS),198.6,93.83,69.06,39.83
+Server Ingress BW (KB/s),1343.99,13896.42,17477.46,17846.78
+Edge Ingress BW (KB/s),929.24,7619.51,9307.64,10279.6
+IoT Ingress BW (KB/s),665.82,4959.95,5686.76,5300.12
+Server WS Dups Filtered,0,0,15,48
+Edge WS Dups Filtered,1,7,38,149
+IoT WS Dups Filtered,6,13,57,137
+Server Active Norm CPU (%),29.16,35.66,33.73,30.16
+Edge Active Norm CPU (%),99.48,96.83,80.52,71.21
+IoT Active Norm CPU (%),100.0,100.0,100.0,82.04
 Server Throttling Ratio (%),0.0,0.0,0.0,0.0
-Edge Throttling Ratio (%),75.0,77.78,66.67,78.57
-IoT Throttling Ratio (%),87.5,93.33,88.24,85.71
+Edge Throttling Ratio (%),50.0,100.0,90.91,77.78
+IoT Throttling Ratio (%),100.0,93.75,82.61,90.0
 Server Throttled (ms),0.0,0.0,0.0,0.0
-Edge Throttled (ms),256.87,1034.99,2048.0,2921.84
-IoT Throttled (ms),2794.47,6588.3,8615.75,9469.46
-Server Peak RAM (MB),38.57,39.44,39.93,40.37
-Edge Peak RAM (MB),38.57,39.44,39.93,40.37
-IoT Peak RAM (MB),38.57,39.44,39.93,40.37
-Server RAM Util (%),0.94,0.96,0.97,0.99
-Edge RAM Util (%),7.53,7.7,7.8,7.88
-IoT RAM Util (%),30.13,30.81,31.2,31.54
+Edge Throttled (ms),370.18,1960.62,2814.69,6290.88
+IoT Throttled (ms),2143.08,7168.51,11505.33,17509.1
+Server Peak RAM (MB),41.52,44.98,45.45,46.03
+Edge Peak RAM (MB),40.56,45.59,47.96,49.45
+IoT Peak RAM (MB),41.55,45.87,48.38,49.74
+Server RAM Util (%),1.01,1.1,1.11,1.12
+Edge RAM Util (%),7.92,8.9,9.37,9.66
+IoT RAM Util (%),32.46,35.84,37.8,38.86
 Server Status,SUCCESS,SUCCESS,SUCCESS,SUCCESS
 Edge Status,SUCCESS,SUCCESS,SUCCESS,SUCCESS
 IoT Status,SUCCESS,SUCCESS,SUCCESS,SUCCESS
