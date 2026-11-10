@@ -258,9 +258,30 @@ def run_single_dut_benchmark(algo_id: str, algo_name: str, tx_dataset: list, dut
     adapter = requests.adapters.HTTPAdapter(pool_connections=16, pool_maxsize=16)
     session.mount('http://', adapter)
 
-    # Warm-up 5 HTTP Keep-Alive sockets toi 5 Background Nodes truoc khi bam gio Pha 1
+    # -------------------------------------------------------------------------
+    # Pre-flight TCP & Pipeline Warm-up:
+    # Loai bo hoan toan 0.13s Cold TCP Handshake Penalty tren Profile dau tien (Server)
+    # dam bao cong bang tuyet doi giua Server, Edge va IoT.
+    # -------------------------------------------------------------------------
+    def warmup_bg_socket(bg_port):
+        try:
+            # 1. Warm-up GET request
+            session.get(f"http://127.0.0.1:{bg_port}/metrics/light", timeout=2.0)
+            # 2. Warm-up POST JSON transaction endpoint
+            session.post(f"http://127.0.0.1:{bg_port}/transactions/new", json={
+                'sender_address': txs_to_send[0]['sender_address'],
+                'recipient_address': txs_to_send[0]['recipient_address'],
+                'amount': '0.0001',
+                'nonce': 99999999,
+                'signature': txs_to_send[0]['signature']
+            }, timeout=2.0)
+        except Exception:
+            pass
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-        list(ex.map(lambda bg: session.get(f"http://127.0.0.1:{bg['host_port']}/metrics/light", timeout=2.0), BG_NODES))
+        list(ex.map(warmup_bg_socket, [bg['host_port'] for bg in BG_NODES]))
+
+    time.sleep(0.3)  # On dinh TCP window buffer truoc khi bam gio do luong
 
     cgroup_ingest_start = get_dut_light_telemetry(dut_port).get('cgroup', {})
     t_ingest_start = time.time()
