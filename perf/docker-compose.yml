@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # =========================================================================
+  # 1. PROFILE SERVER: May chu tieu chuan Datacenter / Cloud Node
+  # Cau hinh: 4 vCPU, 4GB RAM, khong gioi han swap
+  # =========================================================================
+  node-server:
+    image: blockchain-node:perf
+    build:
+      context: ..
+      dockerfile: perf/Dockerfile
+    container_name: btc-node-server
+    environment:
+      - NODE_PROFILE=server
+      - PORT=5000
+    ports:
+      - "5000:5000"
+      - "6000:6000"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.00'
+          memory: 4096M
+        reservations:
+          cpus: '1.00'
+          memory: 512M
+    mem_limit: 4096M
+    memswap_limit: 4096M
+    profiles:
+      - server
+      - all
+
+  # =========================================================================
+  # 2. PROFILE EDGE: Thiet bi Edge Gateway / Cong nghiep / Raspberry Pi 4
+  # Cau hinh: 1 vCPU, 512MB RAM
+  # =========================================================================
+  node-edge:
+    image: blockchain-node:perf
+    build:
+      context: ..
+      dockerfile: perf/Dockerfile
+    container_name: btc-node-edge
+    environment:
+      - NODE_PROFILE=edge
+      - PORT=5000
+    ports:
+      - "5001:5000"
+      - "6001:6000"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+        reservations:
+          cpus: '0.50'
+          memory: 128M
+    mem_limit: 512M
+    memswap_limit: 512M
+    profiles:
+      - edge
+      - all
+
+  # =========================================================================
+  # 3. PROFILE IOT: Thiet bi nhung Han che Tai nguyen / Smart Meter / Sensor
+  # Cau hinh: 0.5 vCPU, 128MB RAM -> Vung nguy co tran bo nho (OOM)
+  # =========================================================================
+  node-iot:
+    image: blockchain-node:perf
+    build:
+      context: ..
+      dockerfile: perf/Dockerfile
+    container_name: btc-node-iot
+    environment:
+      - NODE_PROFILE=iot
+      - PORT=5000
+    ports:
+      - "5002:5000"
+      - "6002:6000"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    mem_limit: 128M
+    memswap_limit: 128M
+    profiles:
+      - iot
+      - all
