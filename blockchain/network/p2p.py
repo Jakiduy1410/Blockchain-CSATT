@@ -234,7 +234,13 @@ class P2PNetwork:
 
         def send_to_sock(sock):
             try:
-                sock.send(msg_str)
+                # Bao ve OpenSSL SSL_write thread-safe bang lock rieng cho tung socket
+                sock_lock = getattr(sock, '_write_lock', None)
+                if sock_lock is None:
+                    sock_lock = threading.Lock()
+                    sock._write_lock = sock_lock
+                with sock_lock:
+                    sock.send(msg_str)
                 return (sock, True)
             except Exception:
                 return (sock, False)
