@@ -32,6 +32,13 @@ class TLSManager:
     def set_tls_groups(cls, ctx: ssl.SSLContext, group_name: str = "X25519MLKEM768"):
         """Cấu hình nhóm TLS 1.3 Post-Quantum (FIPS 203 ML-KEM) trực tiếp vào SSL_CTX của OpenSSL 3"""
         try:
+            if sys.platform == 'win32' and hasattr(os, 'add_dll_directory'):
+                for d in [r'C:\msys64\ucrt64\bin', os.path.join(sys.base_prefix, 'DLLs')]:
+                    if os.path.isdir(d):
+                        try:
+                            os.add_dll_directory(d)
+                        except Exception:
+                            pass
             ssl_lib = None
             for dll_candidate in ['libssl-3-x64.dll', 'libssl-3.dll', 'libssl.so']:
                 try:

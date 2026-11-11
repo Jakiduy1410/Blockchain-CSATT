@@ -30,7 +30,11 @@ if str(BASE_DIR) not in sys.path:
 def main():
     parser = argparse.ArgumentParser(description="Blockchain Benchmark Suite Runner")
     parser.add_argument('--micro', action='store_true', help="Chạy Micro-Benchmark (Đo lường thuật toán mật mã)")
-    parser.add_argument('--macro', action='store_true', help="Chạy Macro-Benchmark (Đo lường mạng lưới P2P E2E)")
+    parser.add_argument('--macro', action='store_true', help="Chạy Macro-Benchmark Signatures & TLS (Đo lường mạng lưới P2P E2E)")
+    parser.add_argument('--keep-alive', action='store_true', default=False,
+                        help="Sử dụng HTTP Keep-Alive persistent connection pool (đẩy TPS lên >400-500 tx/s)")
+    parser.add_argument('--tls', type=str, default="", choices=['', 'both', 'hybrid', 'ecdhe'],
+                        help="Chế độ TLS cho Macro Benchmark: both (mặc định cả 2 chế độ), hybrid, ecdhe")
     parser.add_argument('--all', action='store_true', help="Chạy toàn bộ cả Micro và Macro Benchmark")
     parser.add_argument('-n', '--iterations', type=int, default=0, help="Số lần lặp (Micro) hoặc số transaction (Macro)")
     parser.add_argument('-c', '--config', type=str, default="", help="Đường dẫn file cấu hình JSON")
@@ -67,6 +71,10 @@ def main():
             macro_args.extend(['-c', args.config])
         if args.output_dir:
             macro_args.extend(['-o', args.output_dir])
+        if args.tls:
+            macro_args.extend(['--tls', args.tls])
+        if args.keep_alive:
+            macro_args.append('--keep-alive')
         sys.argv = [sys.argv[0]] + macro_args
         run_macro()
 
